@@ -77,11 +77,23 @@ def geocode_one(building: str, village: str, area: str) -> tuple[float, float, f
 
 
 def area_centroid_fallback() -> int:
-    """Place any remaining booth at the centroid of its area polygon."""
+    """Place any remaining booth at its area's stored centroid.
+
+    N4: this read `ST_Centroid(a.geom)`. The centroid is now a stored pair of
+    columns, because computing it was the only thing the polygon was read for.
+
+    Worth knowing before relying on the number this returns: nothing populates
+    area boundaries or centroids yet - no loader writes them - so this fallback
+    has never placed a booth and will keep returning 0 until area geometry is
+    loaded. That was equally true of the PostGIS version, where
+    `a.geom IS NOT NULL` was never satisfied; the rewrite did not break it, it
+    made the emptiness visible.
+    """
     return execute(
-        "UPDATE booth b SET geom = ST_Centroid(a.geom), geocode_conf = 0.2, "
-        "geocode_source = 'area_centroid' FROM area a "
-        "WHERE a.area_id = b.area_id AND b.geom IS NULL AND a.geom IS NOT NULL"
+        "UPDATE booth b SET lon = a.centroid_lon, lat = a.centroid_lat, "
+        "geocode_conf = 0.2, geocode_source = 'area_centroid' FROM area a "
+        "WHERE a.area_id = b.area_id AND b.lon IS NULL "
+        "  AND a.centroid_lon IS NOT NULL"
     )
 
 
@@ -89,7 +101,8 @@ def run(limit: int | None = None, redo_weak: bool = False) -> dict:
     settings = get_settings()
     delay = 1.0 / max(0.1, settings.nominatim_rps)
 
-    clause = "b.geom IS NULL" if not redo_weak else "(b.geom IS NULL OR b.geocode_conf < 0.4)"
+    clause = ("b.lon IS NULL" if not redo_weak
+              else "(b.lon IS NULL OR b.geocode_conf < 0.4)")
     rows = query(
         f"SELECT b.booth_uid, b.building, b.village_or_locality, a.name_en AS area "
         f"FROM booth b JOIN area a ON a.area_id = b.area_id "
@@ -103,7 +116,7 @@ def run(limit: int | None = None, redo_weak: bool = False) -> dict:
         if hit:
             lat, lon, conf = hit
             execute(
-                "UPDATE booth SET geom = ST_SetSRID(ST_MakePoint(%s, %s), 4326), "
+                "UPDATE booth SET lon = %s, lat = %s, "
                 "geocode_conf = %s, geocode_source = 'nominatim' WHERE booth_uid = %s",
                 (lon, lat, conf, row["booth_uid"]),
             )
@@ -121,7 +134,7 @@ def pin(booth_uid: str, lat: float, lon: float) -> bool:
     if query_one("SELECT 1 AS ok FROM booth WHERE booth_uid = %s", (booth_uid,)) is None:
         return False
     execute(
-        "UPDATE booth SET geom = ST_SetSRID(ST_MakePoint(%s, %s), 4326), "
+        "UPDATE booth SET lon = %s, lat = %s, "
         "geocode_conf = 1.0, geocode_source = 'manual' WHERE booth_uid = %s",
         (lon, lat, booth_uid),
     )

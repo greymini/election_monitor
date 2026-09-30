@@ -715,10 +715,15 @@ WITH windows AS (
     -- roll of this one]. Both ends must exist or every figure downstream is
     -- NULL - which is the honest answer, and what B1 got wrong by leaving the
     -- baseline CTE empty and reporting 0 additions everywhere.
-    SELECT l.ac_id, l.election_id,
+    -- ac_id from the election, not from the link table: election_roll_link is
+    -- (election_id, revision_id) and has no ac_id. This said `l.ac_id`, so
+    -- 0015 could not be applied at all - the first `apply_migrations` run
+    -- against any database would have stopped here. It survived review because
+    -- nothing had ever executed this file.
+    SELECT e.ac_id, l.election_id,
            e.type, e.year,
            r.revision_date AS window_end,
-           LAG(r.revision_date) OVER (PARTITION BY l.ac_id, e.type ORDER BY e.year)
+           LAG(r.revision_date) OVER (PARTITION BY e.ac_id, e.type ORDER BY e.year)
                AS window_start,
            l.revision_id   AS end_revision_id
     FROM election_roll_link l

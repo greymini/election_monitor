@@ -118,10 +118,39 @@ There are two implementations that must agree, so there are four suites.
 | `tests/test_metrics.py` (60 tests) | `analytics/metrics.py` against hand-computed fixtures: every row of §3.2, every NULL rule in it, and the specific audit finding each rule prevents | **RUN — 60 passed** |
 | `tests/test_metric_parity.py` (87 tests) | the Python side against the shared hand-computed cases; that `0015_metrics.sql`'s generated block matches `analytics/metric_sql.py`; and that no view restates a formula, weight or threshold that belongs to a generated function | **RUN — 82 passed** |
 | `tests/test_metric_functions_sql.py` (82 tests) | the generated metric functions **executed in a real PostgreSQL 16**, started in-process by `pgserver` with only the function block applied: every §3.2 metric three ways — hand-computed, Python, SQL — plus IMMUTABLE and COMMENT in the catalogue, and argument resolution at the types the views pass | **RUN — 82 passed** |
-| `tests/e2e/test_metrics_sql.py` (14 tests) | the same fixtures through the **views** in `db/migrations/0015_metrics.sql` | **NOT RUN — needs the full schema, which needs PostGIS** |
-| `tests/e2e/test_metric_parity_sql.py` (79 tests) | the cases again against the full schema, plus a row-by-row recomputation of `mv_result_booth_wide` and the N2 check that the AC winner equals the booth-table sum | **NOT RUN — needs the full schema, which needs PostGIS** |
+| `tests/e2e/test_metrics_sql.py` (14 tests) | the same fixtures through the **views** in `db/migrations/0015_metrics.sql` | **RUN — 14 passed** |
+| `tests/e2e/test_metric_parity_sql.py` (79 tests) | the cases again against the full schema, plus a row-by-row recomputation of `mv_result_booth_wide` and the N2 check that the AC winner equals the booth-table sum | **RUN — 76 passed, 3 skipped** (the 3 need booth results the seed does not load — items 8 and 9, not an environment gap) |
 
-### What changed here, and what did not
+### The schema has now been applied, and everything runs
+
+**Every SQL test in this project now executes.** N4 (D-006) removed the PostGIS,
+`pg_trgm` and `unaccent` requirements — the latter two were created and never used,
+and PostGIS was doing nothing but a round trip to recover the longitude and latitude
+that had been written into a geometry column. `0001` now creates only pgvector, which
+a pip-installed PostgreSQL provides, so `tests/e2e/` runs by default instead of
+skipping.
+
+All 17 migrations apply on a stock PostgreSQL 16: **50 tables, 14 materialized views,
+15 metric functions.** That had never happened before — the schema had never once been
+applied anywhere.
+
+Two real defects surfaced in the first minute of it running, which is the argument for
+having done it:
+
+- **`0015_metrics.sql` could not be applied at all.** `mv_new_voter_share` selected
+  `l.ac_id` from `election_roll_link`, which has no such column. The first
+  `apply_migrations` run against any database would have stopped there. It had passed
+  `lint_sql.py`, review, and a commit message claiming the metrics layer was done.
+- **13 of the 14 view tests died on a duplicate key.** Their dataset fixture was
+  function-scoped over a session-scoped connection, so it rebuilt the same rows for
+  every test. A second, subtler one followed: the NOTA test adds a fourth booth to the
+  shared dataset and did not remove it, so the AC-summary count assertion read 4 where
+  the fixture builds 3. Both were invisible while the suite reported "skipped".
+
+Suite: **759 passed / 94 skipped → 849 passed / 4 skipped.** The remaining 4 are data
+gaps, not environment gaps, and each names what would close it.
+
+### What changed in item 2, and what did not
 
 The generated SQL **has now been executed.** That was the sharpest gap after item 1:
 `scripts/lint_sql.py` is a static check whose own output says it "does not prove the
@@ -139,19 +168,29 @@ no view can be built. PostGIS is needed for exactly two column types —
 `geometry(Point, 4326)` and `geometry(MultiPolygon, 4326)` — and no `ST_*` call
 appears anywhere in the migrations, but a column type is not optional.
 
-So the arithmetic is now verified and **its wiring is still not.** A view can call
-the right function with the wrong column and every one of the 82 tests still passes.
-That is what the two e2e suites are for, and they remain NOT RUN. Until an operator
-runs them, treat any figure the dashboard shows as unverified:
+The wiring is now verified too, by the e2e suites above — which as of N4 need no
+Docker. Run everything with:
 
 ```bash
-docker compose build db       # A1: PostGIS + pgvector, see docker/Dockerfile.db
+pytest tests/ -q              # expect 849 passed, 4 skipped
+```
+
+To run against the real image instead of the in-process server — the only way to
+exercise anything PostGIS would be needed for, should a spatial query ever be added:
+
+```bash
+docker compose build db
 export E2E_DATABASE_URL='postgresql://user:pass@host:5432/giridih_test'
-pytest tests/e2e -v           # expect 93 passed
+pytest tests/e2e -v
 ```
 
 Those suites drop and rebuild the schema, and refuse a URL whose database name does
 not contain `test`.
+
+**What is still not proven: no figure here comes from a real document.** The views are
+correct over the fixture dataset the tests build. No Form 20 has been parsed, so the
+booth-level numbers a user would see are still unverified end to end — that is items 8
+and 9, and the three remaining skips are exactly it.
 
 ### What the 60 Python tests pin, by §3.2 row
 
@@ -197,7 +236,7 @@ the privacy test exercised the parser functions in isolation.
 | No finding echoes the matched value | **PASS** — asserted |
 | Roll load refuses on a dirty disk | **PASS** — exits 3 |
 | Free-text ingress screened (E5) | **PASS** — `/ground-reports` returns 422 |
-| **Database scan against a real database** | **NOT RUN** — still. `pgserver` gives a real PostgreSQL, but `check_privacy_database` enumerates every text and jsonb column from `information_schema` and scans it, and against a database with no schema it would find nothing and report PASS. That is a *false* pass, which is worse than no result, so it is not claimed. It needs the full schema, so PostGIS, so Docker. The filesystem half runs here and passes. |
+| **Database scan against a real database** | **NOT RUN, but no longer blocked.** The schema applies now (N4), so this is runnable for the first time; it has not been wired into the suite yet. Note it will scan an empty database until a load happens, and an empty scan reporting PASS is a false pass — so it needs to run *after* the mock Form 20 load of item 8 to mean anything. The filesystem half runs here and passes. |
 
 **No roll has been loaded, and none should be until an operator runs** `python -m
 ingest.validate --privacy` **on the target host and it exits zero.** The load now
@@ -247,17 +286,16 @@ Two audit claims the auditor could not execute, now verified empirically:
 
 | Gate | Latest result |
 |---|---|
-| `pytest -q` | **759 passed, 94 skipped** (was 96 at baseline) |
+| `pytest -q` | **849 passed, 4 skipped** (was 96 at baseline) |
 | `ruff check .` | **clean** |
 | `python scripts/lint_sql.py` | **17 migrations, no problems**. Verified against deliberately broken input: it catches transaction control inside a migration and a reference to a relation no earlier migration creates. |
 | `npm run build` | **clean** |
 | `docker compose build` | **NOT RUN — Docker not installed, no rights to install it.** `docker/Dockerfile.db` (A1) is therefore written and reviewed but never built; its build-time check that all four extensions are present has never executed. |
 
-Of the 94 skipped: 93 are the two e2e SQL suites above (NOT RUN — they need the full
-schema, so PostGIS, so Docker) and one is `Login`, exempted from the "every page
-fetches from the API" check because it posts credentials and renders nothing from the
-database. The 82 function-level SQL tests are in the passing count, not the skipped
-one: they ran.
+Of the 4 skipped: 3 need booth results the seed does not load (items 8 and 9) and one
+is `Login`, exempted from the "every page fetches from the API" check because it posts
+credentials and renders nothing from the database. Nothing is skipped for want of a
+database any more.
 
 ---
 

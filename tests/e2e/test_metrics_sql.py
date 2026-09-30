@@ -42,86 +42,99 @@ BOOTHS_PREV = {
 }
 
 
-@pytest.fixture
-def loaded(cursor):
-    """Build a minimal but complete AC: two elections, three booths, a roll."""
-    cursor.execute("SELECT ac_id FROM ac WHERE ac_number = 32")
-    ac_id = cursor.fetchone()["ac_id"]
+@pytest.fixture(scope="module")
+def loaded(conn):
+    """Build a minimal but complete AC: two elections, three booths, a roll.
 
-    cursor.execute(
-        "SELECT election_id, label FROM election WHERE ac_id = %s AND label IN "
-        "('VS-2024', 'VS-2019')", (ac_id,),
-    )
-    elections = {r["label"]: r["election_id"] for r in cursor.fetchall()}
-    assert set(elections) == {"VS-2024", "VS-2019"}, (
-        "the seed must create a contest row per event per AC"
-    )
+    Module-scoped, and it has to be. `conn` is session-scoped, so the schema and
+    this dataset outlive any one test; as a function-scoped fixture this rebuilt
+    the same rows for every test and the second one died on
+    `booth_crosswalk_pkey`. Thirteen of the fourteen tests in this file errored
+    that way the first time the suite was ever executed - which is also the
+    first evidence that "skipped" had been hiding more than a missing database.
 
-    cursor.execute("SELECT block_id FROM block WHERE ac_id = %s ORDER BY block_id LIMIT 1",
-                   (ac_id,))
-    block_id = cursor.fetchone()["block_id"]
-    cursor.execute(
-        "INSERT INTO area (block_id, ac_id, kind, name_en, name_hi) "
-        "VALUES (%s, %s, 'panchayat', 'Testpur', 'टेस्टपुर') "
-        "ON CONFLICT (block_id, kind, name_en) DO UPDATE SET ac_id = EXCLUDED.ac_id "
-        "RETURNING area_id",
-        (block_id, ac_id),
-    )
-    area_id = cursor.fetchone()["area_id"]
+    Module scope is right on the merits too: every test here reads the dataset
+    and none mutates it, so there is nothing to isolate and rebuilding it
+    fourteen times would only be slower.
+    """
+    with conn.cursor() as cursor:
+        cursor.execute("SELECT ac_id FROM ac WHERE ac_number = 32")
+        ac_id = cursor.fetchone()["ac_id"]
 
-    parties = {}
-    cursor.execute("SELECT party_id, abbr FROM party")
-    for row in cursor.fetchall():
-        parties[row["abbr"]] = row["party_id"]
-
-    booth_uids = {}
-    for index, name in enumerate(sorted(BOOTHS), start=1):
-        cursor.execute("SELECT next_booth_uid(32) AS uid")
-        uid = cursor.fetchone()["uid"]
-        booth_uids[name] = uid
         cursor.execute(
-            "INSERT INTO booth (booth_uid, ac_id, area_id, building, current_ps_number) "
-            "VALUES (%s, %s, %s, %s, %s)",
-            (uid, ac_id, area_id, f"Test building {name}", index),
+            "SELECT election_id, label FROM election WHERE ac_id = %s AND label IN "
+            "('VS-2024', 'VS-2019')", (ac_id,),
+        )
+        elections = {r["label"]: r["election_id"] for r in cursor.fetchall()}
+        assert set(elections) == {"VS-2024", "VS-2019"}, (
+            "the seed must create a contest row per event per AC"
         )
 
-    for label, votes_by_booth in (("VS-2024", BOOTHS), ("VS-2019", BOOTHS_PREV)):
-        election_id = elections[label]
-        for index, (name, votes) in enumerate(sorted(votes_by_booth.items()), start=1):
-            cursor.execute(
-                "INSERT INTO booth_crosswalk (election_id, ac_id, ps_number, booth_uid, "
-                "match_method, confidence, reviewed) VALUES (%s, %s, %s, %s, 'anchor', 1.0, true)",
-                (election_id, ac_id, index, booth_uids[name]),
-            )
-            cursor.execute(
-                "INSERT INTO ps_list_entry (election_id, ac_id, ps_number, building) "
-                "VALUES (%s, %s, %s, %s)",
-                (election_id, ac_id, index, f"Test building {name}"),
-            )
-            for party, vote_count in votes.items():
-                cursor.execute(
-                    "INSERT INTO candidate (election_id, ac_id, name_en, party_id) "
-                    "VALUES (%s, %s, %s, %s) "
-                    "ON CONFLICT (election_id, name_en, party_id) DO UPDATE "
-                    "SET ac_id = EXCLUDED.ac_id RETURNING candidate_id",
-                    (election_id, ac_id, f"{party} candidate", parties[party]),
-                )
-                candidate_id = cursor.fetchone()["candidate_id"]
-                cursor.execute(
-                    "INSERT INTO result_booth (election_id, ac_id, ps_number, candidate_id, votes) "
-                    "VALUES (%s, %s, %s, %s, %s)",
-                    (election_id, ac_id, index, candidate_id, vote_count),
-                )
-            if label == "VS-2024":
-                cursor.execute(
-                    "INSERT INTO result_booth_meta (election_id, ac_id, ps_number, electors, "
-                    "total_valid, nota, rejected) VALUES (%s, %s, %s, %s, %s, %s, %s)",
-                    (election_id, ac_id, index, ELECTORS[name],
-                     sum(votes.values()), votes["NOTA"], REJECTED[name]),
-                )
+        cursor.execute("SELECT block_id FROM block WHERE ac_id = %s ORDER BY block_id LIMIT 1",
+                       (ac_id,))
+        block_id = cursor.fetchone()["block_id"]
+        cursor.execute(
+            "INSERT INTO area (block_id, ac_id, kind, name_en, name_hi) "
+            "VALUES (%s, %s, 'panchayat', 'Testpur', 'टेस्टपुर') "
+            "ON CONFLICT (block_id, kind, name_en) DO UPDATE SET ac_id = EXCLUDED.ac_id "
+            "RETURNING area_id",
+            (block_id, ac_id),
+        )
+        area_id = cursor.fetchone()["area_id"]
 
-    refresh_views(cursor)
-    return {"ac_id": ac_id, "elections": elections, "booths": booth_uids, "area_id": area_id}
+        parties = {}
+        cursor.execute("SELECT party_id, abbr FROM party")
+        for row in cursor.fetchall():
+            parties[row["abbr"]] = row["party_id"]
+
+        booth_uids = {}
+        for index, name in enumerate(sorted(BOOTHS), start=1):
+            cursor.execute("SELECT next_booth_uid(32) AS uid")
+            uid = cursor.fetchone()["uid"]
+            booth_uids[name] = uid
+            cursor.execute(
+                "INSERT INTO booth (booth_uid, ac_id, area_id, building, current_ps_number) "
+                "VALUES (%s, %s, %s, %s, %s)",
+                (uid, ac_id, area_id, f"Test building {name}", index),
+            )
+
+        for label, votes_by_booth in (("VS-2024", BOOTHS), ("VS-2019", BOOTHS_PREV)):
+            election_id = elections[label]
+            for index, (name, votes) in enumerate(sorted(votes_by_booth.items()), start=1):
+                cursor.execute(
+                    "INSERT INTO booth_crosswalk (election_id, ac_id, ps_number, booth_uid, "
+                    "match_method, confidence, reviewed) VALUES (%s, %s, %s, %s, 'anchor', 1.0, true)",
+                    (election_id, ac_id, index, booth_uids[name]),
+                )
+                cursor.execute(
+                    "INSERT INTO ps_list_entry (election_id, ac_id, ps_number, building) "
+                    "VALUES (%s, %s, %s, %s)",
+                    (election_id, ac_id, index, f"Test building {name}"),
+                )
+                for party, vote_count in votes.items():
+                    cursor.execute(
+                        "INSERT INTO candidate (election_id, ac_id, name_en, party_id) "
+                        "VALUES (%s, %s, %s, %s) "
+                        "ON CONFLICT (election_id, name_en, party_id) DO UPDATE "
+                        "SET ac_id = EXCLUDED.ac_id RETURNING candidate_id",
+                        (election_id, ac_id, f"{party} candidate", parties[party]),
+                    )
+                    candidate_id = cursor.fetchone()["candidate_id"]
+                    cursor.execute(
+                        "INSERT INTO result_booth (election_id, ac_id, ps_number, candidate_id, votes) "
+                        "VALUES (%s, %s, %s, %s, %s)",
+                        (election_id, ac_id, index, candidate_id, vote_count),
+                    )
+                if label == "VS-2024":
+                    cursor.execute(
+                        "INSERT INTO result_booth_meta (election_id, ac_id, ps_number, electors, "
+                        "total_valid, nota, rejected) VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                        (election_id, ac_id, index, ELECTORS[name],
+                         sum(votes.values()), votes["NOTA"], REJECTED[name]),
+                    )
+
+        refresh_views(cursor)
+        return {"ac_id": ac_id, "elections": elections, "booths": booth_uids, "area_id": area_id}
 
 
 def test_the_fixture_actually_loaded(cursor, loaded):
@@ -192,17 +205,37 @@ def test_nota_never_wins_in_sql_either(cursor, loaded):
             "VALUES (%s, %s, 99, %s, %s)",
             (election_id, ac_id, candidate_id, votes),
         )
-    refresh_views(cursor)
+    try:
+        refresh_views(cursor)
 
-    cursor.execute(
-        "SELECT winner_party, runner_party, valid_votes, margin_votes "
-        "FROM mv_result_booth_wide WHERE booth_uid = %s", (uid,),
-    )
-    row = cursor.fetchone()
-    assert row["winner_party"] == "JMM"
-    assert row["runner_party"] == "BJP"
-    assert row["valid_votes"] == 690          # NOTA is inside the denominator
-    assert row["margin_votes"] == 10
+        cursor.execute(
+            "SELECT winner_party, runner_party, valid_votes, margin_votes "
+            "FROM mv_result_booth_wide WHERE booth_uid = %s", (uid,),
+        )
+        row = cursor.fetchone()
+        assert row["winner_party"] == "JMM"
+        assert row["runner_party"] == "BJP"
+        assert row["valid_votes"] == 690          # NOTA is inside the denominator
+        assert row["margin_votes"] == 10
+    finally:
+        # This is the one test here that adds to the shared dataset, so it is
+        # the one that has to put it back. `loaded` is module-scoped over a
+        # session-scoped connection, so a fourth booth left behind is a fourth
+        # booth for every test that follows - which is exactly how
+        # test_ac_summary_reproduces_the_booth_sums came to read 4 booths where
+        # the fixture builds 3. Cleaning up here rather than loosening that
+        # assertion, because an AC summary that agrees with the booth count is
+        # worth asserting exactly.
+        cursor.execute(
+            "DELETE FROM result_booth WHERE election_id = %s AND ps_number = 99",
+            (election_id,),
+        )
+        cursor.execute(
+            "DELETE FROM booth_crosswalk WHERE election_id = %s AND ps_number = 99",
+            (election_id,),
+        )
+        cursor.execute("DELETE FROM booth WHERE booth_uid = %s", (uid,))
+        refresh_views(cursor)
 
 
 def test_turnout_matches_the_python(cursor, loaded):

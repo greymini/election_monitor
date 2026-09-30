@@ -109,7 +109,7 @@ def summary(user: CurrentUser, ac: CurrentAC) -> dict:
     # than as a fault.
     data_health = query_one(
         "SELECT (SELECT COUNT(*) FROM booth WHERE is_active AND ac_id = %(ac)s) AS booths, "
-        "(SELECT COUNT(*) FROM booth WHERE is_active AND ac_id = %(ac)s AND geom IS NOT NULL) "
+        "(SELECT COUNT(*) FROM booth WHERE is_active AND ac_id = %(ac)s AND lon IS NOT NULL) "
         "  AS booths_geocoded, "
         "(SELECT COUNT(*) FROM ps_list_entry WHERE ac_id = %(ac)s) AS ps_list_rows, "
         "(SELECT COUNT(DISTINCT election_id) FROM result_booth WHERE ac_id = %(ac)s) "
@@ -234,7 +234,7 @@ def booths_geojson(
         f"""
         SELECT b.booth_uid, b.ps_name_hi, b.building, b.village_or_locality,
                b.current_ps_number, b.geocode_conf,
-               ST_X(b.geom) AS lon, ST_Y(b.geom) AS lat,
+               b.lon, b.lat,
                a.area_id, a.name_hi AS area_hi, a.name_en AS area_en, a.kind AS area_kind,
                a.block_id,
                p.margin_pct, p.signed_margin_pct, p.turnout_pct, p.new_voter_pct,

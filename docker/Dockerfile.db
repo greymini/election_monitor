@@ -27,23 +27,35 @@ RUN apt-get update \
         postgresql-16-pgvector \
     && rm -rf /var/lib/apt/lists/*
 
-# Fail the build, not the first migration, if any extension 0001 needs is
+# Fail the build, not the first migration, if the extension 0001 needs is
 # missing. `pg_available_extensions` requires a running server, so this checks
 # the control files on disk instead - which is what CREATE EXTENSION looks for,
 # and which can be inspected without starting postgres.
+#
+# Only `vector` is required. N4 removed the PostGIS dependency: the geometry
+# columns became plain longitude/latitude doubles and GeoJSON in jsonb, because
+# that was all they were being used for, and pg_trgm and unaccent turned out to
+# be created and never used at all. PostGIS is still installed by the base image
+# and is reported below, so the day a genuine spatial query is needed -
+# point-in-polygon, distance ordering, tile cutting - it is already here and no
+# image change is required. That is the whole reason this file still exists
+# rather than reverting compose to a plain pgvector image.
 RUN set -eu; \
     share="$(pg_config --sharedir)/extension"; \
-    missing=''; \
-    for ext in postgis vector pg_trgm unaccent; do \
-        [ -f "$share/$ext.control" ] || missing="$missing $ext"; \
-    done; \
-    if [ -n "$missing" ]; then \
-        echo "FATAL: extension control file(s) missing:$missing" >&2; \
-        echo "0001_extensions.sql requires postgis, vector, pg_trgm and unaccent." >&2; \
+    if [ ! -f "$share/vector.control" ]; then \
+        echo "FATAL: vector.control missing from $share" >&2; \
+        echo "0001_extensions.sql requires pgvector for the news embeddings." >&2; \
         ls "$share" >&2; \
         exit 1; \
     fi; \
-    echo "all four extensions present in $share"
+    echo "required: vector - present"; \
+    for ext in postgis pg_trgm unaccent; do \
+        if [ -f "$share/$ext.control" ]; then \
+            echo "available (not required): $ext"; \
+        else \
+            echo "absent (not required): $ext"; \
+        fi; \
+    done
 
 # The init hook runs once, on an empty data directory only. It is deliberately
 # not the place the extensions get created - `db/apply_migrations.py` does that

@@ -97,8 +97,10 @@ def check_database() -> list[Check]:
             "which the Form 20 candidate key needs",
         ))
 
-    # Extensions. postgis is needed by migration 0001 and by GET /booths, which
-    # calls ST_X/ST_Y; vector is needed by the news embedding columns.
+    # Extensions. Only pgvector is required, for the news embedding columns.
+    # PostGIS was required until N4 removed the geometry columns; it is
+    # reported when present because docker/Dockerfile.db still provides it for
+    # future spatial work, but its absence is no longer a failure.
     try:
         installed = {r["extname"] for r in query("SELECT extname FROM pg_extension")}
         available = {r["name"] for r in query("SELECT name FROM pg_available_extensions")}
@@ -106,8 +108,7 @@ def check_database() -> list[Check]:
         out.append(Check("extensions", WARN, f"could not read: {str(exc)[:120]}"))
         return out
 
-    for name, why in (("postgis", "migration 0001 and GET /booths (ST_X/ST_Y)"),
-                      ("vector", "news embedding columns")):
+    for name, why in (("vector", "news embedding columns"),):
         if name in installed:
             out.append(Check(f"extension {name}", OK, "installed"))
         elif name in available:

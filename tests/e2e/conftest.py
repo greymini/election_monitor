@@ -19,39 +19,93 @@ fixture refuses a URL whose database name does not contain 'test'.
 
 from __future__ import annotations
 
+import logging
 import os
 
 import pytest
 
 E2E_URL_VAR = "E2E_DATABASE_URL"
 
-SKIP_REASON = (
-    f"no database: set {E2E_URL_VAR} to a throwaway PostgreSQL 16 with PostGIS and "
-    "pgvector, e.g. postgresql://user:pass@localhost:5432/giridih_test. These tests "
-    "drop and rebuild the schema."
-)
-
 
 def e2e_url() -> str | None:
     return os.environ.get(E2E_URL_VAR, "").strip() or None
 
 
-requires_db = pytest.mark.skipif(e2e_url() is None, reason=SKIP_REASON)
+def pgserver_available() -> bool:
+    """Whether a PostgreSQL can be started in-process.
+
+    Since N4 the schema needs only pgvector - no PostGIS, no pg_trgm, no
+    unaccent - which is exactly what `pgserver` bundles. So these tests no
+    longer require Docker, an administrator, or a database somebody set up in
+    advance: if the package is installed, they run.
+    """
+    try:
+        import pgserver  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
+SKIP_REASON = (
+    "no database and no pgserver. Either `pip install -r requirements-dev.txt`, "
+    "which brings a self-contained PostgreSQL needing no Docker, or set "
+    f"{E2E_URL_VAR} to a throwaway PostgreSQL 16 with pgvector. These tests drop "
+    "and rebuild the schema."
+)
+
+requires_db = pytest.mark.skipif(
+    e2e_url() is None and not pgserver_available(), reason=SKIP_REASON
+)
 
 
 @pytest.fixture(scope="session")
 def db_url() -> str:
+    """A database to rebuild from scratch.
+
+    An explicitly supplied `E2E_DATABASE_URL` wins, because an operator naming a
+    database is making a deliberate choice - most importantly the choice to test
+    against the real image, which is the only way to exercise anything PostGIS
+    would be needed for. Otherwise an in-process server is started, so the suite
+    runs by default rather than skipping.
+    """
     url = e2e_url()
-    if url is None:
+    if url is not None:
+        # A guard, not a convenience. These tests DROP SCHEMA public CASCADE.
+        tail = url.rsplit("/", 1)[-1].split("?")[0]
+        if "test" not in tail.lower():
+            pytest.fail(
+                f"{E2E_URL_VAR} points at database {tail!r}, which does not look "
+                "like a throwaway. These tests drop and rebuild the schema; "
+                "refusing to run."
+            )
+        return url
+
+    if not pgserver_available():
         pytest.skip(SKIP_REASON)
-    # A guard, not a convenience. These tests DROP SCHEMA public CASCADE.
-    tail = url.rsplit("/", 1)[-1].split("?")[0]
-    if "test" not in tail.lower():
-        pytest.fail(
-            f"{E2E_URL_VAR} points at database {tail!r}, which does not look like a "
-            "throwaway. These tests drop and rebuild the schema; refusing to run."
-        )
-    return url
+
+    import pgserver
+
+    # Not named with "test" because the guard above does not apply: this server
+    # exists only for this session and its data directory is a pytest temp path.
+    data_dir = _session_tmp()
+    server = pgserver.get_server(str(data_dir))
+    try:
+        yield server.get_uri()
+    finally:
+        server.cleanup()
+        # pgserver's atexit hook logs after pytest has closed the stream its
+        # handler writes to, which surfaces as `ValueError: I/O operation on
+        # closed file` in the tail of the run and reads like a test failure.
+        logging.getLogger("pgserver").disabled = True
+        logging.getLogger("pgserver.postgres_server").disabled = True
+
+
+def _session_tmp():
+    """A temp directory for the in-process server's data files."""
+    import tempfile
+    from pathlib import Path
+
+    return Path(tempfile.mkdtemp(prefix="giridih-e2e-"))
 
 
 @pytest.fixture(scope="session")

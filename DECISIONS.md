@@ -130,3 +130,66 @@ contents stay out of it.
 **The old path was left in place, untouched and still a valid repo.** It is a backup until the
 operator deletes it. It is also a hazard: two clones of this project now exist and only one is
 being worked on. Nothing has been committed there since `e1b9263`.
+
+---
+
+## D-006 · The schema stops requiring PostGIS (N4); conflicts with LLD §6.4
+
+**Why.** `FRONTEND_HARDENING.md` §1 needs a local full stack with no Docker, and the
+operator directed that N4 be closed first because §1 depends on it. The blocker was
+migration `0001`, which required `postgis`, `pg_trgm` and `unaccent`. A
+pip-installable PostgreSQL provides none of them, so no SQL test in this project had
+ever been executed — the schema had never once been applied anywhere.
+
+**What was actually being used.** Investigated before changing anything:
+
+| Extension | Real usage found |
+|---|---|
+| `vector` | The news embedding columns. Genuinely required. |
+| `pg_trgm` | **None.** No trigram index, no `similarity()`, anywhere. |
+| `unaccent` | **None.** No `unaccent()` call, anywhere. |
+| `postgis` | Real but narrow: `area.geom`, `booth.geom`, and `ST_X`/`ST_Y` in `GET /booths` plus `ST_MakePoint`/`ST_SetSRID`/`ST_Centroid` in `ingest/geocode.py`. |
+
+`booth.geom` was written from a longitude/latitude pair and read back with
+`ST_X`/`ST_Y` — a round trip through PostGIS to recover the two numbers that went in.
+`area.geom` was read only by `ST_Centroid`, and **nothing ever wrote it**, so the
+area-centroid geocoding fallback could never fire.
+
+**Chosen.** `0002` now stores `booth.lon` / `booth.lat` as `DOUBLE PRECISION` with
+range CHECKs and a both-or-neither constraint, and `area.boundary` as `JSONB`
+(a GeoJSON geometry) beside explicit `area.centroid_lon` / `centroid_lat`. `0001`
+creates only `vector`. The GiST indexes become one partial composite index on
+located booths.
+
+The range CHECKs are a small gain the geometry type did not give: a transposed
+lat/lon pair is now rejected rather than silently stored as a point in the wrong
+hemisphere.
+
+**What this costs.** No spatial *query* is possible — no point-in-polygon, no
+distance ordering, no tile cutting. None is performed today. The day one is needed
+this decision must be revisited; `docker/Dockerfile.db` therefore still installs
+PostGIS, so that day needs no image change, and its build-time check reports PostGIS
+as "available (not required)" rather than requiring it.
+
+**Conflict with a governing document, recorded rather than glossed.**
+`Giridih_AC32_Election_Monitor_LLD.md` §6.4 lines 89 and 92 specify
+`geom geometry(MultiPolygon,4326)` and `geom geometry(Point,4326)` explicitly. This
+change contradicts the LLD. The LLD has not been edited — it is a design document the
+operator owns, and silently rewriting it to match the code would destroy the record
+that a decision was made here. If the LLD is to stand, revert this and accept that
+every SQL test needs Docker.
+
+**What it bought, measured.** Before: 17 migrations never applied, 94 tests skipped
+for want of a database, and the SQL half of every metric unexecuted. After: all 17
+migrations apply on a stock PostgreSQL 16 with pgvector — 50 tables, 14 materialized
+views, 15 metric functions — and the suite went from 759 passed / 94 skipped to
+**849 passed / 4 skipped**, with the 4 remaining skips being data gaps (no booth
+results in the seed) rather than environment gaps.
+
+**Two real defects surfaced immediately, which is the point.** `0015_metrics.sql`
+selected `l.ac_id` from `election_roll_link`, a table with no such column, so the
+file could not be applied at all — the first `apply_migrations` run against any
+database would have stopped there. And `tests/e2e/test_metrics_sql.py`'s dataset
+fixture was function-scoped over a session-scoped connection, so 13 of its 14 tests
+died on a duplicate key the first time they ran. Both had passed review repeatedly
+while nothing executed them.
