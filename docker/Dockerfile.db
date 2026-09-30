@@ -1,0 +1,53 @@
+# The database image: PostgreSQL 16 with PostGIS *and* pgvector.
+#
+# A1. `docker-compose.yml` pinned `pgvector/pgvector:pg16`, which has pgvector
+# and no PostGIS. `0001_extensions.sql` opens with `CREATE EXTENSION postgis`,
+# so the first migration failed on a clean checkout and nothing could start.
+# The audit rated it Critical for exactly that reason: it is not a subtle defect,
+# it is the project not running at all.
+#
+# Built on the PostGIS image rather than the pgvector one, because the
+# dependency is one-directional. PostGIS is a large C extension with GEOS,
+# PROJ and GDAL beneath it; pgvector is a single small extension with no
+# external libraries. Adding pgvector to PostGIS is one apt package. Adding
+# PostGIS to pgvector/pgvector means reproducing the whole geospatial stack,
+# which is what the PostGIS image exists to have done correctly.
+#
+# `postgis/postgis` is itself built on the official `postgres` image, so
+# `pg_trgm` and `unaccent` - the other two extensions 0001 needs - are already
+# present as part of postgresql-contrib. All four are verified below at build
+# time rather than assumed.
+FROM postgis/postgis:16-3.4
+
+# The PGDG apt repository is already configured by the base image, which is how
+# it installs PostGIS. `--no-install-recommends` keeps the layer small; the
+# apt lists are removed in the same RUN so they do not persist in the image.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        postgresql-16-pgvector \
+    && rm -rf /var/lib/apt/lists/*
+
+# Fail the build, not the first migration, if any extension 0001 needs is
+# missing. `pg_available_extensions` requires a running server, so this checks
+# the control files on disk instead - which is what CREATE EXTENSION looks for,
+# and which can be inspected without starting postgres.
+RUN set -eu; \
+    share="$(pg_config --sharedir)/extension"; \
+    missing=''; \
+    for ext in postgis vector pg_trgm unaccent; do \
+        [ -f "$share/$ext.control" ] || missing="$missing $ext"; \
+    done; \
+    if [ -n "$missing" ]; then \
+        echo "FATAL: extension control file(s) missing:$missing" >&2; \
+        echo "0001_extensions.sql requires postgis, vector, pg_trgm and unaccent." >&2; \
+        ls "$share" >&2; \
+        exit 1; \
+    fi; \
+    echo "all four extensions present in $share"
+
+# The init hook runs once, on an empty data directory only. It is deliberately
+# not the place the extensions get created - `db/apply_migrations.py` does that
+# through 0001, so the migration ledger records it and a database restored from
+# a dump goes through the same path. This only reports what is available, so a
+# first-boot log shows it.
+COPY docker/db-initdb-report.sh /docker-entrypoint-initdb.d/00-report-extensions.sh

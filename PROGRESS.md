@@ -218,7 +218,7 @@ leaving 12 that this batch closes. Section H adds 9 testing items: 3 fixed, 2 pa
 
 | ID | Severity | What | Status |
 |---|---|---|---|
-| A1 | Critical | Compose pins `pgvector/pgvector:pg16`, which has no PostGIS, so migration 0001 fails and a clean checkout cannot start | **open** — next item of work: a DB image so the SQL tests can run locally |
+| A1 | Critical | Compose pins `pgvector/pgvector:pg16`, which has no PostGIS, so migration 0001 fails and a clean checkout cannot start | **partial** `PENDING` — `docker/Dockerfile.db` builds PostgreSQL 16 from `postgis/postgis:16-3.4` with pgvector added and fails the *build* if any of the four extensions 0001 needs is absent; compose points at it. Written and reviewed but **never built** — no Docker here. Separately, `pgserver` now makes the generated SQL functions runnable without Docker (82 tests, RUN), which is what A1 was blocking. |
 | A2 | High | Port 443 published and a certs volume mounted, but nginx has one `listen 80` block and no certbot exists | **open** — deployment, scoped out |
 | A3 | High | Worker mounts volumes at paths absent from the image, so Docker creates them root-owned and every write fails | **open** — needs a live host to verify; deployment |
 | A4 | Medium | No `web/.dockerignore`, so the host's `node_modules` enters the build context | **open** — deployment |
@@ -331,7 +331,7 @@ leaving 12 that this batch closes. Section H adds 9 testing items: 3 fixed, 2 pa
 | H.6 | Roll composition invariants | **open** — **item 5 of this batch** |
 | H.7 | API contract tests for block-role scoping | **open** — **item 7 of this batch** |
 | H.8 | `jellyfish` vs fallback agreement | **fixed** `760a244` |
-| H.9 | Metric parity: `metrics.py` against `0015_metrics.sql` on the same fixtures | **partial** — the Python half and the drift checks run now (82 cases); the SQL half needs Postgres, which is item 2 |
+| H.9 | Metric parity: `metrics.py` against `0015_metrics.sql` on the same fixtures | **partial** `PENDING` — the Python half, the drift checks (87) and **the SQL functions executed in a real PostgreSQL via `pgserver` (82, RUN)** all pass. What remains is the view level: 93 e2e tests still NOT RUN, because the views need the full schema and so PostGIS. |
 
 ### New findings from this batch
 
@@ -341,6 +341,7 @@ Not audit IDs — found while doing the work, recorded so they are not lost.
 |---|---|---|
 | N1 | An absent crosswalk meant opposite things in the two implementations: SQL treated NULL confidence as "cannot compare", Python's `link=None` default meant "nothing to gate on", so a caller who forgot the link got ungated swings — the shape of D2. | **fixed** `32a96f0` — `link` is required and positional on `comparison_allowed`, `swing_pct` and `alliance_swing_pct`; omitting it raises `TypeError`; anchors pass the new `metrics.ANCHOR`. Both sides now refuse on absence, pinned by parity cases. |
 | N2 | D3 recurred at AC grain: `mv_ac_summary` ranked over `party_totals`, where every independent shares a NULL `party_id` and collapses into one row, so the constituency headline could name a winner no booth had elected. | **fixed** `32a96f0` — ranks over a new `candidate_totals` CTE on the booth view's `contestant` key, reports `winner_candidate`/`runner_candidate`, counts contestants over candidates. Held by a structural test and an e2e test that sums the booth table. |
+| N4 | The full schema cannot be applied without PostGIS, but PostGIS is needed for exactly two column types (`geometry(Point, 4326)`, `geometry(MultiPolygon, 4326)`) and no `ST_*` call appears in any migration. So the entire geospatial dependency — the thing that blocks every SQL test from running anywhere without Docker — buys two column declarations. | **open** — not a defect, an observation worth a decision: a `geography`/`numeric` fallback, or PostGIS loaded only where it is used, would make the whole schema testable on a pip-installable Postgres. Not changed unilaterally; the columns are real and map work will need them. |
 | N3 | `mv_swing_vanished` applied no crosswalk or lineage gate at all, so a vanished party's collapse was reported even at booths too weakly matched to carry the surviving parties' swings — the two halves of one swing table disagreeing about whether the comparison was admissible. | **fixed** — both halves now call `metric_comparison_allowed` |
 
 ### What the 29 open lettered items are, grouped

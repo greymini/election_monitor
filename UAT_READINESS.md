@@ -117,29 +117,41 @@ There are two implementations that must agree, so there are four suites.
 |---|---|---|
 | `tests/test_metrics.py` (60 tests) | `analytics/metrics.py` against hand-computed fixtures: every row of §3.2, every NULL rule in it, and the specific audit finding each rule prevents | **RUN — 60 passed** |
 | `tests/test_metric_parity.py` (87 tests) | the Python side against the shared hand-computed cases; that `0015_metrics.sql`'s generated block matches `analytics/metric_sql.py`; and that no view restates a formula, weight or threshold that belongs to a generated function | **RUN — 82 passed** |
-| `tests/e2e/test_metrics_sql.py` (14 tests) | the same fixtures through the views in `db/migrations/0015_metrics.sql` | **NOT RUN — no PostgreSQL in the build environment** |
-| `tests/e2e/test_metric_parity_sql.py` (81 tests) | every §3.2 metric evaluated three ways — hand-computed, Python, and the generated SQL function — all asserted equal; plus a row-by-row recomputation of `mv_result_booth_wide`, because a view can call the right function with the wrong arguments | **NOT RUN — no PostgreSQL in the build environment** |
+| `tests/test_metric_functions_sql.py` (82 tests) | the generated metric functions **executed in a real PostgreSQL 16**, started in-process by `pgserver` with only the function block applied: every §3.2 metric three ways — hand-computed, Python, SQL — plus IMMUTABLE and COMMENT in the catalogue, and argument resolution at the types the views pass | **RUN — 82 passed** |
+| `tests/e2e/test_metrics_sql.py` (14 tests) | the same fixtures through the **views** in `db/migrations/0015_metrics.sql` | **NOT RUN — needs the full schema, which needs PostGIS** |
+| `tests/e2e/test_metric_parity_sql.py` (79 tests) | the cases again against the full schema, plus a row-by-row recomputation of `mv_result_booth_wide` and the N2 check that the AC winner equals the booth-table sum | **NOT RUN — needs the full schema, which needs PostGIS** |
 
-**NOT RUN, not skipped.** pytest reports the last two as skipped, which is a weaker
-statement than the truth: the SQL implementation of every metric in this system is,
-at the time of writing, unexecuted. Treat any figure the dashboard shows as
-unverified until an operator runs:
+### What changed here, and what did not
+
+The generated SQL **has now been executed.** That was the sharpest gap after item 1:
+`scripts/lint_sql.py` is a static check whose own output says it "does not prove the
+SQL applies", and the parameter widths had been chosen by reasoning about
+PostgreSQL's implicit-cast rules — `BIGINT` because `COUNT(*)` is bigint,
+`DOUBLE PRECISION` because `PERCENT_RANK()` is float8, a typed NULL because
+`array_remove` is polymorphic — with nothing to confirm the reasoning. All fifteen
+functions parse, resolve at the types the views actually pass, are IMMUTABLE in the
+catalogue, and agree with Python and with the hand-computed answers.
+
+`pgserver` is what made that possible: a pip-installable PostgreSQL needing no
+Docker and no administrator rights. It bundles pgvector but **not** PostGIS,
+`pg_trgm` or `unaccent`, so `0001_extensions.sql` cannot be applied against it and
+no view can be built. PostGIS is needed for exactly two column types —
+`geometry(Point, 4326)` and `geometry(MultiPolygon, 4326)` — and no `ST_*` call
+appears anywhere in the migrations, but a column type is not optional.
+
+So the arithmetic is now verified and **its wiring is still not.** A view can call
+the right function with the wrong column and every one of the 82 tests still passes.
+That is what the two e2e suites are for, and they remain NOT RUN. Until an operator
+runs them, treat any figure the dashboard shows as unverified:
 
 ```bash
+docker compose build db       # A1: PostGIS + pgvector, see docker/Dockerfile.db
 export E2E_DATABASE_URL='postgresql://user:pass@host:5432/giridih_test'
-pytest tests/e2e -v        # expect 95 passed
+pytest tests/e2e -v           # expect 93 passed
 ```
 
 Those suites drop and rebuild the schema, and refuse a URL whose database name does
 not contain `test`.
-
-**What is now provable without a database, and what still is not.** The formulas
-themselves live in one place — `analytics/metric_sql.py` declares the canonical SQL
-expression per metric and generates the functions the views call — so a Python/SQL
-divergence in a *formula* is now caught by `test_metric_parity.py` in the default
-suite. What that cannot catch is a view calling the right function with the wrong
-arguments, or SQL that does not apply at all. Both need Postgres. The honest summary
-is that the arithmetic is verified and its wiring is not.
 
 ### What the 60 Python tests pin, by §3.2 row
 
@@ -185,7 +197,7 @@ the privacy test exercised the parser functions in isolation.
 | No finding echoes the matched value | **PASS** — asserted |
 | Roll load refuses on a dirty disk | **PASS** — exits 3 |
 | Free-text ingress screened (E5) | **PASS** — `/ground-reports` returns 422 |
-| **Database scan against a real database** | **NOT RUN** — no Postgres. The filesystem half runs here; the column scan does not. |
+| **Database scan against a real database** | **NOT RUN** — still. `pgserver` gives a real PostgreSQL, but `check_privacy_database` enumerates every text and jsonb column from `information_schema` and scans it, and against a database with no schema it would find nothing and report PASS. That is a *false* pass, which is worse than no result, so it is not claimed. It needs the full schema, so PostGIS, so Docker. The filesystem half runs here and passes. |
 
 **No roll has been loaded, and none should be until an operator runs** `python -m
 ingest.validate --privacy` **on the target host and it exits zero.** The load now
@@ -235,15 +247,17 @@ Two audit claims the auditor could not execute, now verified empirically:
 
 | Gate | Latest result |
 |---|---|
-| `pytest -q` | **677 passed, 96 skipped** (was 96 at baseline) |
+| `pytest -q` | **759 passed, 94 skipped** (was 96 at baseline) |
 | `ruff check .` | **clean** |
 | `python scripts/lint_sql.py` | **17 migrations, no problems**. Verified against deliberately broken input: it catches transaction control inside a migration and a reference to a relation no earlier migration creates. |
 | `npm run build` | **clean** |
-| `docker compose build` | **NOT RUN — Docker not installed, no rights to install it** |
+| `docker compose build` | **NOT RUN — Docker not installed, no rights to install it.** `docker/Dockerfile.db` (A1) is therefore written and reviewed but never built; its build-time check that all four extensions are present has never executed. |
 
-Of the 96 skipped: 95 are the two e2e SQL suites above (NOT RUN, no database) and one
-is `Login`, exempted from the "every page fetches from the API" check because it posts
-credentials and renders nothing from the database.
+Of the 94 skipped: 93 are the two e2e SQL suites above (NOT RUN — they need the full
+schema, so PostGIS, so Docker) and one is `Login`, exempted from the "every page
+fetches from the API" check because it posts credentials and renders nothing from the
+database. The 82 function-level SQL tests are in the passing count, not the skipped
+one: they ran.
 
 ---
 

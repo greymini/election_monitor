@@ -4,7 +4,15 @@ name: giridih-monitor
 
 services:
   db:
-    image: pgvector/pgvector:pg16
+    # A1. This was `image: pgvector/pgvector:pg16`, which ships pgvector and no
+    # PostGIS, so 0001_extensions.sql failed on its first line and a clean
+    # checkout could not start at all. Built locally from the PostGIS image
+    # with pgvector added; docker/Dockerfile.db explains why that direction and
+    # verifies all four extensions at build time.
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.db
+    image: giridih-db:pg16-postgis34-pgvector
     container_name: giridih-db
     restart: unless-stopped
     environment:

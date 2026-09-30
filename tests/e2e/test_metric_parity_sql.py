@@ -15,87 +15,28 @@ keeps meeting is not two implementations disagreeing, it is both of them being
 wrong in the same plausible way - a denominator that excludes NOTA, a COALESCE
 to zero where the answer is unknown.
 
-Placeholder casts are generated from the declared parameter types rather than
-written per call. PostgreSQL resolves function arguments using implicit casts
-only, and several of the natural argument types are not implicitly convertible:
-`COUNT(*)` is bigint and int8 does not become int4, `PERCENT_RANK()` is double
-precision and float8 does not become numeric, `confidence` is real and float8
-does not become real either. Deriving the casts from the declaration means a
-type change in metric_sql.py cannot leave this test calling the old signature.
+The call construction lives in `tests/sql_eval.py`, shared with
+`tests/test_metric_functions_sql.py` - which runs the same cases against a
+`pgserver` instance holding only the generated functions, needing no Docker. That
+suite already proves the functions execute and agree; **this** one is the only
+place the views are exercised, which is what it is for.
 """
 
 from __future__ import annotations
 
-import decimal
-
 import pytest
 
-from analytics import metric_sql
 from tests import metric_cases
 from tests.e2e.conftest import requires_db
+from tests.sql_eval import call_sql as _call_sql
+from tests.sql_eval import comparable as _comparable
 
 pytestmark = requires_db
-
-
-def _call_sql(cur, name: str, args: tuple) -> object:
-    """Evaluate one generated function, casting each placeholder to its
-    declared parameter type."""
-    fn = next(f for f in metric_sql.METRIC_FUNCTIONS if f.name == name)
-    assert len(args) == len(fn.args), (
-        f"{name} takes {len(fn.args)} argument(s), the case supplies {len(args)}"
-    )
-    placeholders = ", ".join(f"%s::{typ}" for _, typ in fn.args)
-    cur.execute(f"SELECT {name}({placeholders}) AS value", list(args))
-    return cur.fetchone()["value"]
-
-
-def _comparable(value: object) -> object:
-    """Decimal and float compare badly; booleans and None pass through."""
-    if isinstance(value, decimal.Decimal):
-        return float(value)
-    return value
 
 
 # ---------------------------------------------------------------------------
 # The functions exist at all
 # ---------------------------------------------------------------------------
-
-
-def test_every_generated_function_was_actually_created(cursor):
-    """Before comparing values, establish that the migration created these.
-
-    Without this, a migration that silently failed to create the functions would
-    surface as a confusing per-case error rather than one clear failure, and a
-    typo in a function name would look like a metric disagreement.
-    """
-    cursor.execute(
-        "SELECT p.proname, pg_get_function_identity_arguments(p.oid) AS args "
-        "FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace "
-        "WHERE n.nspname = 'public' AND p.proname LIKE 'metric\\_%' "
-        "ORDER BY p.proname"
-    )
-    found = {row["proname"] for row in cursor.fetchall()}
-    declared = {fn.name for fn in metric_sql.METRIC_FUNCTIONS}
-    assert declared - found == set(), (
-        f"the migration did not create: {sorted(declared - found)}"
-    )
-
-
-def test_every_function_is_marked_immutable_in_the_catalogue(cursor):
-    """Checked in the catalogue, not in the file.
-
-    tests/test_metric_parity.py asserts the generated text says IMMUTABLE; this
-    asserts PostgreSQL agrees, which is the claim that matters for whether the
-    planner will inline these into a view refresh over every booth in six
-    constituencies.
-    """
-    cursor.execute(
-        "SELECT p.proname, p.provolatile FROM pg_proc p "
-        "JOIN pg_namespace n ON n.oid = p.pronamespace "
-        "WHERE n.nspname = 'public' AND p.proname LIKE 'metric\\_%'"
-    )
-    mutable = [r["proname"] for r in cursor.fetchall() if r["provolatile"] != "i"]
-    assert mutable == [], f"not IMMUTABLE in the catalogue: {sorted(mutable)}"
 
 
 # ---------------------------------------------------------------------------

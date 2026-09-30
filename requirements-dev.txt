@@ -12,3 +12,15 @@ pdfplumber==0.11.10
 pytest==9.1.1
 pytest-asyncio==1.4.0
 ruff==0.16.8
+
+# A self-contained PostgreSQL 16, pip-installed, no Docker and no administrator
+# rights. It is what makes tests/test_metric_functions_sql.py able to *execute*
+# the generated metric functions rather than only lint them - A1 blocked the
+# full stack for the whole of this work, and the generated SQL would otherwise
+# have shipped having never run.
+#
+# It is not a substitute for the real image. It bundles pgvector but not
+# PostGIS, pg_trgm or unaccent, so 0001_extensions.sql cannot be applied against
+# it and the views cannot be built. tests/e2e/ still needs a real database; see
+# docker/Dockerfile.db and UAT_READINESS.md 1A.
+pgserver==0.1.4
