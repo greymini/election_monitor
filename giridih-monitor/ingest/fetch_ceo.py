@@ -96,15 +96,22 @@ def list_remote_documents(page_url: str | None = None, kind: str | None = None,
     return found
 
 
-def download(url: str, kind: str, dest_dir: Path | None = None) -> dict:
-    """Download one PDF and register it. Skips a file already held, by hash."""
+def download(url: str, kind: str, ac_number: int | None = None, year: int | None = None,
+             election_type: str | None = None) -> dict:
+    """Download one PDF into the backend configured for its kind, and register it.
+
+    Skips a file already held, by hash, before writing anything. Where the bytes
+    land is common/storage.py's decision: published documents may go to object
+    storage, electoral rolls are refused a remote backend. The backend and key
+    are recorded on source_doc so a later parse - possibly on a different
+    machine - can find them without reconstructing a directory layout.
+    """
     import httpx
 
     from common.db import query_one
+    from common.storage import for_kind, storage_key
 
     settings = get_settings()
-    dest_dir = dest_dir or Path(settings.raw_dir) / kind
-    dest_dir.mkdir(parents=True, exist_ok=True)
 
     with httpx.stream("GET", url, timeout=120, follow_redirects=True,
                       headers={"User-Agent": settings.news_user_agent}) as response:
@@ -112,22 +119,32 @@ def download(url: str, kind: str, dest_dir: Path | None = None) -> dict:
         payload = b"".join(response.iter_bytes())
 
     digest = hashlib.sha256(payload).hexdigest()
-    existing = query_one("SELECT doc_id, filename FROM source_doc WHERE sha256 = %s", (digest,))
+    existing = query_one(
+        "SELECT doc_id, filename, storage_backend, storage_key FROM source_doc "
+        "WHERE sha256 = %s",
+        (digest,),
+    )
     if existing:
         return {"url": url, "skipped": True, "reason": "already held",
-                "filename": existing["filename"]}
+                "filename": existing["filename"],
+                "backend": existing["storage_backend"], "key": existing["storage_key"]}
 
     filename = Path(urlparse(url).path).name or f"{digest[:12]}.pdf"
-    path = dest_dir / filename
-    path.write_bytes(payload)
+    # for_kind applies the roll invariant, so this raises before a byte is
+    # written if a roll has somehow been pointed at a remote backend.
+    store = for_kind(kind)
+    key = storage_key(kind, filename, ac_number=ac_number, year=year,
+                      election_type=election_type)
+    stored = store.put(key, payload)
 
     query_one(
-        "INSERT INTO source_doc (kind, url, filename, sha256, bytes) "
-        "VALUES (%s, %s, %s, %s, %s) ON CONFLICT (sha256) DO NOTHING RETURNING doc_id",
-        (kind, url, filename, digest, len(payload)),
+        "INSERT INTO source_doc (kind, url, filename, sha256, bytes, "
+        "storage_backend, storage_key) "
+        "VALUES (%s, %s, %s, %s, %s, %s, %s) ON CONFLICT (sha256) DO NOTHING RETURNING doc_id",
+        (kind, url, filename, digest, len(payload), stored.backend, stored.key),
     )
-    return {"url": url, "skipped": False, "path": str(path),
-            "bytes": len(payload), "sha256": digest}
+    return {"url": url, "skipped": False, "backend": stored.backend, "key": stored.key,
+            "uri": stored.uri, "bytes": len(payload), "sha256": digest}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -168,7 +185,7 @@ def main(argv: list[str] | None = None) -> int:
                 skipped += 1
             else:
                 downloaded += 1
-                job.log_line(f"downloaded {result['path']} ({result['bytes']:,} bytes)")
+                job.log_line(f"downloaded {result['uri']} ({result['bytes']:,} bytes)")
         job.set(found=len(docs), downloaded=downloaded, skipped=skipped)
         log.info("%d downloaded, %d already held", downloaded, skipped)
     return 0

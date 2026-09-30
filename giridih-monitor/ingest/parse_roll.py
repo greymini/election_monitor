@@ -26,6 +26,12 @@ from pathlib import Path
 
 from common.logging_setup import get_logger
 from common.textnorm import last_token, normalize_block, normalize_digits
+from ingest.documents import (
+    DocumentNotFound,
+    add_document_arguments,
+    advance_status,
+    open_document,
+)
 
 log = get_logger(__name__)
 
@@ -401,7 +407,10 @@ def discard_raw(pdf_path: Path) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Parse an electoral roll into per-booth counts")
-    ap.add_argument("pdf")
+    # A path, --doc SHA256 or --key STORAGE_KEY. For a roll, common/storage.py
+    # refuses any backend but local, so --doc will only ever resolve to a file
+    # on this host.
+    add_document_arguments(ap)
     ap.add_argument("--revision", required=True, help="revision label, e.g. 2026-SSR")
     ap.add_argument("--date", required=True, help="revision date, YYYY-MM-DD")
     ap.add_argument("--supplement", action="store_true", help="this is a supplementary list")
@@ -414,11 +423,17 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args(argv)
 
-    path = Path(args.pdf)
-    if not path.exists():
-        log.error("no such file: %s", path)
+    kind = "roll_supplement" if args.supplement else "roll_mother"
+    try:
+        with open_document(pdf=args.pdf, doc=args.doc, key=args.key,
+                           backend=args.backend, kind=kind) as (path, provenance):
+            return _run(args, path, provenance, kind)
+    except DocumentNotFound as exc:
+        log.error("%s", exc)
         return 2
 
+
+def _run(args, path: Path, provenance: dict, kind: str) -> int:
     results = scan_pdf(path, supplement=args.supplement, force=args.force)
     if not results:
         log.error("no polling-station sections found in %s", path.name)
@@ -446,6 +461,11 @@ def main(argv: list[str] | None = None) -> int:
                  write_surnames=not args.no_surnames)
     log.info("loaded: %(snapshots)d snapshot(s), %(changes)d change row(s), "
              "%(surname_rows)d surname estimate row(s), %(unmatched_ps)d unmatched section(s)", stats)
+    if provenance.get("sha256"):
+        try:
+            advance_status(provenance["sha256"], "loaded", actor="ingest.parse_roll")
+        except Exception as exc:
+            log.warning("could not set parse_status: %s", exc)
     discard_raw(path)
     return 0
 

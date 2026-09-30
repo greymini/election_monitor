@@ -135,7 +135,7 @@ def main(argv: list[str] | None = None) -> int:
                 try:
                     result = download(doc["url"], "sec_result")
                     if not result["skipped"]:
-                        job.log_line(f"downloaded {result['path']}")
+                        job.log_line(f"downloaded {result['uri']}")
                 except Exception as exc:
                     log.error("failed %s: %s", doc["url"], exc)
         else:

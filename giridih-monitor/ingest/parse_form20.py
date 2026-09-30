@@ -28,6 +28,7 @@ from pathlib import Path
 
 from common.logging_setup import get_logger
 from common.textnorm import normalize_digits, normalize_text, parse_int
+from ingest.documents import DocumentNotFound, add_document_arguments, advance_status, open_document
 
 log = get_logger(__name__)
 
@@ -426,7 +427,10 @@ def published_ac_totals(election_label: str) -> dict[str, int]:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Parse and load a Form 20 PDF")
-    ap.add_argument("pdf", help="path to the Form 20 PDF")
+    # A path, --doc SHA256 or --key STORAGE_KEY. --doc is what makes this
+    # runnable from a laptop against a remote DATABASE_URL: the source_doc row
+    # says which backend holds the bytes, so no local raw/ tree is needed.
+    add_document_arguments(ap)
     ap.add_argument("--election", required=True, help="election label, e.g. VS-2024")
     ap.add_argument("--load", action="store_true", help="write to the database")
     ap.add_argument("--replace", action="store_true", help="delete existing rows for this election first")
@@ -437,11 +441,16 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--json", help="write the parsed document to this path")
     args = ap.parse_args(argv)
 
-    pdf_path = Path(args.pdf)
-    if not pdf_path.exists():
-        log.error("no such file: %s", pdf_path)
+    try:
+        with open_document(pdf=args.pdf, doc=args.doc, key=args.key,
+                           backend=args.backend, kind="form20") as (pdf_path, provenance):
+            return _run(args, pdf_path, provenance)
+    except DocumentNotFound as exc:
+        log.error("%s", exc)
         return 2
 
+
+def _run(args, pdf_path: Path, provenance: dict) -> int:
     doc = parse_pdf(pdf_path, force=args.force)
     log.info("%s: %d row(s), %d candidate column(s), method=%s",
              pdf_path.name, len(doc.rows), len(doc.candidate_columns), doc.method)
@@ -484,16 +493,32 @@ def main(argv: list[str] | None = None) -> int:
         except Exception as exc:
             log.error("could not write to review_queue: %s", exc)
         log.error("NOT LOADING %s - fix the rows above and re-run", pdf_path.name)
+        _advance(provenance, "failed")
         return 1
 
     log.info("validation passed")
+    _advance(provenance, "validated")
     if args.load and not args.dry_run:
         n = load(doc, args.election, replace=args.replace)
         log.info("loaded %d booth row(s) for %s", n, args.election)
+        _advance(provenance, "loaded")
         log.info("now run: python -m ingest.crosswalk --election %s", args.election)
     else:
         log.info("dry run - nothing written. Re-run with --load to write.")
     return 0
+
+
+def _advance(provenance: dict, status: str) -> None:
+    """B10: move source_doc.parse_status so /admin/sources can answer "has this
+    PDF been loaded?". Best effort - a bookkeeping failure must not fail a load
+    that otherwise succeeded, but it is logged rather than swallowed."""
+    digest = provenance.get("sha256")
+    if not digest:
+        return
+    try:
+        advance_status(digest, status, actor="ingest.parse_form20")
+    except Exception as exc:
+        log.warning("could not set parse_status=%s for %s: %s", status, digest[:12], exc)
 
 
 if __name__ == "__main__":

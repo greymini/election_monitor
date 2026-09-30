@@ -25,6 +25,12 @@ from pathlib import Path
 
 from common.logging_setup import get_logger
 from common.textnorm import alias_key, normalize_text, parse_int
+from ingest.documents import (
+    DocumentNotFound,
+    add_document_arguments,
+    advance_status,
+    open_document,
+)
 
 log = get_logger(__name__)
 
@@ -253,7 +259,7 @@ def load_anchor(entries: list[PSEntry], election_label: str, default_block_id: i
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Parse a polling-station list")
-    ap.add_argument("pdf")
+    add_document_arguments(ap)
     ap.add_argument("--election", required=True, help="election label the list belongs to")
     ap.add_argument("--load", action="store_true", help="write ps_list_entry rows")
     ap.add_argument("--anchor", action="store_true",
@@ -264,11 +270,16 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args(argv)
 
-    path = Path(args.pdf)
-    if not path.exists():
-        log.error("no such file: %s", path)
+    try:
+        with open_document(pdf=args.pdf, doc=args.doc, key=args.key,
+                           backend=args.backend, kind="ps_list") as (path, provenance):
+            return _run(args, path, provenance)
+    except DocumentNotFound as exc:
+        log.error("%s", exc)
         return 2
 
+
+def _run(args, path: Path, provenance: dict) -> int:
     entries = parse_pdf(path, force=args.force)
     log.info("%s: %d polling station(s), PS %d..%d",
              path.name, len(entries), min(e.ps_number for e in entries),
@@ -294,6 +305,11 @@ def main(argv: list[str] | None = None) -> int:
         if stats["unmatched_area"]:
             log.warning("%d station(s) could not be placed - see review_queue(kind='area_alias')",
                         stats["unmatched_area"])
+    if provenance.get("sha256"):
+        try:
+            advance_status(provenance["sha256"], "loaded", actor="ingest.parse_pslist")
+        except Exception as exc:
+            log.warning("could not set parse_status: %s", exc)
     return 0
 
 
