@@ -296,4 +296,6 @@ Scrapers · Scenario · Performance.
 | 30 Sep 2026 | `ea466bf` | **Item 3a:** §3.1 party resolution and §3.2 canonical metrics, `docs/METRICS.md`, e2e harness. 347 to 454 tests. |
 | 30 Sep 2026 | `448b456` | **Item 3b:** §3.5 scenario on alliances with argmax winner, §3.4 caste rescale and UNMATCHED. 454 to 466 tests. |
 | 30 Sep 2026 | `8ffb603` | **Item 3c:** §3.3 crosswalk write path and lineage, §3.6 LS segment extraction. Item 3 complete. 466 to 499 tests. |
-| — | — | **Item 4 (dashboard, B-4) not started.** |
+| 30 Sep 2026 | `0db8578` | **Logic fix:** party resolution requires a 0.05 margin over second place and a first-name-part match; a bracketed party resolves first. The specified rules alone did not reject `Sudhir Kumat`; the added first-part floor does. 499 to 510 tests. |
+| 30 Sep 2026 | `c3e55c9` | **Item 4: dashboard.** Every page against fixtures that reconcile to 1.85%, provenance on every figure, NULL as an em dash with a reason. Overview + health strip, booth table, map fixes (F1/F2/F3), booth card tabs, caste scatter (F4), candidates, local politics. 510 to 571 tests. |
+| 30 Sep 2026 | `934e629` | **C3 closed.** Roll page text never reaches disk; `--privacy` scans disk and every text/jsonb column; purge script; roll load refuses on a dirty disk. E5 closed alongside. 571 to 587 tests. |

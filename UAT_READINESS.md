@@ -1,8 +1,10 @@
 # UAT_READINESS.md
 
-**NOT READY — interim report, 30 Sep 2026.** Track A is in progress: A-0 (version
-control, A7), the deployment-topology work, E1, the multi-AC spine and the whole of
-master prompt §3 are done; the dashboard (B-4) and the rest of A-1/A-3/A-4 are not. Giridih has **not** been run on a real Form 20 — no Form 20
+**NOT READY — interim report, 30 Sep 2026.** Done: version control and A7, the
+deployment-topology work, E1, the multi-AC spine, the whole of master prompt §3, the
+dashboard against fixtures, and C3/C13/E5. Not done: A1 (PostGIS image), E4 (login rate
+limit), A3, the UAT scaffolding (A-4), and **no Form 20 has ever been loaded**, so no
+booth-level figure in this system has been produced from a real document. Giridih has **not** been run on a real Form 20 — no Form 20
 PDF is present in `raw/` and the parser defects C1/C2 that would block the load are still
 open.
 
@@ -157,6 +159,32 @@ corrected with the reason recorded in the test.
 
 ---
 
+## 1B. Privacy: C3 closed, and what it means for a roll load
+
+The leak was real and total: `extract_pdf` wrote every page's complete text to
+`OCR_DIR` before any parser saw it, and `parse_roll` routed roll PDFs through it, so
+the full electoral roll sat in plaintext JSON indefinitely while `discard_raw` deleted
+the source PDF. Nothing caught it because the structural check read column names and
+the privacy test exercised the parser functions in isolation.
+
+| Check | Status |
+|---|---|
+| Roll page text never written to disk | **PASS** — `scan_pdf` passes `cache=False`; `tests/test_privacy_disk.py` drives the real entry point and then inspects the filesystem |
+| Raw roll PDF retained, restricted | **PASS** — `RETAIN_RAW_ROLLS` defaults true, 0600 under 0700 |
+| Roll PDFs refused remote storage | **PASS** — guard, CHECK constraint, and preflight |
+| `--privacy` finds a planted leak | **PASS** — negative control in the suite |
+| No finding echoes the matched value | **PASS** — asserted |
+| Roll load refuses on a dirty disk | **PASS** — exits 3 |
+| Free-text ingress screened (E5) | **PASS** — `/ground-reports` returns 422 |
+| **Database scan against a real database** | **NOT RUN** — no Postgres. The filesystem half runs here; the column scan does not. |
+
+**No roll has been loaded, and none should be until an operator runs** `python -m
+ingest.validate --privacy` **on the target host and it exits zero.** The load now
+enforces that itself, but the host may hold text from before the fix, which does not
+expire: `python scripts/purge_roll_cache.py --delete` first.
+
+---
+
 ## 2. Audit IDs closed so far
 
 Full ledger in `PROGRESS.md` §5. Closed in this session:
@@ -198,9 +226,9 @@ Two audit claims the auditor could not execute, now verified empirically:
 
 | Gate | Latest result |
 |---|---|
-| `pytest -q` | **499 passed, 15 skipped** (was 96 at baseline) |
+| `pytest -q` | **587 passed, 15 skipped** (was 96 at baseline) |
 | `ruff check .` | **clean** |
-| `python scripts/lint_sql.py` | **16 migrations, no problems**. Verified against deliberately broken input: it catches transaction control inside a migration and a reference to a relation no earlier migration creates. |
+| `python scripts/lint_sql.py` | **17 migrations, no problems**. Verified against deliberately broken input: it catches transaction control inside a migration and a reference to a relation no earlier migration creates. |
 | `npm run build` | **clean** |
 | `docker compose build` | **NOT RUN — Docker not installed, no rights to install it** |
 
