@@ -12,7 +12,9 @@ pytesseract==0.3.13
 Pillow==12.3.0
 
 # Parsing and fuzzy matching (LLD 4.4). jellyfish is optional - common/similarity
-# falls back to a pure-Python Jaro-Winkler that gives the same answers.
+# falls back to a pure-Python Jaro-Winkler, now held to parity with it by
+# tests/test_similarity.py. It was not at parity before (audit A7), so keep the
+# pin here and in requirements-dev.txt identical.
 jellyfish==1.2.1
 indic-transliteration==2.3.82
 rapidfuzz==3.14.6

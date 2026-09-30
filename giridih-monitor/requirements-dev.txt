@@ -1,4 +1,14 @@
 -r requirements-api.txt
+
+# Tests must run what production runs. jellyfish lives in requirements-worker.txt
+# and nothing requirements-dev pulled in provided it, so every crosswalk test ran
+# against common/similarity's pure-Python fallback while the worker ran jellyfish,
+# and the two disagreed by up to 0.12 (audit A7). Same pin as the worker.
+jellyfish==1.2.1
+
+# The Form 20 / PS list / roll end-to-end tests parse real PDF fixtures.
+pdfplumber==0.11.10
+
 pytest==9.1.1
 pytest-asyncio==1.4.0
 ruff==0.16.8

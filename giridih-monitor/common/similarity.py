@@ -1,8 +1,29 @@
 """Jaro-Winkler similarity for the booth crosswalk (LLD 4.4).
 
-Uses jellyfish when it is installed (the worker image has it) and falls back to
-a pure-Python implementation otherwise, so crosswalk scoring is testable without
-native dependencies and gives the same answers either way.
+Uses jellyfish when it is installed and falls back to a pure-Python
+implementation otherwise, so crosswalk scoring is testable without native
+dependencies and gives the same answers either way.
+
+That last claim used to be false, which is audit finding A7. `jellyfish` was in
+requirements-worker.txt but not in anything requirements-dev.txt pulled in, so
+every crosswalk test - including the seven that pin the 0.85 auto-accept and
+0.65 review thresholds - ran against this fallback while production ran
+jellyfish. The two disagreed by up to 0.12 because the fallback applied the
+Winkler prefix boost unconditionally, while jellyfish applies the standard
+Winkler gate and boosts only when the underlying Jaro exceeds
+`BOOST_THRESHOLD`. Measured on the abbreviation case the crosswalk exists to
+handle:
+
+    'pra vi chataro' vs 'prathamik vidyalaya chataro'
+        Jaro          0.59489
+        fallback      0.71642   <- ungated boost, 3-char common prefix
+        jellyfish     0.59489   <- Jaro is below 0.7, so no boost
+
+0.12 is wider than the whole review band is deep, so a station could be scored
+'review' by the tests and 'new booth' by production. The gate is implemented
+below and `tests/test_similarity.py` asserts the two implementations agree to
+3 decimal places, with jellyfish now in requirements-dev.txt so that test
+actually has both to compare.
 """
 
 from __future__ import annotations
@@ -59,8 +80,18 @@ def _jaro(s1: str, s2: str) -> float:
     return (matches / len1 + matches / len2 + (matches - transpositions) / matches) / 3.0
 
 
+# Winkler's own gate: the prefix bonus is applied only to pairs that are already
+# similar. Without it, a long expansion of a short abbreviation gets a bonus it
+# has not earned. jellyfish uses 0.7 and so must this fallback, or the two
+# disagree - see the module docstring and audit finding A7.
+BOOST_THRESHOLD = 0.7
+MAX_PREFIX = 4
+
+
 def jaro_winkler(s1: str, s2: str, prefix_weight: float = 0.1) -> float:
-    """Jaro-Winkler similarity in [0, 1]."""
+    """Jaro-Winkler similarity in [0, 1]. Identical to
+    `jellyfish.jaro_winkler_similarity` to 3 decimal places; see
+    `tests/test_similarity.py`."""
     if s1 is None or s2 is None:
         return 0.0
     if s1 == s2:
@@ -71,8 +102,11 @@ def jaro_winkler(s1: str, s2: str, prefix_weight: float = 0.1) -> float:
         return float(_jw(s1, s2))
 
     jaro = _jaro(s1, s2)
+    if jaro <= BOOST_THRESHOLD:
+        return jaro
+
     prefix = 0
-    for a, b in zip(s1[:4], s2[:4], strict=False):
+    for a, b in zip(s1[:MAX_PREFIX], s2[:MAX_PREFIX], strict=False):
         if a != b:
             break
         prefix += 1
