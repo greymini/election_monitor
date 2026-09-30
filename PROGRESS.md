@@ -291,3 +291,9 @@ Scrapers · Scenario · Performance.
 | 30 Sep 2026 | `f7e5f73` | Worker-less API confirmed and tested. Two pages were not reading from the DB at all; `/health` reported healthy with the DB down. A5, E3 closed. 226 to 258 tests. |
 | 30 Sep 2026 | `252d6bd` | Laptop ingestion: `--doc`/`--key`, storage-backed fetch, preflight. B10 partly closed. 258 to 278 tests. |
 | 30 Sep 2026 | — | `UAT_READINESS.md` written as an interim report (line 1: NOT READY) |
+| 30 Sep 2026 | `eeccb19` | **Item 1: E1.** The empty-key admin login is closed; the API refuses to start on an empty, placeholder, short or degenerate secret. 278 to 300 tests. |
+| 30 Sep 2026 | `5def601` | **Item 2: multi-AC.** Spine, `ac_id` everywhere, `32-B0147` from a per-AC sequence, all six ACs seeded (five `verified=false`), every route under `/acs/{ac}`, switcher and `/compare`. 300 to 347 tests. |
+| 30 Sep 2026 | `ea466bf` | **Item 3a:** §3.1 party resolution and §3.2 canonical metrics, `docs/METRICS.md`, e2e harness. 347 to 454 tests. |
+| 30 Sep 2026 | `448b456` | **Item 3b:** §3.5 scenario on alliances with argmax winner, §3.4 caste rescale and UNMATCHED. 454 to 466 tests. |
+| 30 Sep 2026 | `8ffb603` | **Item 3c:** §3.3 crosswalk write path and lineage, §3.6 LS segment extraction. Item 3 complete. 466 to 499 tests. |
+| — | — | **Item 4 (dashboard, B-4) not started.** |

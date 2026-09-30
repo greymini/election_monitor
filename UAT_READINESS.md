@@ -1,8 +1,8 @@
 # UAT_READINESS.md
 
 **NOT READY — interim report, 30 Sep 2026.** Track A is in progress: A-0 (version
-control, A7) and the deployment-topology work are done; A-1 safety, A-2 multi-AC and
-A-3 Giridih numbers are not. Giridih has **not** been run on a real Form 20 — no Form 20
+control, A7), the deployment-topology work, E1, the multi-AC spine and the whole of
+master prompt §3 are done; the dashboard (B-4) and the rest of A-1/A-3/A-4 are not. Giridih has **not** been run on a real Form 20 — no Form 20
 PDF is present in `raw/` and the parser defects C1/C2 that would block the load are still
 open.
 
@@ -103,6 +103,60 @@ psycopg error can name the host, database and user.
 
 ---
 
+## 1A. §3.2 metric tests — status
+
+Requested explicitly: write a test for every metric in §3.2 against hand-computed
+fixtures, run them if a Postgres is available, and **mark them NOT RUN rather than
+skipping them** if not.
+
+There are two suites, because there are two implementations that must agree.
+
+| Suite | What it checks | Status |
+|---|---|---|
+| `tests/test_metrics.py` (60 tests) | `analytics/metrics.py` against hand-computed fixtures: every row of §3.2, every NULL rule in it, and the specific audit finding each rule prevents | **RUN — 60 passed** |
+| `tests/e2e/test_metrics_sql.py` (14 tests) | the same fixtures through `db/migrations/0015_metrics.sql`, so the Python and the SQL cannot drift | **NOT RUN — no PostgreSQL in the build environment** |
+
+**NOT RUN, not skipped.** pytest reports the second suite as skipped, which is a
+weaker statement than the truth: the SQL implementation of every metric in this
+system is, at the time of writing, unexecuted. The Python is tested; the SQL that
+the API actually reads is not. Treat any figure the dashboard shows as unverified
+until an operator runs:
+
+```bash
+export E2E_DATABASE_URL='postgresql://user:pass@host:5432/giridih_test'
+pytest tests/e2e -v        # expect 14 passed
+```
+
+That suite drops and rebuilds the schema, and refuses a URL whose database name does
+not contain `test`.
+
+### What the 60 Python tests pin, by §3.2 row
+
+| Metric | Hand-computed check | NULL rules covered |
+|---|---|---|
+| `valid_votes` | Giridih 2024 = 207,598 including NOTA | no result; all-None votes; a real zero is counted |
+| `votes_polled` | 1,000 + 12 = 1,012 | no result; missing `rejected` is zero, missing `valid` is NULL |
+| `turnout_pct` | 1,012 / 1,500 = 67.47; Giridih 2024 = 68.09 | electors unknown or zero (B4) |
+| `share_pct` | JMM 45.3, BJP 43.45, JLKM 5.2 vs published | no result |
+| `margin_votes` | 3,838 for Giridih 2024 | fewer than two candidates (not zero) |
+| `margin_pct` | **1.85%**, and 1.87% with the wrong denominator | as above (D1) |
+| `signed_margin_pct` | +10.0 / −30.0 on the fixture booths | third party wins → NULL, not 0 (F1) |
+| `swing_pct` | −2.9 and +4.75 | no prior election (D2); weak unreviewed crosswalk; unaggregated split |
+| `alliance_swing_pct` | NDA +7.75 using each event's own alliance map | either side has no members; weak crosswalk |
+| `new_voter_pct` | 40,084 / 304,898 = 13.15 | either roll missing (B1) |
+| `net_roll_change_pct` | +9.0, and −7.0 for a post-SIR case | either roll missing |
+| `transfer_delta` | +16.0 and −22.3 | either leg missing |
+| `floating_pct` | 59.45 on the LS/VS fixture | **only one poll type → NULL, never 50.00 (D4)** |
+| `volatility` | 8.05 (sample stdev, verified by hand) | fewer than two years |
+| `priority_score` | 0.695 with all inputs; 0.8583 renormalised over two | all inputs missing; `inputs_used` recorded |
+
+Three of those tests exist because a previous test asserted the *bug*: the caste
+census blend asserted 19.81 where the documented formula gives 21.0 (D8), and the
+scenario tests all relied on the hardcoded JMM/BJP pair that §3.5 removes. Both are
+corrected with the reason recorded in the test.
+
+---
+
 ## 2. Audit IDs closed so far
 
 Full ledger in `PROGRESS.md` §5. Closed in this session:
@@ -115,6 +169,16 @@ Full ledger in `PROGRESS.md` §5. Closed in this session:
 | **E3** | Chat SSE error path streamed `str(exc)[:200]`, so a psycopg failure surfaced table and column names to the browser | `f7e5f73` |
 | **C13** | `discard_raw` deleted the only auditable original by default while the extracted text stayed on disk | `33a51d3` |
 | **B10** (partly) | `parse_status` never advanced past `extracted`; `parsed_at` never set | `252d6bd` |
+| **E1** | An empty `JWT_SECRET` was a working unauthenticated admin login, not a broken one — HS256 verification with an empty key succeeds | `eeccb19` |
+| **B3, B6, B9, B11** | Closed structurally by the multi-AC spine: per-AC booth sequence, FKs on the crosswalk, one baseline per AC, roll-revision uniqueness | `5def601` |
+| **C1, D3** | Form 20 columns never resolved to a party, so every booth reported a 100% margin with a NULL winner | `ea466bf` |
+| **D1** | Two inconsistent totals in one row; the AC margin came out 1.87% against the published 1.85% | `ea466bf` |
+| **D2, D4, D9** | Fabricated swing for the earliest election; a uniform 50.00% floating vote; a vanished party's collapse never shown | `ea466bf` |
+| **C11** | Crosswalk coverage measured against `booth_crosswalk` — circular, and reported ~100% healthy while 17% of the seat was dropped | `ea466bf` |
+| **D5, D6** | Scenario named a contest-pair party as winner while its own votes dict showed another; the band came from one row and cancelled itself on the rest | `448b456` |
+| **D8, C14** | The caste rescale partly undid itself; unmatched surnames were extrapolated rather than left explicit | `448b456` |
+| **B2, C10, C16** | Review-band matches written; the 0.20 roll-part term actually contributes; the review queue no longer doubles per run | `8ffb603` |
+| **D7, F2** | `/rolls/changes` joined a revision that can never be both mother and supplement, so electors were always NULL; `/booths` ignored `election_label` | `5def601` |
 
 Two audit claims the auditor could not execute, now verified empirically:
 
@@ -134,14 +198,15 @@ Two audit claims the auditor could not execute, now verified empirically:
 
 | Gate | Latest result |
 |---|---|
-| `pytest -q` | **278 passed, 1 skipped** (was 96 at baseline) |
+| `pytest -q` | **499 passed, 15 skipped** (was 96 at baseline) |
 | `ruff check .` | **clean** |
-| `python scripts/lint_sql.py` | **13 migrations, no problems**. Verified against deliberately broken input: it catches transaction control inside a migration and a reference to a relation no earlier migration creates. |
+| `python scripts/lint_sql.py` | **16 migrations, no problems**. Verified against deliberately broken input: it catches transaction control inside a migration and a reference to a relation no earlier migration creates. |
 | `npm run build` | **clean** |
 | `docker compose build` | **NOT RUN — Docker not installed, no rights to install it** |
 
-The one skipped test is `Login`, exempted from the "every page fetches from the API" check
-because it posts credentials and renders nothing from the database.
+Of the 15 skipped: 14 are the e2e SQL suite above (NOT RUN, no database) and one is
+`Login`, exempted from the "every page fetches from the API" check because it posts
+credentials and renders nothing from the database.
 
 ---
 
