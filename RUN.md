@@ -67,6 +67,9 @@ cp .env.example .env
 #   JWT_SECRET=$(openssl rand -hex 32)        # the API refuses to start with a weak or placeholder secret
 #   READONLY_DB_PASSWORD=<strong>
 #   CHAT_ENABLED=false
+#   STORAGE_BACKEND=local                    # where source PDFs live
+#   STORAGE_BACKEND_FORM20=s3                # published documents can go to a bucket
+#   S3_ENDPOINT= / S3_BUCKET= / S3_ACCESS_KEY= / S3_SECRET_KEY= / S3_PREFIX=raw
 #   ANTHROPIC_API_KEY=                       # optional — only for news labelling
 #   TELEGRAM_BOT_TOKEN= / TELEGRAM_CHAT_ID=  # optional — alerts
 #   DOMAIN=monitor.example.in                # for TLS
@@ -88,8 +91,24 @@ docker compose ps                  # all four services should be "running (healt
 
 # 7. Open
 #   http://<server>/           dashboard (Hindi by default; toggle EN top right)
-#   http://<server>/api/health should return {"ok": true}
+#   http://<server>/api/health returns 200 with {"status":"ok","database":true},
+#                              or 503 if it cannot reach the database
 ```
+
+### Running without the worker
+
+The API reads everything from the database and needs no worker: `docker compose up -d db api web`
+is a complete serving stack. What you give up is the schedule. **Nothing then refreshes the
+materialized views**, so after every load you must run the refresh yourself:
+
+```bash
+docker compose run --rm worker python -m analytics.refresh   # or from a laptop, see 4.6
+```
+
+Until it runs, the overview, booth table, map, area rollup, transfer and priority pages return
+empty rather than stale — they read materialized views, and an unrefreshed view has no rows. The
+news crawl, nightly backup and portal watchers also do not run; see §5 for running any of them
+by hand.
 
 TLS (once DNS points at the box): `docker compose --profile tls up -d certbot` then `docker compose restart web`.
 
@@ -99,7 +118,26 @@ TLS (once DNS points at the box): `docker compose --profile tls up -d certbot` t
 
 All commands run inside the worker. Prefix each with `docker compose run --rm worker` (or open a shell once: `docker compose run --rm worker bash`).
 
-Every loader supports `--dry-run` (shows what would happen, writes nothing) and `--ac 32` (constituency number). Run dry first, then for real.
+Every loader supports `--dry-run` (shows what would happen, writes nothing). Run dry first, then
+for real.
+
+> **Not yet implemented:** the `--ac <number>` flag shown in the commands below. The multi-AC
+> spine is in progress; until it lands, the loaders operate on the single seeded constituency and
+> `--ac` is rejected as an unknown argument. Leave it off. The rest of each command is accurate.
+
+Each parser takes the document three ways. A path works as it always did; the other two exist so
+ingestion can run from a laptop against a remote `DATABASE_URL`, without a local copy of `raw/`:
+
+```bash
+python -m ingest.parse_form20 raw/form20/2024-VS/32/giridih.pdf --election VS-2024   # a path
+python -m ingest.parse_form20 --doc 3f9a2c1e --election VS-2024                      # by sha256
+python -m ingest.parse_form20 --key form20/2024-VS/32/giridih.pdf --election VS-2024  # by key
+```
+
+`--doc` takes the sha256 (or an unambiguous prefix) of a registered document and asks the database
+where the bytes are, so it works whichever backend holds them. It verifies the bytes against the
+digest that was registered and refuses to parse on a mismatch — an overwritten object is not the
+document your AC totals were reconciled against.
 
 ### 4.1 Polling-station list (the backbone — do this first)
 
@@ -142,12 +180,40 @@ python -m ingest.parse_roll --ac 32 --revision 2026-07 --mother --load
 python -m ingest.parse_roll --ac 32 --revision 2026-09 --supplement --load
 python -m db.link_roll --election VS-2024 --revision 2024-10        # which roll each election was fought on
 ```
-Roll PDFs are never cached as text. After any roll load run the privacy check:
+Roll PDFs are never cached as text, and the PDF itself is **kept** (`RETAIN_RAW_ROLLS=true`, now
+the default) at 0600 with directories at 0700. The previous default deleted the source PDF while
+the extracted page text stayed on disk, which destroyed the auditable original and retained the
+personal data.
+
+Electoral rolls are also refused any remote storage backend. `STORAGE_BACKEND=s3` does not carry
+them with it: a roll load aborts with `RollStorageViolation` rather than uploading names, EPIC
+numbers and addresses to a bucket. After any roll load run the privacy check:
 ```bash
 python -m ingest.validate --ac 32 --privacy      # scans disk and DB for EPIC patterns; must report clean
 ```
 
-### 4.5 Everything else
+### 4.5 Running ingestion from a laptop
+
+Nothing needs to run on the server. Point the tools at the database and the document store:
+
+```bash
+export DATABASE_URL='postgresql://user:pass@host:5432/giridih?sslmode=require'
+export STORAGE_BACKEND=local STORAGE_BACKEND_FORM20=s3
+export S3_ENDPOINT=... S3_BUCKET=... S3_ACCESS_KEY=... S3_SECRET_KEY=... S3_PREFIX=raw
+
+python scripts/preflight.py        # checks all of the above and says how to fix each problem
+```
+
+`preflight` checks the connection (without printing your password back), warns if a remote host
+has no `sslmode`, confirms `postgis` and `vector` are present, reports pending migrations and row
+counts, shows which backend each document kind routes to, reaches the bucket, and checks the PDF
+toolchain. It writes nothing, so it is safe against production. Exit code 1 means something in the
+list will stop a load.
+
+Use `sslmode=require` at minimum for a remote database; `verify-full` with a CA bundle if you have
+one. Without it the connection — and every booth-level figure crossing it — may be in cleartext.
+
+### 4.6 Everything else
 
 ```bash
 python -m ingest.fetch_sec --ac 32 --load-csv data/sec/giridih_panchayat_2022.csv   # local election results
@@ -209,6 +275,11 @@ Roles: `admin` sees everything; `strategist` sees everything except admin tools;
 | New voters zero everywhere | `election_roll_link` not set | `python -m db.link_roll …` |
 | Source shows `drifted` in `/admin/sources` | government site changed layout | update `scrapers/sources.yaml` selectors and the recorded fixture; do **not** force-parse |
 | Privacy check fails | roll text on disk or a PII string in a free-text field | `scripts/purge_roll_cache.py`; find and delete the offending record; investigate how it got in |
+| `/api/health` returns 503 | the API cannot reach the database | `docker compose ps db`; check `DATABASE_URL`. The body names the exception class only — the full error is in the API log |
+| Roll load says `RollStorageViolation` | a roll kind is configured for a remote backend | Unset `STORAGE_BACKEND_ROLL_MOTHER` / `..._ROLL_SUPPLEMENT`, or set them to `local`. The guard is not the problem: rolls must not leave the host |
+| `parse_form20 --doc` says the digest does not match | the stored object is not the document that was registered | Do not force it. Re-fetch, or register the new bytes as a separate document and reconcile its AC totals before loading |
+| Every page is empty right after a load | the materialized views have not been refreshed | `python -m analytics.refresh`. With no worker deployed this is a manual step after every load |
+| `--ac` is rejected as an unknown argument | the multi-AC spine is not in yet | Leave the flag off; the loaders work on the single seeded constituency |
 
 ---
 
