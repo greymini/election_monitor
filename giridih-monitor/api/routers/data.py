@@ -472,6 +472,160 @@ def caste(user: StrategistUser, ac: CurrentAC, area_id: int | None = None,
     }
 
 
+@router.get("/caste/correlation")
+def caste_correlation(
+    user: StrategistUser,
+    ac: CurrentAC,
+    community: str | None = None,
+    min_conf: float = Query(0.0, ge=0.0, le=1.0),
+) -> dict:
+    """Community share against party share, per booth (audit F4).
+
+    The audited dashboard plotted community share against a constant zero with
+    the Y axis hidden - a one-dimensional strip plot - while its caption
+    explained how to read a relationship with vote share that was never on the
+    chart. The ecological regression existed as SQL in analytics/metrics.sql, a
+    file nothing executed, and was exposed by no endpoint.
+
+    Both columns are booth-level aggregates, and the caveat in the response says
+    what that means in the terms that matter: a relationship here is equally
+    consistent with the opposite behaviour at individual level. The community
+    figure is also an estimate rather than a count, so its confidence travels
+    with every row and the caller can exclude the weak ones.
+    """
+    target = community or "Kurmi (Mahato)"
+    rows = query(
+        """
+        SELECT ce.booth_uid,
+               a.name_en AS area_en,
+               a.name_hi AS area_hi,
+               ce.est_pct   AS community_pct,
+               ce.confidence,
+               w.electors,
+               ROUND((100.0 * w.jlkm / NULLIF(w.valid_votes, 0))::NUMERIC, 2) AS jlkm_share_pct,
+               ROUND((100.0 * w.jmm  / NULLIF(w.valid_votes, 0))::NUMERIC, 2) AS jmm_share_pct,
+               ROUND((100.0 * w.bjp  / NULLIF(w.valid_votes, 0))::NUMERIC, 2) AS bjp_share_pct
+        FROM caste_estimate ce
+        JOIN community c ON c.community_id = ce.community_id
+        JOIN booth b     ON b.booth_uid = ce.booth_uid
+        JOIN area a      ON a.area_id = b.area_id
+        JOIN election e  ON e.ac_id = ce.ac_id AND e.is_baseline
+        LEFT JOIN mv_result_booth_wide w
+               ON w.booth_uid = ce.booth_uid AND w.election_id = e.election_id
+        WHERE ce.ac_id = %s AND ce.source = 'blend' AND c.name_en = %s
+          AND ce.confidence >= %s
+        ORDER BY ce.booth_uid
+        """,
+        (ac.ac_id, target, min_conf),
+    )
+    return {
+        "rows": rows,
+        "community": target,
+        "party": "JLKM",
+        "caveat": (
+            "This is an ecological correlation between two booth-level aggregates. It "
+            "cannot show how any community voted; a relationship here is equally "
+            "consistent with the opposite behaviour at individual level (Simpson's "
+            "paradox). The community share is itself an estimate with the confidence "
+            "shown, and UNMATCHED is the share the surname dictionary could not place - "
+            "not a community."
+        ),
+    }
+
+
+@router.get("/candidates")
+def candidates(user: CurrentUser, ac: CurrentAC, election_label: str | None = None) -> dict:
+    """Candidate profiles for this AC's contests (spec 7.9).
+
+    Everything beyond the vote count is declared or transcribed rather than
+    counted, so the response says so and the page labels it. Assets and criminal
+    cases come from the candidate's own affidavit.
+    """
+    clauses, params = ["c.ac_id = %s"], [ac.ac_id]
+    if election_label:
+        clauses.append("e.label = %s")
+        params.append(election_label)
+
+    rows = query(
+        f"""
+        SELECT c.candidate_id, c.name_en, c.name_hi, p.abbr AS party,
+               e.label AS election_label, c.is_winner,
+               t.value AS votes,
+               ROUND((100.0 * t.value / NULLIF(tot.value, 0))::NUMERIC, 2) AS share_pct,
+               cp.incumbent, cp.contests_prior, cp.wins_prior,
+               pp.abbr AS prev_party, cp.turncoat, cp.deposit_forfeited,
+               cp.age, cp.education, cp.profession,
+               cp.assets_declared, cp.liabilities,
+               cp.criminal_cases, cp.criminal_serious,
+               cp.source, cp.affidavit_url
+        FROM candidate c
+        JOIN election e   ON e.election_id = c.election_id
+        LEFT JOIN party p ON p.party_id = c.party_id
+        LEFT JOIN candidate_profile cp ON cp.candidate_id = c.candidate_id
+        LEFT JOIN party pp ON pp.party_id = cp.prev_party_id
+        LEFT JOIN result_ac_total t
+               ON t.candidate_id = c.candidate_id AND t.metric = 'votes'
+        LEFT JOIN result_ac_total tot
+               ON tot.election_id = c.election_id AND tot.metric = 'total_valid'
+              AND tot.candidate_id IS NULL
+        WHERE {' AND '.join(clauses)}
+        ORDER BY e.year DESC, t.value DESC NULLS LAST
+        """,
+        params,
+    )
+    return {
+        "rows": rows,
+        "note": (
+            "Candidate profiles are transcribed from affidavit and MyNeta data and are "
+            "seeded unverified. Assets and criminal cases are as declared by the "
+            "candidate, not as established by a court."
+        ),
+    }
+
+
+@router.get("/local-politics")
+def local_politics(user: CurrentUser, ac: CurrentAC) -> dict:
+    """Office holders, events and organisations for this AC (spec 7.10).
+
+    The influencer registry is deliberately not here: it holds named individuals
+    and is restricted to strategist and admin, so it gets its own role-gated
+    endpoint rather than riding along on one open to every role.
+    """
+    return {
+        "office_holders": query(
+            "SELECT h.id, h.office, h.name, a.name_en AS area_en, "
+            "       p.abbr AS tagged_party, h.tag_source, h.term_start, h.term_end "
+            "FROM local_office_holder h "
+            "LEFT JOIN area a ON a.area_id = h.area_id "
+            "LEFT JOIN party p ON p.party_id = h.tagged_party_id "
+            "WHERE h.ac_id = %s ORDER BY h.office, h.name",
+            (ac.ac_id,),
+        ),
+        "events": query(
+            "SELECT ev.id, ev.occurred_on, ev.kind, a.name_en AS area_en, ev.title, "
+            "       p.abbr AS effect_party, ev.effect_sign, ev.source "
+            "FROM political_event ev "
+            "LEFT JOIN area a ON a.area_id = ev.area_id "
+            "LEFT JOIN party p ON p.party_id = ev.effect_party_id "
+            "WHERE ev.ac_id = %s ORDER BY ev.occurred_on DESC LIMIT 200",
+            (ac.ac_id,),
+        ),
+        "organisations": query(
+            "SELECT o.id, o.name, o.kind, c.name_en AS community, p.abbr AS alignment_party "
+            "FROM organisation o "
+            "LEFT JOIN community c ON c.community_id = o.community_id "
+            "LEFT JOIN party p ON p.party_id = o.alignment_party_id "
+            "WHERE o.ac_id = %s ORDER BY o.name",
+            (ac.ac_id,),
+        ),
+        "note": (
+            "Panchayat elections are contested without party symbols. Any party shown "
+            "against an office holder is a manual tag; tag_source records who assigned "
+            "it and on what basis. An untagged holder is untagged, not independent."
+        ),
+    }
+
+
 @router.get("/transfer")
 def transfer(user: StrategistUser, ac: CurrentAC, year: int = 2024,
              area_id: int | None = None,

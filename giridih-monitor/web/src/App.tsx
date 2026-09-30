@@ -19,6 +19,10 @@ const Admin = lazy(() => import('./pages/Admin'))
 import { useAc } from './lib/ac'
 import { getConfig, getMe, getToken, setSession, type AppConfig, type Me } from './lib/api'
 const Compare = lazy(() => import('./pages/Compare'))
+const Booths = lazy(() => import('./pages/Booths'))
+const CasteScatter = lazy(() => import('./pages/CasteScatter'))
+const Candidates = lazy(() => import('./pages/Candidates'))
+const LocalPolitics = lazy(() => import('./pages/LocalPolitics'))
 
 export default function App() {
   const [authed, setAuthed] = useState<boolean>(() => Boolean(getToken()))
@@ -60,6 +64,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Overview ac={ac} />} />
         <Route path="/map" element={<MapExplorer ac={ac} />} />
+        <Route path="/booths" element={<Booths ac={ac} />} />
         <Route path="/results" element={<Results ac={ac} />} />
         <Route path="/results/:electionLabel" element={<Results ac={ac} />} />
         <Route path="/voters" element={<Voters ac={ac} />} />
@@ -70,6 +75,11 @@ export default function App() {
         <Route path="/factors" element={<Factors ac={ac} />} />
         <Route path="/scenario" element={<Scenario ac={ac} />} />
         <Route path="/compare" element={<Compare />} />
+        <Route path="/candidates" element={<Candidates ac={ac} />} />
+        <Route path="/local-politics" element={<LocalPolitics ac={ac} />} />
+        {me.data?.sees_caste && (
+          <Route path="/caste-scatter" element={<CasteScatter ac={ac} />} />
+        )}
         {me.data?.role === 'admin' && <Route path="/admin" element={<Admin ac={ac} />} />}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

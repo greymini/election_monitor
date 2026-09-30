@@ -29,11 +29,16 @@ export default function Layout({ me, config, ac, onSignOut, children }: Props) {
   const links = [
     { to: '/', key: 'overview' },
     { to: '/map', key: 'map' },
+    { to: '/booths', key: 'booths' },
     { to: '/results', key: 'results' },
     { to: '/voters', key: 'voters' },
-    ...(me?.sees_caste ? [{ to: '/caste', key: 'caste' }] : []),
+    ...(me?.sees_caste
+      ? [{ to: '/caste', key: 'caste' }, { to: '/caste-scatter', key: 'casteScatter' }]
+      : []),
     { to: '/transfer', key: 'transfer' },
     { to: '/local', key: 'local' },
+    { to: '/candidates', key: 'candidates' },
+    { to: '/local-politics', key: 'localPolitics' },
     { to: '/news', key: 'news' },
     { to: '/factors', key: 'factors' },
     { to: '/compare', key: 'compare' },

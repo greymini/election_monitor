@@ -1,7 +1,23 @@
 /** API client. One place that attaches the token, handles 401 and formats errors. */
 
+import { fixtureFor } from '../fixtures/responses'
+
 const BASE = import.meta.env.VITE_API_BASE ?? '/api'
 const TOKEN_KEY = 'giridih.token'
+
+/**
+ * Fixture mode. With VITE_FIXTURES=1 every request is answered from
+ * src/fixtures instead of the network.
+ *
+ * It lives here, in the one place that already owns every request, rather than
+ * in the pages - so a page reviewed against fixtures is the same page that will
+ * run against Postgres, not a mock of it. No page contains any fixture-handling
+ * code at all.
+ *
+ * Every fixture response carries a `fixture` field, which the pages surface as
+ * a banner, so a reviewable page cannot be mistaken for a loaded one.
+ */
+const USE_FIXTURES = import.meta.env.VITE_FIXTURES === '1'
 
 export interface Session {
   access_token: string
@@ -34,6 +50,16 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  if (USE_FIXTURES) {
+    const canned = fixtureFor(path)
+    if (canned === undefined) {
+      throw new ApiError(404, `No fixture for ${path}. Add one to src/fixtures/responses.ts.`)
+    }
+    // A tick of delay so loading states are actually reachable in review.
+    await new Promise((resolve) => setTimeout(resolve, 60))
+    return canned as T
+  }
+
   const token = getToken()
   const response = await fetch(`${BASE}${path}`, {
     ...init,
@@ -87,10 +113,22 @@ export async function downloadCsv(path: string, filename: string) {
 }
 
 export async function login(phone: string, password: string): Promise<Session> {
+  if (USE_FIXTURES) {
+    const session: Session = {
+      access_token: 'fixture-token', role: 'admin',
+      name: 'Fixture Analyst', block_id: null,
+    }
+    setSession(session)
+    return session
+  }
   const session = await api.post<Session>('/auth/login', { phone, password })
   setSession(session)
   return session
 }
+
+/** Whether this build is serving fixtures. Pages use it only to label
+ *  themselves; they never branch on it for behaviour. */
+export const isFixtureMode = () => USE_FIXTURES
 
 export interface Me {
   user_id: number
