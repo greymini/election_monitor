@@ -208,6 +208,12 @@ def lint(verbose: bool = False) -> int:
         # and transaction checks above ran over the full text on purpose.
         code = strip_string_literals(sql)
 
+        # 'IS [NOT] DISTINCT FROM x' is a comparison operator, not a FROM
+        # clause, but the FROM/JOIN pattern cannot tell the difference and
+        # reported the right-hand alias as a missing relation. Remove the
+        # operator before scanning.
+        code = re.sub(r"IS\s+(?:NOT\s+)?DISTINCT\s+FROM", " = ", code, flags=re.IGNORECASE)
+
         created = {m.group(2).lower() for m in CREATE_RE.finditer(code)}
         known |= created
         if verbose:

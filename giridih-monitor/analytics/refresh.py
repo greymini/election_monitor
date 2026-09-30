@@ -19,18 +19,27 @@ from common.logging_setup import get_logger
 
 log = get_logger(__name__)
 
-# Dependency order. Do not reorder without checking db/migrations/0009-0011.
+# Dependency order. Do not reorder without checking db/migrations/0015_metrics.sql.
+#
+# The chain: candidate grain -> party grain -> booth totals -> shares -> the wide
+# row -> everything derived from it. mv_booth_priority is last but one because
+# it reads new-voter share, floating vote and volatility; mv_ac_summary is last
+# because it reads the wide row, the party grain and new-voter share.
 VIEWS = [
+    "mv_result_booth_candidate",
     "mv_result_booth_party",
+    "mv_booth_totals",
     "mv_booth_party_share",
     "mv_result_booth_wide",
     "mv_swing",
+    "mv_swing_vanished",
     "mv_transfer_ls_vs",
     "mv_volatility",
     "mv_floating_vote",
     "mv_new_voter_share",
     "mv_booth_priority",
     "mv_area_rollup",
+    "mv_ac_summary",
 ]
 
 
