@@ -19,6 +19,13 @@ interface ElectionRow {
   booths: number | null
   votes: number | null
   electors: number | null
+  total_valid: number | null
+  nota: number | null
+  winner_party: string | null
+  winner_votes: number | null
+  runner_party: string | null
+  runner_votes: number | null
+  margin_votes: number | null
 }
 
 interface Summary {
@@ -34,9 +41,14 @@ interface Summary {
   }
 }
 
-/** Published assembly margins (HLD 1.1). Secondary figures, shown only until
- *  Form 20 is loaded - at which point the API returns real booth sums and this
- *  fallback is no longer used. */
+/** Published assembly margins (HLD 1.1). Secondary figures from public
+ *  reporting, shown only while no Form 20 is loaded, and captioned as such.
+ *
+ *  This fallback used to be the chart's only input: `marginSeries` was assigned
+ *  the constant unconditionally, so the bars never moved once real results were
+ *  loaded and only the caption changed. The comment said the fallback was "no
+ *  longer used" at that point; it was. It is now.
+ */
 const PUBLISHED_MARGINS = [
   { year: '2014', margin: 9933, winner: 'BJP' },
   { year: '2019', margin: 15884, winner: 'JMM' },
@@ -61,8 +73,44 @@ export default function Overview() {
       turnout: e.electors ? Number(((100 * (e.votes ?? 0)) / e.electors).toFixed(1)) : 0,
     }))
 
-  const marginSeries = PUBLISHED_MARGINS
-  const usingPublished = loaded.length === 0
+  /** Electors growth across the loaded assembly elections. The page used to
+   *  state "about 15% between 2019 and 2024" as prose, which was right for the
+   *  published figures and would have been wrong the moment a different pair of
+   *  elections was loaded. */
+  const electorPoints = loaded
+    .filter((e) => e.type === 'VS' && (e.electors ?? 0) > 0)
+    .sort((a, b) => a.year - b.year)
+  const electorSpan =
+    electorPoints.length >= 2
+      ? {
+          from: String(electorPoints[0].year),
+          to: String(electorPoints[electorPoints.length - 1].year),
+          first: electorPoints[0].electors as number,
+          last: electorPoints[electorPoints.length - 1].electors as number,
+        }
+      : null
+  const electorGrowthPct = electorSpan
+    ? (100 * (electorSpan.last - electorSpan.first)) / electorSpan.first
+    : null
+
+  /** Margins from the loaded Form 20 data, assembly elections only. A row with
+   *  no runner-up (an uncontested or part-loaded election) has no margin and is
+   *  dropped rather than charted as zero. */
+  const loadedMargins = loaded
+    .filter((e) => e.type === 'VS' && e.margin_votes != null && e.winner_party)
+    .sort((a, b) => a.year - b.year)
+    .map((e) => ({
+      year: String(e.year),
+      margin: e.margin_votes as number,
+      winner: e.winner_party as string,
+    }))
+
+  const usingPublished = loadedMargins.length === 0
+  const marginSeries = usingPublished ? PUBLISHED_MARGINS : loadedMargins
+  const tightest = marginSeries.reduce<{ year: string; margin: number } | null>(
+    (best, row) => (best === null || row.margin < best.margin ? row : best),
+    null,
+  )
 
   return (
     <div className="space-y-4">
@@ -163,8 +211,12 @@ export default function Overview() {
             </ResponsiveContainer>
           </div>
           <p className="mt-1 text-2xs" style={{ color: 'var(--text-muted)' }}>
-            Bar colour is the winning party, labelled above each bar; 2024 was the tightest at
-            3,838 votes.
+            {tightest
+              ? t('overview.marginCaption', {
+                  year: tightest.year,
+                  votes: num(tightest.margin),
+                })
+              : t('overview.marginCaptionPlain')}
           </p>
         </section>
 
@@ -192,8 +244,13 @@ export default function Overview() {
                 </ResponsiveContainer>
               </div>
               <p className="mt-1 text-2xs" style={{ color: 'var(--text-muted)' }}>
-                Electors grew about 15% between 2019 and 2024, which is why new voters carry
-                unusual weight in this seat.
+                {electorGrowthPct === null
+                  ? t('overview.electorCaptionPlain')
+                  : t('overview.electorCaption', {
+                      from: electorSpan!.from,
+                      to: electorSpan!.to,
+                      pct: pct(electorGrowthPct),
+                    })}
               </p>
             </>
           ) : (

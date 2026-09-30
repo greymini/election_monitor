@@ -35,12 +35,52 @@ def _csv_response(rows: list[dict], filename: str) -> Response:
 
 @router.get("/summary")
 def summary(user: CurrentUser) -> dict:
+    # AC-level party totals per election, so the margin trend on the overview is
+    # the loaded data rather than a constant compiled into the frontend. The
+    # winner and margin are computed from the summed party columns here because
+    # mv_result_booth_wide's own winner/margin are per booth.
+    #
+    # Two caveats, both being fixed in A-3 and neither introduced here: the party
+    # columns are a fixed pivot (jmm/bjp/ajsu/jlkm/inc/rjd/jvm/others), so a
+    # winner outside that set lands in `others`; and `votes_counted` excludes
+    # NOTA while `total_valid` includes it, which is audit finding D1. Percentages
+    # are therefore deliberately not computed here - the frontend shows vote
+    # counts, and METRICS.md will own the percentage definitions.
     elections = query(
-        "SELECT e.label, e.type, e.year, e.is_baseline, "
-        "COUNT(DISTINCT w.booth_uid) AS booths, SUM(w.votes_counted) AS votes, "
-        "SUM(w.electors) AS electors "
-        "FROM election e LEFT JOIN mv_result_booth_wide w ON w.election_id = e.election_id "
-        "GROUP BY e.label, e.type, e.year, e.is_baseline ORDER BY e.year DESC, e.type"
+        "WITH totals AS ("
+        "  SELECT e.election_id, e.label, e.type, e.year, e.is_baseline,"
+        "         COUNT(DISTINCT w.booth_uid) AS booths,"
+        "         SUM(w.votes_counted) AS votes,"
+        "         SUM(w.electors) AS electors,"
+        "         SUM(w.total_valid) AS total_valid,"
+        "         SUM(w.nota) AS nota,"
+        "         SUM(w.jmm) AS jmm, SUM(w.bjp) AS bjp, SUM(w.ajsu) AS ajsu,"
+        "         SUM(w.jlkm) AS jlkm, SUM(w.inc) AS inc, SUM(w.rjd) AS rjd,"
+        "         SUM(w.jvm) AS jvm, SUM(w.others) AS others"
+        "  FROM election e"
+        "  LEFT JOIN mv_result_booth_wide w ON w.election_id = e.election_id"
+        "  GROUP BY e.election_id, e.label, e.type, e.year, e.is_baseline"
+        "), ranked AS ("
+        "  SELECT t.*, r.abbr, r.votes,"
+        "         ROW_NUMBER() OVER (PARTITION BY t.election_id ORDER BY r.votes DESC) AS rn"
+        "  FROM totals t"
+        # NOTA is excluded: it is not a candidate and can never win or be
+        # runner-up (METRICS.md, margin_votes).
+        "  CROSS JOIN LATERAL (VALUES ('JMM', t.jmm), ('BJP', t.bjp), ('AJSU', t.ajsu),"
+        "                             ('JLKM', t.jlkm), ('INC', t.inc), ('RJD', t.rjd),"
+        "                             ('JVM', t.jvm), ('OTHERS', t.others)"
+        "                     ) AS r(abbr, votes)"
+        "  WHERE t.booths > 0 AND r.votes > 0"
+        ")"
+        "SELECT t.label, t.type, t.year, t.is_baseline, t.booths, t.votes, t.electors,"
+        "       t.total_valid, t.nota,"
+        "       win.abbr AS winner_party, win.votes AS winner_votes,"
+        "       run.abbr AS runner_party, run.votes AS runner_votes,"
+        "       (win.votes - run.votes)::INT AS margin_votes "
+        "FROM totals t "
+        "LEFT JOIN ranked win ON win.election_id = t.election_id AND win.rn = 1 "
+        "LEFT JOIN ranked run ON run.election_id = t.election_id AND run.rn = 2 "
+        "ORDER BY t.year DESC, t.type"
     )
     baseline = query_one(
         "SELECT e.label, SUM(w.jmm) AS jmm, SUM(w.bjp) AS bjp, SUM(w.jlkm) AS jlkm, "
@@ -69,6 +109,31 @@ def summary(user: CurrentUser) -> dict:
         "baseline": baseline,
         "data_health": data_health,
         "scope": {"block_id": scoped_block_id(user), "sees_caste": user.sees_caste},
+    }
+
+
+@router.get("/knowledge-cards")
+def knowledge_cards(user: CurrentUser) -> dict:
+    """Curated context cards (HLD module 9), from the database.
+
+    The Factors page used to render these as a hardcoded array in the frontend.
+    Its own comment claimed they were "the same cards that go into the
+    assistant's cached prompt, so what the dashboard shows and what the
+    assistant knows cannot drift apart" - but the assistant reads the
+    `knowledge_card` table (chatbot/llm.py) while the page read a constant, and
+    the two had already drifted: five cards against six seeded, with a
+    mismatched slug. One source now, so the stated property is actually true.
+    """
+    cards = query(
+        "SELECT slug, topic, title_en, title_hi, body_en, body_hi, sources, "
+        "last_reviewed, in_prompt FROM knowledge_card ORDER BY slug"
+    )
+    return {
+        "cards": cards,
+        "note": (
+            "Curated from public secondary sources. Every figure should be "
+            "checked against the source document before it is relied on."
+        ),
     }
 
 

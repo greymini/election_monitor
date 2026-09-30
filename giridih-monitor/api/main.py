@@ -6,17 +6,23 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 
-from fastapi import FastAPI, Request, status
+from fastapi import FastAPI, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from api.routers import admin, auth, chat, data, news, scenario
+from api.routers import admin, auth, data, news, scenario
 from common.config import get_settings
 from common.db import close_pools, query_one
 from common.logging_setup import get_logger, setup_logging
 
 log = get_logger(__name__)
+
+# Stamped at import. The frontend reads it from /config so a stale cached bundle
+# is identifiable: if the version chip does not move after a deploy, the browser
+# is still running the old build.
+BUILD_TIME = datetime.now(UTC).isoformat(timespec="seconds")
 
 
 @asynccontextmanager
@@ -64,19 +70,72 @@ async def unhandled(request: Request, exc: Exception) -> JSONResponse:
 
 
 @app.get("/health", tags=["ops"])
-def health() -> dict:
+def health(response: Response) -> dict:
+    """Liveness plus a database probe.
+
+    Returns 503 when the database is unreachable, not 200. It used to return 200
+    either way with a "degraded" string in the body, which meant the compose
+    healthcheck - and any load balancer or uptime monitor doing the ordinary
+    thing of looking at the status code - reported the service healthy while
+    every data route was timing out. An API that cannot reach the database
+    cannot serve a single page, so it is not healthy.
+    """
     try:
         query_one("SELECT 1 AS ok")
         db_ok = True
+        detail = None
     except Exception as exc:
         log.warning("health check: database unreachable (%s)", exc)
         db_ok = False
-    return {"status": "ok" if db_ok else "degraded", "database": db_ok}
+        # The class name, not the message: a psycopg error can carry the host,
+        # the database name and the user, and /health is unauthenticated.
+        detail = type(exc).__name__
+
+    if not db_ok:
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    return {
+        "status": "ok" if db_ok else "unavailable",
+        "database": db_ok,
+        "error": detail,
+    }
+
+
+@app.get("/config", tags=["ops"])
+def config() -> dict:
+    """Boot-time configuration the frontend needs before it has a token.
+
+    Read once at startup so the UI does not have to guess at server state:
+    without this the chat panel has to be hidden by rebuilding the frontend
+    rather than by setting an environment variable.
+
+    Deliberately unauthenticated and deliberately small. It exposes feature
+    flags and build metadata only - no connection strings, no key material, no
+    model names.
+    """
+    settings = get_settings()
+    return {
+        "chat_enabled": settings.chat_enabled,
+        "version": app.version,
+        "build_time": BUILD_TIME,
+    }
 
 
 app.include_router(auth.router)
 app.include_router(data.router)
 app.include_router(news.router)
-app.include_router(chat.router)
 app.include_router(scenario.router)
 app.include_router(admin.router)
+
+# A5: the chat feature is parked. It used to be impossible to turn off without
+# editing source, and mounting it pulled `chatbot` -> `chatbot.sql_guard` ->
+# `import sqlglot` into the API's import graph at startup. Both the import and
+# the routes are now conditional, so with CHAT_ENABLED=false the routes are not
+# merely hidden, they do not exist, and `sqlglot` and `anthropic` need not be
+# installed at all.
+if settings.chat_enabled:
+    from api.routers import chat
+
+    app.include_router(chat.router)
+    log.info("chat routes mounted (CHAT_ENABLED=true)")
+else:
+    log.info("chat is disabled (CHAT_ENABLED=false); /chat routes are not mounted")

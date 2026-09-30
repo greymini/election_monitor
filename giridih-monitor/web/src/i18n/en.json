@@ -55,7 +55,11 @@
     "dataHealth": "Data health",
     "openReviews": "Open review items",
     "weakCrosswalks": "Weak booth matches",
-    "latestRoll": "Latest roll revision"
+    "latestRoll": "Latest roll revision",
+    "marginCaption": "Bar colour is the winning party, labelled above each bar; {{year}} was the tightest at {{votes}} votes.",
+    "marginCaptionPlain": "Bar colour is the winning party, labelled above each bar.",
+    "electorCaption": "Electors grew {{pct}} between {{from}} and {{to}}, which is why new voters carry unusual weight in this seat.",
+    "electorCaptionPlain": "New voters carry unusual weight in this seat. Load two assembly elections to see the growth between them."
   },
   "map": {
     "heading": "Booth map",
@@ -86,6 +90,12 @@
   "transfer": {
     "heading": "Lok Sabha to Vidhan Sabha transfer",
     "note": "Lok Sabha figures are the Giridih assembly segment, not the whole parliamentary seat"
+  },
+  "factors": {
+    "intro": "Curated by the analyst team and read by the assistant from the same table, so the dashboard and the chat answer from one set of notes.",
+    "empty": "No knowledge cards are loaded.",
+    "reviewed": "Last reviewed",
+    "notInPrompt": "not in the assistant's prompt"
   },
   "scenario": {
     "heading": "By-election scenarios",

@@ -16,7 +16,7 @@ const News = lazy(() => import('./pages/News'))
 const Factors = lazy(() => import('./pages/Factors'))
 const Scenario = lazy(() => import('./pages/Scenario'))
 const Admin = lazy(() => import('./pages/Admin'))
-import { getMe, getToken, setSession, type Me } from './lib/api'
+import { getConfig, getMe, getToken, setSession, type AppConfig, type Me } from './lib/api'
 
 export default function App() {
   const [authed, setAuthed] = useState<boolean>(() => Boolean(getToken()))
@@ -30,6 +30,15 @@ export default function App() {
 
   const me = useQuery<Me>({ queryKey: ['me'], queryFn: getMe, enabled: authed })
 
+  /** Feature flags, fetched once and cached for the session. `staleTime: Infinity`
+   *  because these only change when the server restarts. */
+  const config = useQuery<AppConfig>({
+    queryKey: ['config'],
+    queryFn: getConfig,
+    staleTime: Infinity,
+    retry: false,
+  })
+
   if (!authed) {
     return <Login onSignedIn={() => setAuthed(true)} />
   }
@@ -40,7 +49,7 @@ export default function App() {
   }
 
   return (
-    <Layout me={me.data} onSignOut={signOut}>
+    <Layout me={me.data} config={config.data} onSignOut={signOut}>
       <Suspense fallback={<Loading />}>
       <Routes>
         <Route path="/" element={<Overview />} />

@@ -1,4 +1,13 @@
-"""Chat endpoint (LLD 9). SSE so the panel streams rather than hangs."""
+"""Chat endpoint (LLD 9). SSE so the panel streams rather than hangs.
+
+The feature is parked behind CHAT_ENABLED and api/main.py does not mount this
+router when it is off. Even so, nothing from `chatbot` is imported at module
+scope: that package reaches chatbot/sql_guard.py's top-level `import sqlglot`,
+which made sqlglot a hard import-time requirement of the entire API (audit A5) -
+remove it from requirements-api.txt and the dashboard stopped booting. Importing
+inside the handler means the API starts, and every data route works, with
+sqlglot and anthropic absent.
+"""
 
 from __future__ import annotations
 
@@ -11,7 +20,6 @@ from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
 from api.deps import CurrentUser
-from chatbot.agent import ask
 from common.logging_setup import get_logger
 
 log = get_logger(__name__)
@@ -42,14 +50,19 @@ async def chat(body: ChatRequest, user: CurrentUser) -> EventSourceResponse:
     async def events():
         yield {"event": "status", "data": json.dumps({"state": "thinking"})}
         try:
+            from chatbot.agent import ask
+
             answer = await asyncio.to_thread(
                 ask, body.message, history, user.user_id, user.role
             )
-        except Exception as exc:
+        except Exception:
+            # E3: every other error path in this app returns a flat message and
+            # logs the detail. This one used to stream str(exc)[:200] to the
+            # browser, so a psycopg failure surfaced table names, column names
+            # and fragments of SQL to whoever was in the panel.
             log.exception("chat failed")
             yield {"event": "error", "data": json.dumps({
                 "message": "The assistant could not answer that. The dashboard is unaffected.",
-                "detail": str(exc)[:200],
             })}
             return
 
@@ -86,6 +99,8 @@ async def chat(body: ChatRequest, user: CurrentUser) -> EventSourceResponse:
 @router.post("/chat/sync")
 async def chat_sync(body: ChatRequest, user: CurrentUser) -> dict:
     """Non-streaming variant, for scripts and tests."""
+    from chatbot.agent import ask
+
     history = [t.model_dump() for t in body.history[-MAX_HISTORY:]]
     answer = await asyncio.to_thread(ask, body.message, history, user.user_id, user.role)
     payload = asdict(answer)

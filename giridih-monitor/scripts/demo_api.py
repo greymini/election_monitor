@@ -17,7 +17,6 @@ It mirrors the response shapes of api/routers/*.py. If those change, this drifts
 
 from __future__ import annotations
 
-import math
 import random
 from datetime import date, timedelta
 
@@ -619,7 +618,10 @@ def scenario(body: dict) -> dict:
     if root not in sys.path:
         sys.path.insert(0, root)
     from analytics.scenario import (
-        BoothBaseline, ScenarioInput, jlkm_transfer_scenario, project,
+        BoothBaseline,
+        ScenarioInput,
+        jlkm_transfer_scenario,
+        project,
     )
 
     baseline = [

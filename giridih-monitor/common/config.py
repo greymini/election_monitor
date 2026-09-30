@@ -100,6 +100,11 @@ class Settings:
     auth_mode: str = "password"
     cors_origins: list[str] = field(default_factory=list)
 
+    # Feature flags. The chatbot is parked (A5): with this false, api/main.py
+    # neither imports `chatbot` nor mounts its routes, so the API boots with
+    # sqlglot and anthropic absent.
+    chat_enabled: bool = False
+
     # Anthropic
     anthropic_api_key: str = ""
     model_router: str = "claude-haiku-4-5"
@@ -174,6 +179,7 @@ def get_settings() -> Settings:
         jwt_ttl_minutes=_env_int("JWT_TTL_MINUTES", 720),
         auth_mode=_env("AUTH_MODE", "password"),
         cors_origins=_env_list("API_CORS_ORIGINS", "http://localhost:5173"),
+        chat_enabled=_env_bool("CHAT_ENABLED", False),
         anthropic_api_key=_env("ANTHROPIC_API_KEY"),
         model_router=_env("MODEL_ROUTER", "claude-haiku-4-5"),
         model_lookup=_env("MODEL_LOOKUP", "claude-haiku-4-5"),

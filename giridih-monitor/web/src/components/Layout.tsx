@@ -4,17 +4,23 @@ import { useTranslation } from 'react-i18next'
 
 import ChatPanel from './ChatPanel'
 import ThemeToggle from './ThemeToggle'
-import type { Me } from '../lib/api'
+import type { AppConfig, Me } from '../lib/api'
 
 interface Props {
   me?: Me
+  /** From GET /config. Undefined while it is in flight, which is treated as
+   *  "chat off": showing a panel that then vanishes is worse than showing it a
+   *  beat late, and the assistant is parked by default anyway. */
+  config?: AppConfig
   onSignOut: () => void
   children: React.ReactNode
 }
 
-export default function Layout({ me, onSignOut, children }: Props) {
+export default function Layout({ me, config, onSignOut, children }: Props) {
   const { t, i18n } = useTranslation()
   const [chatOpen, setChatOpen] = useState(false)
+  const chatEnabled = config?.chat_enabled === true
+  const chatVisible = chatEnabled && chatOpen
   const [navOpen, setNavOpen] = useState(false)
 
   const links = [
@@ -81,13 +87,15 @@ export default function Layout({ me, onSignOut, children }: Props) {
               {t('common.language')}
             </button>
             <ThemeToggle />
-            <button
-              className={`btn px-2 py-1 text-2xs ${chatOpen ? 'btn-primary' : ''}`}
-              onClick={() => setChatOpen((v) => !v)}
-              aria-pressed={chatOpen}
-            >
-              {t('chat.title')}
-            </button>
+            {chatEnabled && (
+              <button
+                className={`btn px-2 py-1 text-2xs ${chatOpen ? 'btn-primary' : ''}`}
+                onClick={() => setChatOpen((v) => !v)}
+                aria-pressed={chatOpen}
+              >
+                {t('chat.title')}
+              </button>
+            )}
             {me && (
               <div className="hidden items-center gap-1.5 sm:flex">
                 <span className="chip" title={me.role}>
@@ -122,7 +130,7 @@ export default function Layout({ me, onSignOut, children }: Props) {
 
       <div className="mx-auto flex max-w-[1600px] gap-4 px-4 py-4">
         <main className="min-w-0 flex-1">{children}</main>
-        {chatOpen && (
+        {chatVisible && (
           <aside className="hidden w-[380px] shrink-0 lg:block">
             <div className="sticky top-[4.5rem]">
               <ChatPanel isAdmin={me?.role === 'admin'} onClose={() => setChatOpen(false)} />
@@ -131,7 +139,7 @@ export default function Layout({ me, onSignOut, children }: Props) {
         )}
       </div>
 
-      {chatOpen && (
+      {chatVisible && (
         <div className="fixed inset-0 z-40 lg:hidden" style={{ background: 'var(--plane)' }}>
           <ChatPanel isAdmin={me?.role === 'admin'} onClose={() => setChatOpen(false)} />
         </div>
