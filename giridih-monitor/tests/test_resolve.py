@@ -17,6 +17,8 @@ from __future__ import annotations
 import pytest
 
 from ingest.resolve import (
+    FIRST_PART_THRESHOLD,
+    NAME_MATCH_MARGIN,
     NAME_MATCH_THRESHOLD,
     Candidate,
     bracket_text,
@@ -36,6 +38,7 @@ ALIASES = {
     "भाजपा": "BJP", "bjp": "BJP", "bharatiya janata party": "BJP",
     "आजसू": "AJSU", "ajsu": "AJSU",
     "झालोक्रांमो": "JLKM", "jlkm": "JLKM",
+    "बसपा": "BSP", "bsp": "BSP",
     "निर्दलीय": "IND", "ind": "IND", "independent": "IND",
     "नोटा": "NOTA", "nota": "NOTA",
 }
@@ -229,27 +232,136 @@ def test_a_name_far_from_every_candidate_does_not_resolve():
         assert not resolution.resolved, f"{name!r} matched at {resolution.score}"
 
 
-def test_the_threshold_is_permissive_within_a_point_or_two_and_that_is_recorded():
-    """An honest limit of a fuzzy match, worth pinning rather than hiding.
+def test_sudhir_kumat_does_not_resolve_to_sudivya_kumar():
+    """The case that motivated the stricter rule, and the reason it needed a
+    third condition rather than two.
 
     `comparable()` puts the two scripts' transliterations on an equal footing,
-    which necessarily raises every score: "Sudhir Kumat" against the seeded
-    "Sudivya Kumar" lands at 0.8833 and so resolves, even though it is plausibly
-    a different person.
+    which necessarily raises every score. "Sudhir Kumat" against the seeded
+    "Sudivya Kumar" measures:
 
-    The threshold stays at the 0.88 the master prompt specifies rather than
-    being tightened to hide this, because raising it would start rejecting the
-    genuine Devanagari spellings the canonicalisation exists to accept. Two
-    things carry the risk instead: every resolution records the top three
-    candidates with their scores, and the AC-total reconciliation is the real
-    gate - a wrongly attributed column makes the booth sums disagree with the
-    published total unless two candidates were swapped outright.
+        whole-string     0.8833   >= 0.88, so the threshold rule passes
+        margin over 2nd  0.3368   >= 0.05, so the margin rule passes
+        first name-part  0.8444   <  0.88, so this is what rejects it
+
+    The margin rule guards against *ambiguity* - two candidates with similar
+    names - and cannot catch a single spurious near-match, which is a different
+    failure. The whole-string score here is carried by 'kumat'/'kumar' at 0.92,
+    which drags 'sudhir'/'sudivy' over the line.
     """
     resolution = resolve_column(0, "Sudhir Kumat", ALIASES, SEEDED)
-    assert resolution.resolved
-    assert resolution.score == pytest.approx(0.8833, abs=1e-3)
-    # The evidence an operator needs to spot it is on the record.
+
+    assert not resolution.resolved
+    assert resolution.candidate_id is None
+    assert resolution.party_abbr is None
+    # And it says which condition failed, not just that something did.
+    assert any("first name-part" in reason for reason in resolution.reject_reasons)
+    # The near-miss is still on the record so an operator can act on it.
     assert resolution.candidates_considered[0][0] == "Sudivya Kumar"
+    assert resolution.candidates_considered[0][1] == pytest.approx(0.8833, abs=1e-3)
+
+
+def test_an_unresolved_column_names_every_condition_it_failed():
+    resolution = resolve_column(0, "Mohan Verma", ALIASES, SEEDED)
+    assert not resolution.resolved
+    assert any("<" in reason for reason in resolution.reject_reasons)
+
+
+def test_a_near_tie_is_refused_by_the_margin_rule():
+    """Two candidates whose names differ by one letter. Picking the higher of
+    two near-equal scores is a coin flip dressed up as a decision, and this is
+    exactly when a wrong attribution is least visible."""
+    twins = [
+        Candidate(1, "Ram Kumar Singh", "JMM"),
+        Candidate(2, "Ram Kumar Sinha", "BJP"),
+    ]
+    resolution = resolve_column(0, "Ram Kumar Sinh", ALIASES, twins)
+
+    assert not resolution.resolved
+    assert any("ahead of" in reason for reason in resolution.reject_reasons)
+
+
+def test_a_clear_winner_passes_the_margin_rule():
+    resolution = resolve_column(0, "Sudivya Kumar", ALIASES, SEEDED)
+    assert resolution.resolved
+    assert resolution.candidate_id == 1
+
+
+def test_a_sole_candidate_needs_no_margin():
+    """With one candidate there is no second-best to beat, and requiring a
+    margin against nothing would reject every single-candidate contest."""
+    only = [Candidate(1, "Sudivya Kumar", "JMM")]
+    resolution = resolve_column(0, "Sudivya Kumar", ALIASES, only)
+    assert resolution.resolved
+    assert resolution.candidate_id == 1
+
+
+def test_the_abbreviated_middle_name_still_resolves():
+    """Why the floor is on the *first* name-part and not on every part.
+
+    'Nirbhay Kr Shahabadi' for 'Nirbhay Kumar Shahabadi' scores 0.5667 on
+    'kr'/'kumar'. A floor on every part would reject it, and abbreviating a
+    middle name is exactly what a Form 20 does.
+    """
+    resolution = resolve_column(1, "Nirbhay Kr Shahabadi", ALIASES, SEEDED)
+    assert resolution.resolved
+    assert resolution.candidate_id == 2
+
+
+# --------------------------------------------------------------------------
+# Bracket-first: a printed party outranks an inferred name
+# --------------------------------------------------------------------------
+
+
+def test_a_bracketed_party_resolves_the_candidate_even_if_the_name_is_unrecognised():
+    """A party printed in the header is a statement by the returning officer;
+    a name match is our inference. Where both are available the printed one
+    decides and the name only narrows - so a header whose spelling we do not
+    recognise is still rescued when its party stood exactly one candidate."""
+    resolution = resolve_column(0, "S. Kumar Sonu (झामुमो)", ALIASES, SEEDED)
+
+    assert resolution.resolved
+    assert resolution.party_abbr == "JMM"
+    assert resolution.candidate_id == 1          # the only JMM candidate
+    assert resolution.method == "alias+name"
+
+
+def test_the_name_disambiguates_within_the_bracketed_party():
+    """Two candidates for one party - a real case where a party fields a
+    substitute or the seed holds both a main and a dummy candidate."""
+    two_jmm = [
+        Candidate(1, "Sudivya Kumar", "JMM"),
+        Candidate(4, "Ramesh Yadav", "JMM"),
+        Candidate(2, "Nirbhay Kumar Shahabadi", "BJP"),
+    ]
+    resolution = resolve_column(0, "Ramesh Yadav (JMM)", ALIASES, two_jmm)
+
+    assert resolution.resolved
+    assert resolution.party_abbr == "JMM"
+    assert resolution.candidate_id == 4
+
+
+def test_a_bracketed_party_narrows_the_pool_so_an_outside_name_cannot_win():
+    """Without the narrowing, 'Nirbhay Kumar Shahabadi (झामुमो)' would match the
+    BJP candidate on name and contradict the printed party."""
+    resolution = resolve_column(0, "Nirbhay Kumar Shahabadi (झामुमो)", ALIASES, SEEDED)
+
+    assert resolution.party_abbr == "JMM"
+    assert resolution.candidate_id == 1, (
+        "the pool must be restricted to the bracketed party, so the BJP "
+        "candidate cannot win on name similarity"
+    )
+
+
+def test_a_bracketed_party_with_no_seeded_candidate_still_resolves_the_party():
+    """The party is known even though no published candidate matches it. The
+    column loads attributed to the party with no candidate_id, which is a
+    weaker but honest result - and the AC-total check will notice if it is
+    wrong."""
+    resolution = resolve_column(0, "Someone Else (बसपा)", ALIASES, SEEDED)
+    assert resolution.resolved
+    assert resolution.party_abbr == "BSP"
+    assert resolution.candidate_id is None
 
 
 def test_a_tie_at_the_top_refuses_to_guess():
@@ -380,3 +492,19 @@ def test_comparable_leaves_short_names_alone():
     assert comparable("Ram") == "ram"
     assert comparable("Lata") == "lat"  # 4 chars, so it is shortened
     assert comparable("Om") == "om"
+
+
+def test_the_three_thresholds_are_documented_values():
+    """If these move, docs/METRICS.md and the review-queue payload move too."""
+    assert NAME_MATCH_THRESHOLD == 0.88
+    assert NAME_MATCH_MARGIN == 0.05
+    assert FIRST_PART_THRESHOLD == 0.88
+
+
+def test_the_review_payload_carries_the_thresholds_and_the_reasons():
+    resolution = resolve_column(0, "Sudhir Kumat", ALIASES, SEEDED)
+    payload = review_payload(resolution)
+    assert payload["threshold"] == NAME_MATCH_THRESHOLD
+    assert payload["margin_required"] == NAME_MATCH_MARGIN
+    assert payload["first_part_threshold"] == FIRST_PART_THRESHOLD
+    assert payload["reject_reasons"]

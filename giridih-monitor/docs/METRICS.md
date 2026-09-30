@@ -87,6 +87,49 @@ runner-up, and never takes part in a swing or a transfer.
 
 ## Things that are easy to get wrong
 
+### Form 20 column resolution (§3.1)
+
+A header column resolves to a candidate only if **all three** conditions hold:
+
+| Condition | Value | Why |
+|---|---|---|
+| Whole-name score | ≥ **0.88** | Higher than the crosswalk's 0.85: a mismatched candidate attributes votes to the wrong person, and the AC-total check cannot catch two candidates being swapped |
+| Margin over second-best | ≥ **0.05** | Guards against *ambiguity*. Picking the higher of two near-equal scores is a coin flip dressed up as a decision, and two candidates with similar names is exactly when a wrong attribution is least visible. Waived when there is only one candidate |
+| First name-part score | ≥ **0.88** | Guards against a *spurious near-match*, which the first two do not catch |
+
+That third condition is not in the original specification and was added because
+the first two demonstrably do not achieve what they were for:
+
+```
+'Sudhir Kumat'  against the seeded  'Sudivya Kumar'
+    whole-string        0.8833    >= 0.88   threshold rule passes
+    margin over second  0.3368    >= 0.05   margin rule passes
+    first name-part     0.8444    <  0.88   rejected here
+```
+
+The whole-string score is carried by `kumat`/`kumar` at 0.92, which drags
+`sudhir`/`sudivy` over the line. The floor is on the **first** part, not every
+part, because middle parts are what a Form 20 abbreviates: `Nirbhay Kr
+Shahabadi` scores 0.5667 on `kr`/`kumar` and must still resolve. Measured across
+every header spelling in the fixtures, the first part separates the legitimate
+variants (all 1.0) from the spurious match (0.8444) with no exceptions.
+
+**A printed party outranks an inferred name.** If the header carries a party in
+brackets, it is resolved through `party_alias` *first* and the name is then used
+only to disambiguate within that party's candidates. A party printed in the
+header is a statement by the returning officer; a name match is our inference.
+Two consequences: a header whose spelling we do not recognise is still rescued
+when its party stood exactly one candidate, and a name cannot pull a column onto
+a candidate from a different party than the one printed.
+
+Names are compared after `comparable()`, which canonicalises both
+transliterations - Devanagari transliteration reinstates inherent vowels, so
+`नवीन आनंद` becomes `naveena aananda` against the ECI's `navin anand` and scores
+0.854 raw, below the threshold. Canonicalising both sides is the fix; weakening
+the threshold would let genuinely different names through.
+
+---
+
 **Ranking is per candidate, not per party bucket.** Eight independents on 500
 votes each are eight candidates, not one 4,000-vote party. The audited view
 grouped on `COALESCE(party_id, -1)`, so that bucket competed for winner and

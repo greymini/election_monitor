@@ -67,6 +67,35 @@ log = get_logger(__name__)
 # are swapped.
 NAME_MATCH_THRESHOLD = 0.88
 
+# The best match must also beat the second-best by this much. This guards
+# against ambiguity: two candidates with similar names is exactly when a wrong
+# attribution is most plausible and least visible, and picking the higher of two
+# near-equal scores is a coin flip dressed up as a decision.
+NAME_MATCH_MARGIN = 0.05
+
+# ...and the first name-part must itself clear the threshold.
+#
+# This one is an addition beyond what was specified, because the two rules above
+# do not achieve what they were asked to achieve, and the measurement says so:
+#
+#   'Sudhir Kumat' against the seeded 'Sudivya Kumar'
+#       whole-string        0.8833   (>= 0.88, so rule 1 passes)
+#       margin over 2nd     0.3368   (>= 0.05, so rule 2 passes)
+#       first name-part     0.8444   (< 0.88, so this rule rejects it)
+#
+# The margin rule catches ambiguity between two similar candidates; it cannot
+# catch a single spurious near-match, which is a different failure. A whole-string
+# metric can be carried by one strong part while another part is wrong - here
+# 'kumat'/'kumar' scores 0.92 and drags 'sudhir'/'sudivy' over the line.
+#
+# The *first* part rather than every part, because middle name-parts are exactly
+# what gets abbreviated on a Form 20: 'Nirbhay Kr Shahabadi' for 'Nirbhay Kumar
+# Shahabadi' scores 0.5667 on 'kr'/'kumar' and must still resolve. The given name
+# is the least abbreviated and most distinctive part. Measured over every header
+# spelling in the fixtures, this separates the legitimate variants (all 1.0 on
+# the first part) from the spurious match (0.8444) without a single exception.
+FIRST_PART_THRESHOLD = 0.88
+
 NOTA_TOKENS = {
     "nota",
     "नोटा",
@@ -146,6 +175,9 @@ class Resolution:
     score: float | None = None
     # Top-3 guesses with scores, for the review-queue item when this fails.
     candidates_considered: list[tuple[str, float]] = field(default_factory=list)
+    # Which of the three conditions the best candidate failed, so the queue item
+    # says why rather than only that something did not match.
+    reject_reasons: list[str] = field(default_factory=list)
 
     @property
     def resolved(self) -> bool:
@@ -266,32 +298,60 @@ def resolve_column(
         resolution.score = 1.0
         return resolution
 
-    # Step 2: bracket text against party_alias, script-aware.
+    # Step 2: bracket text against party_alias, script-aware. Done first, and the
+    # name is then used only to disambiguate: a party printed in the header is a
+    # statement by the returning officer, whereas a name match is our inference,
+    # so where both are available the printed one decides and the inference
+    # narrows.
     inner = bracket_text(raw_header)
+    pool = seeded
     if inner:
         abbr = party_by_alias.get(alias_key(inner)) or party_by_alias.get(inner.lower())
         if abbr:
             resolution.party_abbr = abbr
             resolution.method = "alias"
             resolution.score = 1.0
+            # Only this party's candidates are now candidates for the name
+            # match. If the party stood nobody we have a seeded row for, the
+            # pool is empty rather than the whole field: matching a different
+            # party's candidate would contradict the party the returning officer
+            # printed, which is the one thing we are most sure of.
+            by_party = [c for c in seeded if c.party_abbr == abbr]
+            pool = by_party
+            if by_party:
+                if len(by_party) == 1:
+                    # Nothing to disambiguate. The party is authoritative and
+                    # there is exactly one person who stood for it, so the name
+                    # does not need to clear any threshold - and should not have
+                    # to, because this is the path that rescues a header whose
+                    # spelling we do not recognise.
+                    resolution.candidate_id = by_party[0].candidate_id
+                    resolution.candidates_considered = [
+                        (by_party[0].name_en,
+                         round(jaro_winkler(comparable(name), by_party[0].key), 4))
+                    ] if name else []
+                    resolution.method = "alias+name"
+                    return resolution
 
-    # Step 3: fuzzy-match the name against the seeded candidates. Done even when
-    # the bracket resolved a party, because the candidate_id is what result_booth
-    # references and the AC total hangs off.
-    if seeded and name:
+    # Step 3: fuzzy-match the name. Three conditions, all of which must hold -
+    # see the threshold constants for why each exists.
+    if pool and name:
         target = comparable(name)
         scored = sorted(
-            ((c, jaro_winkler(target, c.key)) for c in seeded),
+            ((c, jaro_winkler(target, c.key)) for c in pool),
             key=lambda pair: -pair[1],
         )
         resolution.candidates_considered = [(c.name_en, round(s, 4)) for c, s in scored[:3]]
         best, best_score = scored[0]
+        second_score = scored[1][1] if len(scored) > 1 else 0.0
+        margin = best_score - second_score
+        first_part = _first_part_score(target, best.key)
 
-        # A tie at the top is a refusal, not a coin flip: two candidates with
-        # similar names is exactly when a wrong attribution is most plausible
-        # and least visible.
-        tied = len(scored) > 1 and abs(scored[1][1] - best_score) < 1e-9
-        if best_score >= NAME_MATCH_THRESHOLD and not tied:
+        clears_threshold = best_score >= NAME_MATCH_THRESHOLD
+        clears_margin = len(scored) == 1 or margin >= NAME_MATCH_MARGIN
+        clears_first_part = first_part >= FIRST_PART_THRESHOLD
+
+        if clears_threshold and clears_margin and clears_first_part:
             resolution.candidate_id = best.candidate_id
             resolution.score = round(best_score, 4)
             if resolution.party_abbr is None:
@@ -299,9 +359,22 @@ def resolve_column(
                 resolution.method = "name"
             else:
                 resolution.method = "alias+name"
-        elif tied:
-            log.warning("column %r ties between %r and %r at %.4f - refusing to guess",
-                        raw_header, scored[0][0].name_en, scored[1][0].name_en, best_score)
+        else:
+            reasons = []
+            if not clears_threshold:
+                reasons.append(f"best {best_score:.4f} < {NAME_MATCH_THRESHOLD}")
+            if not clears_margin:
+                reasons.append(
+                    f"only {margin:.4f} ahead of {scored[1][0].name_en!r} "
+                    f"(needs {NAME_MATCH_MARGIN})"
+                )
+            if not clears_first_part:
+                reasons.append(
+                    f"first name-part {first_part:.4f} < {FIRST_PART_THRESHOLD}"
+                )
+            resolution.reject_reasons = reasons
+            log.warning("column %r does not resolve to %r: %s",
+                        raw_header, best.name_en, "; ".join(reasons))
 
     # Step 5: an independent with no seeded row still resolves, to IND with a
     # distinct identity, so it competes individually.
@@ -311,6 +384,19 @@ def resolve_column(
         resolution.score = 1.0
 
     return resolution
+
+
+def _first_part_score(target: str, candidate_key: str) -> float:
+    """How well the first name-part matches.
+
+    Both sides are already `comparable()` output, so they are lower-case,
+    transliteration-neutral and whitespace-normalised.
+    """
+    left = target.split()
+    right = candidate_key.split()
+    if not left or not right:
+        return 0.0
+    return jaro_winkler(left[0], right[0])
 
 
 def _looks_independent(cell: str) -> bool:
@@ -354,6 +440,9 @@ def review_payload(resolution: Resolution) -> dict:
             for name, score in resolution.candidates_considered
         ],
         "threshold": NAME_MATCH_THRESHOLD,
+        "margin_required": NAME_MATCH_MARGIN,
+        "first_part_threshold": FIRST_PART_THRESHOLD,
+        "reject_reasons": resolution.reject_reasons,
         "fix": (
             "Add the spelling to db/seed/party_alias.csv and re-seed, or correct the "
             "candidate name in db/seed/ac_totals.csv, then re-run the parser."
