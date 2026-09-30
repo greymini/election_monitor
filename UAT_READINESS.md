@@ -245,6 +245,83 @@ expire: `python scripts/purge_roll_cache.py --delete` first.
 
 ---
 
+## 1C. Frontend: browser checks, RUN
+
+Playwright's bundled Chromium will not download on this network — `Failed to
+download Chrome for Testing`, three attempts. It is configured to drive the
+**installed Microsoft Edge** (`channel: 'msedge'`) instead, which is the same
+engine. Override with `PLAYWRIGHT_CHANNEL=` on a machine where the download
+works.
+
+```bash
+cd web && npx playwright test        # 42 passed
+```
+
+Against the fixture build (`VITE_FIXTURES=1`), not the real stack — so these
+prove the pages behave, not that the data is right. Running them against a real
+database is section 4 of the hardening brief and waits on `scripts/dev_stack.py`.
+
+| Check | Route(s) | Status |
+|---|---|---|
+| Booth drawer fully above the Leaflet panes, probed at four corners and the centre with `elementFromPoint` | `/map` | **PASS** |
+| Escape closes the drawer | `/map` | **PASS** |
+| No page-level horizontal overflow, drawer open and closed | `/map` at 1440, 1024, 390 px | **PASS** (6 cases) |
+| Header keeps its width when the drawer opens | `/map` | **PASS** |
+| Every marker is a circle: only `<path>` with an arc command, no `.leaflet-marker-icon` | `/map` | **PASS** |
+| Map tooltip and booth card agree on every number the tooltip shows | `/map` | **PASS** |
+| Legend names both parties with the sign | `/map` | **PASS** |
+| Admin data counts equal the 305-booth source (imported from it, not hardcoded) | `/admin` | **PASS** |
+| Booth table total equals the source total | `/booths` | **PASS** |
+| No shell command, no `--ac`, no operator note on the Overview | `/` | **PASS** |
+| Status line names the missing datasets and links to Admin | `/` | **PASS** |
+| The full data-health strip is on Admin | `/admin` | **PASS** |
+| Margin card reads `JMM +3,838` / `1.85% over BJP` / `VS-2024` | `/` | **PASS** |
+| Margin card content does not overflow its card | `/` at 1440, 1024, 390 px | **PASS** (3 cases) |
+| Chart captions say "Fixture data", never "From loaded Form 20" | `/` | **PASS** |
+| Five analytical sections present, each linking to its page | `/` | **PASS** (5 cases) |
+| Priority list ranked, ≤10 rows, no blank or `NaN` row | `/` | **PASS** |
+| No `{{`, `undefined`, `NaN`, `[object Object]`, `Invalid Date` or raw i18n key | 7 routes × 2 languages | **PASS** (14 cases) |
+
+**What running them found, beyond the reported defects.** Every spec failed on
+its first run because none of them logged in — the app redirects to `/login`
+without a session, so the assertions were inspecting a login form. Then they
+failed again because the spec used `/acs/32/map`: the **frontend** routes are
+top-level and the catch-all sends anything unmatched to `/`, so the specs were
+asserting against the Overview. The screenshot Playwright saved on failure is
+what showed it; nothing in the code would have.
+
+Then two genuine defects:
+
+- **N14: a direct navigation to `/admin` redirected to the Overview.** The
+  role-gated routes are registered conditionally on `me.data.role`, and the
+  catch-all redirects anything unmatched — so arriving before the role query
+  resolved matched nothing and bounced. Typing the URL, a bookmark or a hard
+  refresh all did it. The route table now waits for the role.
+- **The priority score was fabricated.** `priority_score` was absent from the
+  fixture, and the response builder invented it as
+  `margin_stddev === null ? 0.42 : 0.71` — two values switched on whether
+  volatility happened to be missing, so every booth in the constituency showed
+  one of two scores and the "which inputs contributed" line was decoration. It
+  is computed by `analytics.metrics.priority_score` over real percentile ranks
+  now; 102 of the 305 booths score on partial weight, which is what makes that
+  line worth reading.
+
+### Bundle size, N9
+
+Fixture data was in the production bundle: `lib/api.ts` imported the fixture
+module statically, so the branch folded away at build time but the module was
+already in the graph. It is a dynamic `import()` inside the branch now.
+
+| Build | Main chunk | Fixture chunk |
+|---|---|---|
+| Before | 319.30 kB (gzip 66.45) | — (inlined) |
+| After, production | **113.24 kB (gzip 35.08)** | **absent entirely** |
+| After, `VITE_FIXTURES=1` | 112.86 kB | 226.77 kB, loaded on demand |
+
+The main chunk is 121 kB after the Overview's analytical sections were added.
+
+---
+
 ## 2. Audit IDs closed so far
 
 Full ledger in `PROGRESS.md` §5. Closed in this session:

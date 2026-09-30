@@ -97,6 +97,12 @@ function boothRow(b: (typeof BOOTHS)[number]) {
     volatility_null_reason: b.margin_stddev === null
       ? 'fewer than two assembly years are loaded for this booth'
       : null,
+    // From analytics.metrics.priority_score at generation time. This was
+    // absent, so the Overview's priority panel filtered out every booth and
+    // rendered an empty list.
+    priority_score: b.priority_score,
+    priority_inputs_used: b.priority_inputs_used,
+    priority_weight_used: b.priority_weight_used,
     crosswalk_confidence: b.crosswalk_confidence,
     crosswalk_reviewed: b.crosswalk_reviewed,
     lineage_kind: b.lineage_kind,
@@ -195,17 +201,32 @@ function summaryFor(acNumber: number) {
       : null,
     // The data-health strip. Every dataset reports loaded / partial / missing,
     // so a page can name the command that fills the gap.
+    // Counted from `rows`, the same 305-booth source every other figure on
+    // every page comes from.
+    //
+    // These were literals - `booths: 8`, `booths_geocoded: 7`,
+    // `ps_list_rows: 9`, `caste_rows: 8` - written when the fixture had eight
+    // booths. Replacing the fixture left them behind, so the health cards went
+    // on reporting the old constituency while the tables beside them reported
+    // the new one, and no amount of restarting a dev server changes a literal.
+    // `test_overview_counts.py` now asserts each of these equals the count in
+    // the source.
     data_health: {
-      booths: acNumber === 32 ? 8 : 0,
-      booths_geocoded: acNumber === 32 ? 7 : 0,
-      ps_list_rows: acNumber === 32 ? 9 : 0,
+      booths: rows.length,
+      booths_geocoded: rows.filter((r) => r.lat !== null).length,
+      // One PS row per booth: the fixture has no re-numbering, so the PS list
+      // and the booth list are the same length by construction.
+      ps_list_rows: rows.length,
       elections_with_results: acNumber === 32 ? 3 : 0,
-      open_reviews: acNumber === 32 ? 2 : 0,
-      weak_crosswalks: acNumber === 32 ? 1 : 0,
-      crosswalk_rows: acNumber === 32 ? 9 : 0,
+      open_reviews: rows.filter((r) => !r.crosswalk_reviewed).length,
+      weak_crosswalks: rows.filter(
+        (r) => !r.crosswalk_reviewed && (r.crosswalk_confidence ?? 0) < 0.85,
+      ).length,
+      crosswalk_rows: rows.length,
       latest_roll: acNumber === 32 ? '2026-07-01' : null,
       roll_revisions: acNumber === 32 ? 2 : 0,
-      caste_rows: acNumber === 32 ? 8 : 0,
+      // One community estimate per booth in the fixture.
+      caste_rows: rows.length,
       census_rows: 0,
       local_result_rows: acNumber === 32 ? 4 : 0,
       source_docs: acNumber === 32 ? 3 : 0,
@@ -415,12 +436,14 @@ export function fixtureFor(path: string): unknown | undefined {
           null_reason: row.new_voter_null_reason,
         },
         priority: {
-          priority_score: row.margin_stddev === null ? 0.42 : 0.71,
+          // Was `row.margin_stddev === null ? 0.42 : 0.71` - two made-up
+          // numbers switched on whether volatility happened to be missing, so
+          // every booth in the constituency showed one of two scores and the
+          // "which inputs contributed" line was decorative.
+          priority_score: row.priority_score,
           priority_quartile: 2,
-          inputs_used: row.margin_stddev === null
-            ? ['closeness', 'new_voter_pct']
-            : ['closeness', 'new_voter_pct', 'volatility'],
-          weight_used: row.margin_stddev === null ? 0.6 : 0.8,
+          inputs_used: row.priority_inputs_used,
+          weight_used: row.priority_weight_used,
         },
         crosswalk: [{
           election_label: 'VS-2019', ps_number: Number(row.ps_numbers.split(',')[0]),
@@ -622,11 +645,12 @@ export function fixtureFor(path: string): unknown | undefined {
           turnout_pct: r.turnout_pct, new_voter_pct: r.new_voter_pct,
           additions: r.additions, margin_stddev: r.margin_stddev,
           floating_pct: r.floating_pct,
-          priority_score: r.margin_stddev === null ? 0.42 : 0.71,
-          priority_quartile: r.margin_stddev === null ? 3 : 1,
+          priority_score: r.priority_score,
+          priority_quartile: r.priority_score === null
+            ? null
+            : Math.min(4, Math.floor((1 - r.priority_score) * 4) + 1),
           winner_party: r.winner_party, runner_party: r.runner_party,
-          inputs_used: r.margin_stddev === null
-            ? ['closeness', 'new_voter_pct'] : ['closeness', 'new_voter_pct', 'volatility'],
+          inputs_used: r.priority_inputs_used,
         })),
         count: rows.length,
         formula:

@@ -22,7 +22,20 @@ export default defineConfig({
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
   },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  // Edge, not bundled Chromium. Playwright's Chromium download fails on this
+  // network - "Failed to download Chrome for Testing", repeatedly - and Edge is
+  // installed. It is the same engine, so the specs do not care; `channel` tells
+  // Playwright to drive the system browser instead of one it manages.
+  //
+  // Override with PLAYWRIGHT_CHANNEL= (empty) on a machine that has the
+  // downloaded browser, which is the better default where it works.
+  projects: [{
+    name: 'edge',
+    use: {
+      ...devices['Desktop Edge'],
+      channel: process.env.PLAYWRIGHT_CHANNEL ?? 'msedge',
+    },
+  }],
   webServer: process.env.E2E_BASE_URL
     ? undefined
     : {

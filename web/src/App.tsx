@@ -58,11 +58,28 @@ export default function App() {
     setAuthed(false)
   }
 
+  // N14. The role-gated routes below are registered conditionally, and the
+  // catch-all redirects anything unmatched to "/". So a direct navigation to
+  // /admin - typing it, a bookmark, a hard refresh - arrived before `me`
+  // resolved, matched nothing, and bounced to the Overview. It looked like the
+  // page did not exist. Holding the route table until the role is known is
+  // enough; the query is already in flight and takes one round trip.
+  if (me.isLoading) {
+    return (
+      <Layout me={undefined} config={config.data} ac={ac} onSignOut={signOut}>
+        <Loading />
+      </Layout>
+    )
+  }
+
   return (
     <Layout me={me.data} config={config.data} ac={ac} onSignOut={signOut}>
       <Suspense fallback={<Loading />}>
       <Routes>
-        <Route path="/" element={<Overview ac={ac} />} />
+        <Route
+          path="/"
+          element={<Overview ac={ac} isAdmin={me.data?.role === 'admin'} />}
+        />
         <Route path="/map" element={<MapExplorer ac={ac} />} />
         <Route path="/booths" element={<Booths ac={ac} />} />
         <Route path="/results" element={<Results ac={ac} />} />

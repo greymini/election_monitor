@@ -57,7 +57,7 @@ def ts(value: object) -> str:
 
 
 def render() -> str:
-    rows = giridih.booths_with_metrics()
+    rows = giridih.booths_with_priority()
     prev = giridih.booths_2019()
     totals = giridih.ac_totals()
     totals_2019 = giridih.ac_totals_2019()
@@ -105,6 +105,12 @@ def render() -> str:
         ("jmm_share_pct", "number | null"),
         ("jmm_swing_pct", "number | null"),
         ("new_voter_pct", "number | null"),
+        # From analytics.metrics.priority_score over percentile ranks
+        # computed within this AC, as mv_booth_priority does. It was absent
+        # entirely, so the Overview panel that ranks by it rendered empty.
+        ("priority_score", "number | null"),
+        ("priority_inputs_used", "string[]"),
+        ("priority_weight_used", "number"),
     ]:
         parts.append(f"  {name}: {type_}\n")
     parts.append("}\n\n")

@@ -5,12 +5,14 @@ import {
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
 
-import DataHealthStrip, { type DataHealth } from '../components/DataHealth'
+import type { DataHealth } from '../components/DataHealth'
+import DataStatus from '../components/DataStatus'
+import OverviewInsights from '../components/OverviewInsights'
 import { FixtureBanner, Missing, SourceLink, Value } from '../components/Provenance'
 import StatTile from '../components/StatTile'
 import { Empty, ErrorState, Loading } from '../components/States'
 import type { AcState } from '../lib/ac'
-import { api } from '../lib/api'
+import { api, isFixtureMode } from '../lib/api'
 import { dateShort, num, pct } from '../lib/format'
 import { chartInk, partyColor } from '../lib/tokens'
 
@@ -88,7 +90,12 @@ const PUBLISHED_MARGINS = [
   { year: '2024', margin: 3838, winner: 'JMM' },
 ]
 
-export default function Overview({ ac }: { ac: AcState }) {
+export default function Overview({ ac, isAdmin = false }: {
+  ac: AcState
+  /** Whether to offer the link to Admin's data-source screen. Passed down
+   *  rather than fetched again: App already holds the session. */
+  isAdmin?: boolean
+}) {
   const { t, i18n } = useTranslation()
   const hi = i18n.language === 'hi'
   const ink = chartInk()
@@ -136,6 +143,16 @@ export default function Overview({ ac }: { ac: AcState }) {
     }))
   const usingPublished = loadedMargins.length === 0
   const marginSeries = usingPublished ? PUBLISHED_MARGINS : loadedMargins
+
+  // Where the figures on this page came from. Fixture mode is checked first
+  // because it is true regardless of what the payload says, and captioning
+  // invented data "From loaded Form 20 data" - which this page did - is the
+  // single most misleading thing it could do.
+  const sourceCaption = isFixtureMode()
+    ? t('overview.fixtureSource')
+    : usingPublished
+      ? t('overview.publishedFallback')
+      : t('overview.fromLoaded')
   const tightest = marginSeries.reduce<{ year: string; margin: number } | null>(
     (best, row) => (best === null || row.margin < best.margin ? row : best),
     null,
@@ -177,34 +194,43 @@ export default function Overview({ ac }: { ac: AcState }) {
             <Value
               value={baselineRow?.margin_votes}
               reason={t('overview.noResultsYet')}
-              render={(v) => num(v)}
+              // Item 3. The headline was the bare number and the subline was a
+              // whole sentence that wrapped to three lines in a narrow card,
+              // with "fixture" trailing after it as loose text that read like
+              // part of the sentence. Winner and margin are the headline now,
+              // the rest is one short subline, and the fixture note is a badge
+              // rendered by SourceLink.
+              render={(v) => (
+                baselineRow?.winner_party
+                  ? `${baselineRow.winner_party} +${num(v)}`
+                  : num(v)
+              )}
             />
           }
           sub={
-            <>
-              {/* Item 4. This read "JMM / BJP · VS-2024": the pair, but not
-                  who won, by how much, or over whom. The margin percentage
-                  comes from the API, which computes it with the canonical
-                  metric_margin_pct - deriving it here from margin_votes and a
-                  total would be a fourth copy of that formula. */}
-              {baselineRow?.winner_party
-                ? t('overview.marginSentence', {
-                    winner: baselineRow.winner_party,
-                    votes: num(baselineRow.margin_votes),
+            <span className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
+              {baselineRow?.winner_party ? (
+                <span className="whitespace-nowrap">
+                  {t('overview.marginSubline', {
                     pct: baselineRow.margin_pct == null
                       ? '—'
                       : pct(baselineRow.margin_pct, 2),
                     runner: baselineRow.runner_party ?? t('common.noRunnerUp'),
-                    election: baselineRow.label,
-                  })
-                : t('overview.noResultsYet')}
-              <span className="ml-1.5">
-                <SourceLink
-                  doc={baselineRow?.source_doc}
-                  page={baselineRow?.source_page ?? null}
-                />
-              </span>
-            </>
+                  })}
+                </span>
+              ) : (
+                <span>{t('overview.noResultsYet')}</span>
+              )}
+              {baselineRow?.label && (
+                <span className="whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>
+                  {baselineRow.label}
+                </span>
+              )}
+              <SourceLink
+                doc={baselineRow?.source_doc}
+                page={baselineRow?.source_page ?? null}
+              />
+            </span>
           }
         />
         <StatTile
@@ -256,14 +282,23 @@ export default function Overview({ ac }: { ac: AcState }) {
         />
       </div>
 
-      {/* The strip that makes "not loaded" legible, and names the fix. */}
-      <DataHealthStrip health={data.data_health} acNumber={data.constituency.ac_number} />
+      {/* Item 2. This was the full data-health strip: eight cards, row counts,
+          and a shell command in each. That is an operator's screen on a
+          reader's page - a strategist reading a margin does not need
+          `python -m ingest.geocode`, and a block in-charge has no shell to run
+          it in, so for most of the people here it was advice that could not be
+          taken sitting above the analysis. The strip moved to Admin under Data
+          sources, admin only; this is the same facts in a sentence. */}
+      <DataStatus health={data.data_health} isAdmin={isAdmin} />
 
       <div className="grid gap-4 lg:grid-cols-2">
         <section className="card px-4 py-3">
           <h2 className="text-sm font-semibold">{t('overview.marginTrend')}</h2>
+          {/* Item 4. This said "From loaded Form 20 data" in fixture mode -
+              the one claim a fixture must never make, and directly contradicted
+              by the banner at the top of the same page. */}
           <p className="mt-0.5 text-2xs" style={{ color: 'var(--text-muted)' }}>
-            {usingPublished ? t('overview.publishedFallback') : t('overview.fromLoaded')}
+            {sourceCaption}
           </p>
           <div className="mt-2 h-56">
             <ResponsiveContainer width="100%" height="100%">
@@ -302,6 +337,9 @@ export default function Overview({ ac }: { ac: AcState }) {
 
         <section className="card px-4 py-3">
           <h2 className="text-sm font-semibold">{t('overview.electorTrend')}</h2>
+          <p className="mt-0.5 text-2xs" style={{ color: 'var(--text-muted)' }}>
+            {sourceCaption}
+          </p>
           {turnoutSeries.length ? (
             <>
               <div className="mt-2 h-56">
@@ -338,6 +376,13 @@ export default function Overview({ ac }: { ac: AcState }) {
           )}
         </section>
       </div>
+
+      {/* Item 5. The Overview was four tiles, two charts and a table of
+          elections: accurate, and not much use to someone deciding where to
+          spend a day. These five answer questions the page is actually opened
+          with, from endpoints that already exist, and each links to the page
+          that answers it properly. */}
+      <OverviewInsights ac={ac} />
 
       {/* Every contest, loaded or not, so absence is visible per election. */}
       <section className="card overflow-x-auto px-0 py-0">

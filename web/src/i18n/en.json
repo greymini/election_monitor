@@ -86,7 +86,8 @@
     "reviewNote": "Every figure here should be checked against its source page before it is used in a decision.",
     "daysLeft_one": "{{formatted}} day left",
     "daysLeft_other": "{{formatted}} days left",
-    "marginSentence": "{{winner}} won by {{votes}} ({{pct}}) over {{runner}} · {{election}}"
+    "fixtureSource": "Fixture data — not from any document",
+    "marginSubline": "{{pct}} over {{runner}}"
   },
   "map": {
     "heading": "Booth map",
@@ -323,5 +324,42 @@
     "dark": "dark",
     "current": "Theme: {{mode}}",
     "switchTo": "Switch to {{mode}} theme"
+  },
+  "status": {
+    "form20Loaded_one": "Form 20 loaded ({{count}} election)",
+    "form20Loaded_other": "Form 20 loaded ({{count}} elections)",
+    "form20Missing": "Form 20 not loaded",
+    "crosswalkUnreviewed_one": "crosswalk: {{count}} unreviewed",
+    "crosswalkUnreviewed_other": "crosswalk: {{count}} unreviewed",
+    "notLoaded": "{{datasets}} not loaded",
+    "unplaced_one": "{{count}} booth unplaced",
+    "unplaced_other": "{{count}} booths unplaced",
+    "manage": "Manage data sources"
+  },
+  "insights": {
+    "priority": "Highest-priority booths",
+    "priorityNote": "Weighted percentile ranks within this constituency. Booths with no score are not listed.",
+    "allBooths": "All booths",
+    "noPriority": "No booth has a priority score yet.",
+    "swings": "Largest swings",
+    "swingsNote": "JMM share against the previous assembly election, where the booth is comparable.",
+    "allResults": "All results",
+    "noSwings": "No booth carries a swing yet.",
+    "newVoters": "New-voter hotspots",
+    "newVotersNote": "Additions in the roll window as a share of the electorate.",
+    "allVoters": "All voters",
+    "noNewVoters": "No booth has a new-voter share yet.",
+    "community": "Community snapshot",
+    "communityNote": "Estimates, not counts. The figure on the right is the uncertainty.",
+    "allCommunity": "Full breakdown",
+    "noCommunity": "No community estimate is loaded.",
+    "confidenceTitle": "Uncertainty: 100 minus the confidence score, in points.",
+    "news": "Latest news",
+    "allNews": "All news",
+    "noNews": "No news item is loaded."
+  },
+  "admin": {
+    "data": "Data sources",
+    "dataNote": "A count of zero reads as not loaded, not as a measured zero. Run the command shown to fill a gap."
   }
 }

@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 
 import StatTile from '../components/StatTile'
 import { Empty, ErrorState, Loading } from '../components/States'
+import DataHealthStrip, { type DataHealth } from '../components/DataHealth'
 import { api } from '../lib/api'
 import { dateShort, num } from '../lib/format'
 import type { AcState } from '../lib/ac'
@@ -22,11 +23,16 @@ interface Jobs {
   last_per_job: Array<{ job: string; started: string; finished: string | null; status: string }>
 }
 
-const TABS = ['review', 'usage', 'jobs'] as const
+// 'data' first: it is the screen an operator opens this page for, and the
+// data-health strip moved here from the Overview. Row counts and shell
+// commands belong on an admin screen, not above a strategist's margin chart -
+// and this route is already admin-only in App.tsx, so a non-admin never
+// reaches a command at all.
+const TABS = ['data', 'review', 'usage', 'jobs'] as const
 
 export default function Admin({ ac }: { ac: AcState }) {
   const { t, i18n } = useTranslation()
-  const [tab, setTab] = useState<(typeof TABS)[number]>('review')
+  const [tab, setTab] = useState<(typeof TABS)[number]>('data')
   const client = useQueryClient()
 
   const review = useQuery<{
@@ -43,6 +49,13 @@ export default function Admin({ ac }: { ac: AcState }) {
   const jobs = useQuery<Jobs>({
     queryKey: ['jobs', ac.acNumber], queryFn: () => api.get(ac.path('/admin/jobs')),
     enabled: tab === 'jobs' && ac.acNumber !== null,
+  })
+  // The data-health block comes from /summary, which already computes it for
+  // every AC. No new endpoint: the Overview was reading the same field.
+  const health = useQuery<{ data_health: DataHealth; constituency: { ac_number: number } }>({
+    queryKey: ['summary', ac.acNumber],
+    queryFn: () => api.get(ac.path('/summary')),
+    enabled: tab === 'data' && ac.acNumber !== null,
   })
 
   const resolve = useMutation({
@@ -66,6 +79,26 @@ export default function Admin({ ac }: { ac: AcState }) {
           ))}
         </div>
       </div>
+
+      {tab === 'data' && (
+        <div className="space-y-3">
+          {health.isLoading && <Loading />}
+          {health.isError && (
+            <ErrorState error={health.error} onRetry={() => void health.refetch()} />
+          )}
+          {health.data && (
+            <>
+              <DataHealthStrip
+                health={health.data.data_health}
+                acNumber={health.data.constituency.ac_number}
+              />
+              <p className="text-2xs" style={{ color: 'var(--text-muted)' }}>
+                {t('admin.dataNote')}
+              </p>
+            </>
+          )}
+        </div>
+      )}
 
       {tab === 'review' && (
         <>

@@ -1,6 +1,31 @@
 /** API client. One place that attaches the token, handles 401 and formats errors. */
 
-import { fixtureFor } from '../fixtures/responses'
+/**
+ * Fixtures are **not** imported statically.
+ *
+ * N9: a static import put the whole fixture module - 305 booths, their prior
+ * election, the area list - into the main chunk, which grew from 123 kB to
+ * 319 kB. Every production user downloaded invented election data they could
+ * never see, because `USE_FIXTURES` is false in that build. Tree-shaking cannot
+ * remove it: `import.meta.env.VITE_FIXTURES` is replaced at build time, so the
+ * branch does fold away, but the module was already in the graph by then.
+ *
+ * A dynamic `import()` inside the branch puts it in its own chunk that is only
+ * ever requested when the branch is taken. Cached after the first call, because
+ * `request` runs per API call and re-importing per call would serialise them
+ * behind a module fetch.
+ */
+type FixtureLookup = (path: string) => unknown
+
+let fixtureLookup: FixtureLookup | null = null
+
+async function loadFixtures(): Promise<FixtureLookup> {
+  if (fixtureLookup === null) {
+    const module = await import('../fixtures/responses')
+    fixtureLookup = module.fixtureFor
+  }
+  return fixtureLookup
+}
 
 const BASE = import.meta.env.VITE_API_BASE ?? '/api'
 const TOKEN_KEY = 'giridih.token'
@@ -51,6 +76,7 @@ export class ApiError extends Error {
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (USE_FIXTURES) {
+    const fixtureFor = await loadFixtures()
     const canned = fixtureFor(path)
     if (canned === undefined) {
       throw new ApiError(404, `No fixture for ${path}. Add one to src/fixtures/responses.ts.`)

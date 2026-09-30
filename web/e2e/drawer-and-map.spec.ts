@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './fixtures'
 
 /**
  * Browser checks for the drawer and map defects reported from the screens.
@@ -17,7 +17,17 @@ import { expect, test } from '@playwright/test'
  * booths could not produce the overflow or the marker density being tested.
  */
 
-const AC = '/acs/32'
+// The frontend routes are top-level; the constituency comes from the
+// switcher, not the URL. `/acs/32/map` is the *API* shape, and the router's
+// catch-all sends it to `/` - so every spec here was quietly asserting
+// against the Overview page. The screenshot from the failing run is what
+// showed it.
+//
+// FRONTEND_HARDENING section 4 does want the AC in the URL ("a hard refresh
+// on a nested route, e.g. /acs/32/booths?sort=margin, loads the same view"),
+// which is not true today. Recorded as N13; this constant becomes '/acs/32'
+// when it is.
+const AC = ''
 
 /** Widths the brief names for the layout checks. */
 const WIDTHS = [1440, 1024, 390]
@@ -193,9 +203,15 @@ test.describe('map markers and tooltip', () => {
     const tooltipText = (await tooltip.innerText()).replace(/\s+/g, ' ')
 
     await marker.click()
-    await expect(page.getByTestId('booth-drawer')).toBeVisible()
-    const cardText = (await page.getByTestId('booth-drawer-panel').innerText())
-      .replace(/\s+/g, ' ')
+    const panel = page.getByTestId('booth-drawer-panel')
+    await expect(panel).toBeVisible()
+    // The card is fetched after the drawer opens, and the fixture layer adds a
+    // deliberate 60ms so loading states are reachable in review. Without this
+    // wait the comparison read "32-B0001 Close Loading..." and failed on a race
+    // rather than on a disagreement.
+    await expect(panel.getByText('Loading', { exact: false })).toHaveCount(0)
+    await expect(panel.getByText('VS-2024').first()).toBeVisible()
+    const cardText = (await panel.innerText()).replace(/\s+/g, ' ')
 
     // The electorate the tooltip shows must appear on the card. Comparing the
     // rendered strings is the point: the reported defect was a tooltip with

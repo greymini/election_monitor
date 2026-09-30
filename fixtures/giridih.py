@@ -598,3 +598,48 @@ def booths_with_metrics() -> list[dict]:
         row.update(derived(booth, prev_rows.get(booth.booth_uid)))
         out.append(row)
     return out
+
+
+# ---------------------------------------------------------------------------
+# Booth priority, via the real percentile ranks
+# ---------------------------------------------------------------------------
+#
+# `priority_score` was missing from the fixture entirely, so the Overview's
+# "highest-priority booths" panel filtered every booth out and rendered an empty
+# list. Computed here with `analytics.metrics.percentile_ranks` and
+# `priority_score` - the same functions `mv_booth_priority` calls - so the
+# fixture exercises the real weighting rather than an invented number, including
+# the renormalisation when an input is NULL.
+
+def booths_with_priority() -> list[dict]:
+    """Every booth with its derived metrics and its priority score."""
+    from analytics import metrics
+
+    rows = booths_with_metrics()
+
+    # Percentile ranks are computed **within one AC**, which is what the view
+    # does and why the fixture must too: a rank over a pooled set would be a
+    # different number.
+    closeness_input = [r["margin_pct"] for r in rows]
+    margin_ranks = metrics.percentile_ranks(closeness_input)
+    # Closeness is 1 - the margin percentile, so the tightest booth scores 1.
+    closeness = [None if r is None else 1.0 - r for r in margin_ranks]
+
+    new_voter = metrics.percentile_ranks([r["new_voter_pct"] for r in rows])
+    floating = metrics.percentile_ranks([r["floating_pct"] for r in rows])
+    volatility = metrics.percentile_ranks([r["margin_stddev"] for r in rows])
+
+    out = []
+    for i, row in enumerate(rows):
+        score = metrics.priority_score(metrics.PriorityInputs(
+            closeness=closeness[i],
+            new_voter_pct=new_voter[i],
+            floating_pct=floating[i],
+            volatility=volatility[i],
+        ))
+        enriched = dict(row)
+        enriched["priority_score"] = score.score
+        enriched["priority_inputs_used"] = score.inputs_used
+        enriched["priority_weight_used"] = score.weight_used
+        out.append(enriched)
+    return out
