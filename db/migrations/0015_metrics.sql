@@ -904,10 +904,32 @@ WITH totals AS (
     FROM mv_result_booth_party
     WHERE party IS DISTINCT FROM 'NOTA'
     GROUP BY ac_id, election_id, party
+), candidate_totals AS (
+    -- N2. Ranked per candidate, on the same grain and the same `contestant`
+    -- key as mv_result_booth_candidate, so the AC headline and the booth table
+    -- cannot name different winners.
+    --
+    -- This view used to rank over party_totals. D3 was fixed at booth grain -
+    -- the old booth CTE grouped on COALESCE(party_id, -1), so eight
+    -- independents on 500 votes each summed into one 4,000-vote pseudo-party
+    -- that outranked a real winner on 3,000 - but the AC summary was left
+    -- ranking the same way. Every independent shares a NULL party_id and
+    -- collapsed into a single row, so the constituency headline could name a
+    -- winner that no booth in the constituency had elected.
+    --
+    -- party_totals is kept below: it still feeds the party-level share
+    -- figures, which are a real aggregate. It is only the ranking that must
+    -- not bucket candidates together.
+    SELECT ac_id, election_id, candidate_id, candidate_name, party, contestant,
+           SUM(votes)::INT AS votes
+    FROM mv_result_booth_candidate
+    WHERE party IS DISTINCT FROM 'NOTA'
+    GROUP BY ac_id, election_id, candidate_id, candidate_name, party, contestant
 ), ranked AS (
-    SELECT pt.*, ROW_NUMBER() OVER (PARTITION BY pt.ac_id, pt.election_id
-                                    ORDER BY pt.votes DESC, pt.party) AS rn
-    FROM party_totals pt
+    SELECT ct.*, ROW_NUMBER() OVER (PARTITION BY ct.ac_id, ct.election_id
+                                    ORDER BY ct.votes DESC,
+                                             ct.candidate_name) AS rn
+    FROM candidate_totals ct
 ), crosswalk AS (
     -- Coverage denominator is ps_list_entry, not booth_crosswalk. C11: the
     -- review-band stations that had no crosswalk row were missing from both the
@@ -929,13 +951,10 @@ WITH totals AS (
     -- for the same metric at a different grain, which is exactly the drift
     -- these functions exist to prevent.
     --
-    -- Counted over party_totals, so independents sharing a NULL party_id count
-    -- as one contestant rather than several. At booth grain D3 fixed that by
-    -- ranking per candidate; this view still ranks per party, so the AC
-    -- headline can name a winner that the booth table does not. Recorded in
-    -- PROGRESS.md; changing it belongs with the full candidate lists, not here.
+    -- Counted over candidate_totals, so eleven candidates are eleven
+    -- contestants and three of them being independents does not make them one.
     SELECT ac_id, election_id, COUNT(*)::INT AS contestants
-    FROM party_totals
+    FROM candidate_totals
     GROUP BY ac_id, election_id
 ), new_voters AS (
     SELECT ac_id, election_id,
@@ -948,14 +967,19 @@ WITH totals AS (
 SELECT t.ac_id, t.election_id, t.election_label, t.election_type, t.election_year AS year,
        e.is_baseline,
        t.booths, t.electors, t.valid_votes, t.votes_polled, t.nota,
-       w.party  AS winner_party,
-       w.votes  AS winner_votes,
-       r.party  AS runner_party,
-       r.votes  AS runner_votes,
+       -- `contestant`, not `party`, matching mv_result_booth_wide: for a
+       -- major party the two are the same string, and for an independent the
+       -- contestant key keeps the candidates apart instead of merging them.
+       w.contestant     AS winner_party,
+       w.candidate_name AS winner_candidate,
+       w.votes          AS winner_votes,
+       r.contestant     AS runner_party,
+       r.candidate_name AS runner_candidate,
+       r.votes          AS runner_votes,
        metric_margin_votes(w.votes, r.votes, cn.contestants)::INT AS margin_votes,
        metric_margin_pct(w.votes, r.votes, cn.contestants,
                          t.valid_votes) AS margin_pct,
-       metric_signed_margin_pct(w.party, w.votes, r.votes, cn.contestants,
+       metric_signed_margin_pct(w.contestant, w.votes, r.votes, cn.contestants,
                                 t.valid_votes, pa.abbr,
                                 pb.abbr) AS signed_margin_pct,
        -- Turnout only where every booth in the AC knows its electors;

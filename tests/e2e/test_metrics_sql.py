@@ -242,17 +242,37 @@ def test_share_pct_matches_the_python(cursor, loaded):
 
 def test_swing_matches_the_python(cursor, loaded):
     cursor.execute(
-        "SELECT s.booth_uid, s.party, s.share_pct, s.prev_share_pct, s.swing_pct "
+        "SELECT s.booth_uid, s.party, s.share_pct, s.prev_share_pct, "
+        "       s.swing_pct, s.crosswalk_confidence, s.crosswalk_reviewed, "
+        "       s.lineage_kind "
         "FROM mv_swing s WHERE s.election_id = %s AND s.party = 'JMM'",
         (loaded["elections"]["VS-2024"],),
     )
     rows = cursor.fetchall()
     assert rows, "no swing rows - the crosswalk join is probably wrong"
     for row in rows:
-        expected = metrics.swing_pct(
-            float(row["share_pct"]), float(row["prev_share_pct"])
+        # The row's own crosswalk quality, not an assumed anchor (N1). The
+        # gate is part of the metric, so comparing only the subtraction
+        # would leave the half of swing_pct that decides whether there is a
+        # swing at all unchecked on the SQL side.
+        link = (
+            None if row["crosswalk_confidence"] is None
+            else metrics.CrosswalkLink(
+                confidence=float(row["crosswalk_confidence"]),
+                reviewed=bool(row["crosswalk_reviewed"]),
+            )
         )
-        assert float(row["swing_pct"]) == expected
+        expected = metrics.swing_pct(
+            None if row["share_pct"] is None else float(row["share_pct"]),
+            None if row["prev_share_pct"] is None
+            else float(row["prev_share_pct"]),
+            link,
+            lineage_kind=row["lineage_kind"],
+        )
+        actual = (
+            None if row["swing_pct"] is None else float(row["swing_pct"])
+        )
+        assert actual == expected, row["booth_uid"]
 
 
 def test_swing_is_null_for_the_earliest_election(cursor, loaded):

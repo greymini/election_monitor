@@ -112,27 +112,44 @@ ramp-midpoint zero for a third-party win. If a refactor ever makes the correct
 and incorrect forms agree, those tests fail on the grounds that they no longer
 distinguish anything.
 
-### Two known asymmetries, recorded rather than smoothed over
+### Two asymmetries the parity work found, since closed
 
-**An absent crosswalk means different things on the two sides.** In SQL, a NULL
-confidence comes from a `LEFT JOIN` that found no `booth_crosswalk` row, so the
-booth cannot be shown to be the station it was and no comparison is carried. In
-Python, `link=None` is the *default* and means the caller is asserting there is
-nothing to gate on — an anchor booth. Same absent input, opposite answers. The
-Python default is the risky half: a caller who forgets to pass the link gets
-ungated swings, which is the exact shape of D2. `metrics.swing_pct` has no
-production callers yet, so nothing is wrong today; when the Form 20 loader
-starts computing swings it must pass the link explicitly.
+**An absent crosswalk means "cannot compare" on both sides now (N1).** In SQL a
+NULL confidence comes from a `LEFT JOIN` that found no `booth_crosswalk` row, so
+the booth cannot be shown to be the station it was and no comparison is carried.
+Python used to read the same absence as *nothing to gate on*, because `link`
+defaulted to `None` and `None` meant anchor — so the two sides gave opposite
+answers for the input most likely to arise, and a caller who merely forgot the
+argument got swings between booths that had never been matched to each other.
+That is the shape of D2.
 
-**`mv_ac_summary` still ranks by party, not by candidate.** D3 was fixed at booth
-grain — `mv_result_booth_candidate` ranks per candidate, so eight independents on
-500 votes each no longer sum into one 4,000-vote pseudo-party that outranks a
-real winner. The AC-grain summary was not changed, and it ranks over
-`party_totals`, where every independent shares a NULL `party_id` and collapses
-into a single row. So the AC headline can in principle name a winner that the
-booth table does not. It does not affect Giridih 2024, where the top two are
-both major parties. Fixing it belongs with the full per-AC candidate lists, not
-with the parity work.
+`link` is now **required and positional** on `comparison_allowed`, `swing_pct`
+and `alliance_swing_pct`; omitting it raises `TypeError`. A booth that genuinely
+is the station it was passes `metrics.ANCHOR`, which asserts what the old default
+assumed — out loud, at the call site, where a reviewer can see it. Refusing on
+`None` only helps if the caller is made to supply something, so the required
+argument is the half that does the work.
+
+**`mv_ac_summary` ranks candidates now, not party totals (N2).** D3 was fixed at
+booth grain — `mv_result_booth_candidate` ranks per candidate, so eight
+independents on 500 votes each no longer sum into one 4,000-vote pseudo-party
+that outranks a real winner on 3,000. The AC-grain summary was left ranking the
+old way over `party_totals`, where every independent shares a NULL `party_id`
+and collapses into a single row, so the constituency headline could name a
+winner no booth had elected.
+
+It now ranks over a `candidate_totals` CTE on the same grain and the same
+`contestant` key as the booth view, and reports `winner_candidate` and
+`runner_candidate` beside the party. `party_totals` remains, because a
+party-level share is a real aggregate — it was only the *ranking* that must not
+bucket. `contestants` is counted over candidates too, so eleven candidates are
+eleven contestants and three of them being independents does not make them one.
+
+Two tests hold it: a structural one in the default suite asserting the ranking
+reads `candidate_totals`, and the proof in the e2e suite, which sums
+`mv_result_booth_candidate` across every booth and asserts the AC headline names
+that candidate. Summing the booth table is what the AC winner *means*, so it is
+the reference rather than a second opinion.
 
 ---
 

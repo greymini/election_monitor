@@ -23,12 +23,14 @@ from __future__ import annotations
 import pytest
 
 from analytics.metrics import (
+    ANCHOR,
     CROSSWALK_MIN_CONFIDENCE,
     NOTA,
     PRIORITY_WEIGHTS,
     CrosswalkLink,
     PriorityInputs,
     alliance_swing_pct,
+    comparison_allowed,
     floating_pct,
     margin_pct,
     margin_votes,
@@ -297,21 +299,21 @@ def test_signed_margin_is_null_with_no_result():
 
 
 def test_swing_pct_hand_computed():
-    assert swing_pct(45.3, 48.2) == -2.9
-    assert swing_pct(43.45, 38.7) == 4.75
+    assert swing_pct(45.3, 48.2, ANCHOR) == -2.9
+    assert swing_pct(43.45, 38.7, ANCHOR) == 4.75
 
 
 def test_swing_pct_is_null_with_no_prior_election():
     """D2, the fabricated-swing bug. The old view COALESCEd a missing LAG to 0,
     so the earliest loaded election reported each party's entire vote share as
     its swing - a +38.3 point BJP "swing" at every booth in 2014."""
-    assert swing_pct(38.3, None) is None
+    assert swing_pct(38.3, None, ANCHOR) is None
 
 
 def test_a_party_that_contested_and_polled_nothing_has_a_real_swing():
     """The distinction the None/0.0 typing exists for: None means "did not
     contest or unknown", 0.0 means "contested and got nothing"."""
-    assert swing_pct(5.0, 0.0) == 5.0
+    assert swing_pct(5.0, 0.0, ANCHOR) == 5.0
 
 
 def test_swing_pct_is_null_for_a_weak_unreviewed_crosswalk():
@@ -334,8 +336,49 @@ def test_swing_pct_is_allowed_for_an_auto_accepted_crosswalk():
 def test_swing_pct_is_null_for_a_split_booth_until_the_lineage_is_aggregated():
     """Half a booth's electorate against the whole of last time's is not a
     swing."""
-    assert swing_pct(45.0, 40.0, lineage_kind="split", lineage_aggregated=False) is None
-    assert swing_pct(45.0, 40.0, lineage_kind="split", lineage_aggregated=True) == 5.0
+    assert swing_pct(45.0, 40.0, ANCHOR, lineage_kind="split",
+                     lineage_aggregated=False) is None
+    assert swing_pct(45.0, 40.0, ANCHOR, lineage_kind="split",
+                     lineage_aggregated=True) == 5.0
+
+
+def test_swing_pct_is_null_when_there_is_no_crosswalk_row_at_all():
+    """N1. `link=None` means no crosswalk row exists, so the booth cannot
+    be shown to be the station it was and no comparison is carried.
+
+    This used to return 5.0. `link` defaulted to None *and* None meant
+    "nothing to gate on", so the two readings of absence collided and a
+    caller who forgot the argument got a swing between booths that had
+    never been matched to each other. The SQL side always refused this -
+    a NULL confidence out of a LEFT JOIN that found nothing - so the two
+    implementations disagreed about the one input most likely to occur.
+    """
+    assert swing_pct(45.0, 40.0, None) is None
+    assert alliance_swing_pct(
+        {"BJP": 43.0}, {"BJP": 38.0}, ALLIANCE_2024, ALLIANCE_2019, "NDA",
+        None,
+    ) is None
+
+
+def test_omitting_the_crosswalk_link_is_an_error_not_a_default():
+    """The other half of N1, and the half that matters more.
+
+    Refusing to compare when the link is None only helps if the caller is
+    made to supply it. A default - of any value - lets the question go
+    unasked, which is how it went unasked.
+    """
+    with pytest.raises(TypeError):
+        swing_pct(45.0, 40.0)  # type: ignore[call-arg]
+    with pytest.raises(TypeError):
+        comparison_allowed()  # type: ignore[call-arg]
+
+
+def test_the_anchor_constant_is_usable_and_says_what_it_is():
+    """ANCHOR exists so the "same station, nothing to gate on" case can be
+    stated rather than implied by an omission."""
+    assert ANCHOR.usable_for_comparison
+    assert ANCHOR.kind == "anchor"
+    assert comparison_allowed(ANCHOR) is True
 
 
 # ==========================================================================
@@ -353,13 +396,16 @@ def test_alliance_swing_uses_each_events_own_alliance_map():
     prev = {"BJP": 38.7, "AJSU": 4.0}
     now = {"BJP": 43.45, "AJSU": 3.0}
     # NDA in 2019 is BJP alone (38.7); in 2024 it is BJP + AJSU (46.45).
-    assert alliance_swing_pct(now, prev, ALLIANCE_2024, ALLIANCE_2019, "NDA") == 7.75
+    assert alliance_swing_pct(now, prev, ALLIANCE_2024, ALLIANCE_2019,
+                              "NDA", ANCHOR) == 7.75
 
 
 def test_alliance_swing_is_null_when_a_side_has_no_members_with_a_share():
-    assert alliance_swing_pct({}, {"BJP": 38.7}, ALLIANCE_2024, ALLIANCE_2019, "NDA") is None
+    assert alliance_swing_pct({}, {"BJP": 38.7}, ALLIANCE_2024,
+                              ALLIANCE_2019, "NDA", ANCHOR) is None
     assert alliance_swing_pct(
-        {"JLKM": 5.0}, {"JLKM": 1.0}, ALLIANCE_2024, ALLIANCE_2019, "NDA"
+        {"JLKM": 5.0}, {"JLKM": 1.0}, ALLIANCE_2024, ALLIANCE_2019, "NDA",
+        ANCHOR,
     ) is None
 
 

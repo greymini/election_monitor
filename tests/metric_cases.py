@@ -202,12 +202,23 @@ SIGNED_MARGIN_PCT = [
 # comparison_allowed - the gate shared by swing share, swing votes and the
 # vanished-party rows.
 #
-# Every case here supplies a real confidence, because a NULL confidence means
-# something different on the two sides and the difference is recorded
-# separately in test_metric_parity.py rather than smoothed over here.
+# The absent-crosswalk case is in here now. It used to be excluded: a NULL
+# confidence meant "cannot compare" in SQL while `link=None` meant "nothing to
+# gate on" in Python, so the two sides gave opposite answers for the input most
+# likely to occur in practice, and the divergence was documented rather than
+# fixed. That was N1, and it is closed.
 # ---------------------------------------------------------------------------
 
 COMPARISON_ALLOWED = [
+    # N1. In SQL a NULL confidence is a LEFT JOIN that found no booth_crosswalk
+    # row; in Python it is an explicit None. Either way the booth cannot be
+    # shown to be the station it was, so there is nothing to compare against.
+    Case("no crosswalk row at all means no comparison",
+         (None, None, None, False), False,
+         lambda: metrics.comparison_allowed(None)),
+    Case("an anchor is the same station, so it compares",
+         (1.0, True, None, False), True,
+         lambda: metrics.comparison_allowed(metrics.ANCHOR)),
     Case("a strong match carries a comparison", (0.95, False, None, False), True,
          lambda: metrics.comparison_allowed(CrosswalkLink(0.95, False))),
     Case("the auto-accept boundary is inclusive", (0.85, False, None, False), True,
@@ -262,6 +273,10 @@ SWING_PCT = [
     Case("a split booth carries no swing",
          (45.0, 40.0, 0.95, False, "split", False), None,
          lambda: metrics.swing_pct(45.0, 40.0, CrosswalkLink(0.95, False), "split")),
+    # N1 at the swing level: this returned 5.0 in Python and NULL in SQL.
+    Case("no crosswalk row carries no swing",
+         (45.0, 40.0, None, None, None, False), None,
+         lambda: metrics.swing_pct(45.0, 40.0, None)),
 ]
 
 # ---------------------------------------------------------------------------

@@ -219,6 +219,39 @@ def test_no_view_restates_a_constant_that_belongs_to_a_function(token):
     )
 
 
+def test_the_ac_summary_ranks_candidates_not_party_totals():
+    """N2, as a structural guard.
+
+    `mv_ac_summary` must rank over `candidate_totals`, which is per candidate on
+    the same `contestant` key as `mv_result_booth_candidate`. It used to rank
+    over `party_totals`, where every independent shares a NULL `party_id` and
+    collapses into one row - so the constituency headline could name a winner
+    that no booth in the constituency had elected. D3 was fixed at booth grain
+    and left standing here.
+
+    The real proof is `test_the_ac_winner_agrees_with_the_booth_table` in the
+    e2e suite, which sums the booth table and compares. This one is cheap, runs
+    without a database, and would catch the ranking being quietly moved back.
+    """
+    body = _migration_outside_generated_block()
+    ac_summary = body[body.index("CREATE MATERIALIZED VIEW mv_ac_summary"):]
+
+    assert "), candidate_totals AS (" in ac_summary, (
+        "mv_ac_summary has no candidate_totals CTE"
+    )
+    ranked = ac_summary[ac_summary.index("), ranked AS ("):]
+    ranked = ranked[:ranked.index("), crosswalk AS (")]
+    assert "FROM candidate_totals" in ranked, (
+        "mv_ac_summary's ranked CTE does not read candidate_totals; if it reads "
+        "party_totals again, independents are bucketed and the AC headline can "
+        "disagree with the booth table (N2)"
+    )
+    assert "FROM party_totals" not in ranked, (
+        "mv_ac_summary ranks over party_totals, which buckets every independent "
+        "into a single NULL-party_id row (N2)"
+    )
+
+
 def test_the_views_actually_call_the_generated_functions():
     """The inverse of the checks above: absence of the formulas would also be
     satisfied by a migration that computed nothing at all."""
@@ -231,25 +264,39 @@ def test_the_views_actually_call_the_generated_functions():
 
 
 # ---------------------------------------------------------------------------
-# The one place the two implementations genuinely differ, recorded rather than
-# smoothed over.
+# N1: absence now means the same thing on both sides
 # ---------------------------------------------------------------------------
 
 
-def test_absent_crosswalk_means_different_things_on_the_two_sides():
-    """A known, deliberate asymmetry in `comparison_allowed`.
+def test_absent_crosswalk_means_cannot_compare_on_both_sides():
+    """N1, closed.
 
-    In SQL, a NULL confidence comes from a LEFT JOIN that found no
+    In SQL a NULL confidence comes from a LEFT JOIN that found no
     `booth_crosswalk` row, so the booth cannot be shown to be the station it was
-    and no comparison is carried. In Python, `link=None` is the default and
-    means the caller is asserting there is nothing to gate on - an anchor booth.
+    and no comparison is carried. Python used to read the same absence as
+    "nothing to gate on", because `link` defaulted to `None` and `None` meant
+    anchor - so the two sides gave opposite answers for the input most likely to
+    arise, and a caller who merely forgot the argument got ungated swings.
 
-    Same absent input, opposite answers. It is recorded here rather than
-    reconciled because the Python default is the risky half: a caller who simply
-    forgets to pass the link gets ungated swings, which is the exact shape of
-    D2. `swing_pct` has no production callers yet, so nothing is wrong today;
-    when the Form 20 loader starts computing swings it must pass the link
-    explicitly. Noted in docs/METRICS.md and PROGRESS.md.
+    Both refuse now, and the anchor case has a name instead of being the
+    default.
     """
-    assert metrics.comparison_allowed(link=None) is True
+    assert metrics.comparison_allowed(None) is False
+    assert metrics.comparison_allowed(metrics.ANCHOR) is True
     assert metrics.comparison_allowed(metrics.CrosswalkLink(0.0, False)) is False
+
+
+def test_the_crosswalk_link_cannot_be_omitted():
+    """The half of N1 that does the work.
+
+    Refusing to compare when the link is `None` only helps if the caller is made
+    to supply one. A default - of any value - lets the question go unasked,
+    which is how it went unasked.
+    """
+    for call in (
+        lambda: metrics.comparison_allowed(),
+        lambda: metrics.swing_pct(45.0, 40.0),
+        lambda: metrics.alliance_swing_pct({}, {}, {}, {}, "NDA"),
+    ):
+        with pytest.raises(TypeError):
+            call()

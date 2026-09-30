@@ -227,8 +227,19 @@ class CrosswalkLink:
         return self.reviewed or self.confidence >= CROSSWALK_MIN_CONFIDENCE
 
 
+# An anchor booth: the same polling station it was, established rather than
+# guessed. Callers that have no crosswalk row to consult *because none is
+# needed* pass this, and they say so where it can be reviewed.
+#
+# It exists because `link` is a required argument below. Without a name for this
+# case the only way to satisfy that requirement would be to write
+# `CrosswalkLink(1.0, True)` inline, which reads like a fudge even when it is
+# correct.
+ANCHOR = CrosswalkLink(confidence=1.0, reviewed=True, kind="anchor")
+
+
 def comparison_allowed(
-    link: CrosswalkLink | None = None,
+    link: CrosswalkLink | None,
     lineage_kind: str | None = None,
     lineage_aggregated: bool = False,
 ) -> bool:
@@ -239,10 +250,24 @@ def comparison_allowed(
     of it. Its SQL counterpart is `metric_comparison_allowed`, and the parity
     test drives both over the same truth table.
 
-    A link of `None` means the booth is the same station it was - an anchor, not
-    an unverified guess - so there is nothing to gate on.
+    **`link=None` means there is no crosswalk row**, so the booth cannot be shown
+    to be the station it was, so no comparison is carried. It is not a
+    convenience default: `link` is required and positional, and a caller that
+    omits it gets a `TypeError` rather than an ungated swing.
+
+    That was finding N1. `link` used to default to `None` *and* `None` used to
+    mean "nothing to gate on", so forgetting the argument silently produced
+    comparisons between booths that had never been matched to each other - the
+    same shape of error as D2, where a missing prior election was COALESCEd to
+    zero and every party's whole vote share was reported as its swing. The SQL
+    side had it right throughout: `metric_comparison_allowed` reads a NULL
+    confidence out of a LEFT JOIN that found nothing and refuses. The two sides
+    now agree about what absence means, and the parity cases pin it.
+
+    An anchor booth passes `ANCHOR`, which asserts what the old default assumed
+    - except out loud, at the call site.
     """
-    if link is not None and not link.usable_for_comparison:
+    if link is None or not link.usable_for_comparison:
         return False
     if lineage_kind in {"split", "merge"} and not lineage_aggregated:
         return False
@@ -252,7 +277,7 @@ def comparison_allowed(
 def swing_pct(
     share_now: float | None,
     share_prev: float | None,
-    link: CrosswalkLink | None = None,
+    link: CrosswalkLink | None,
     lineage_kind: str | None = None,
     lineage_aggregated: bool = False,
 ) -> float | None:
@@ -263,8 +288,14 @@ def swing_pct(
         view COALESCEd a missing LAG to 0, so the earliest loaded election
         reported every party's full vote share as its swing: a fabricated +38.3
         point BJP swing at every booth in VS-2014 (D2).
+      * there is no crosswalk row, so the booth cannot be shown to be the
+        station it was. Pass `ANCHOR` if it demonstrably is one.
       * the crosswalk link is unreviewed and below the auto-accept threshold.
       * the booth split or merged and the lineage group has not been aggregated.
+
+    `link` is required and has no default (N1): a swing computed without
+    deciding whether the two booths are the same booth is not a swing, and a
+    default that let the question go unasked is how the question went unasked.
 
     A party that genuinely contested the prior election and polled nothing has
     `share_prev = 0.0`, which is a real zero and produces a real swing. That is
@@ -284,7 +315,7 @@ def alliance_swing_pct(
     alliance_now: Mapping[str, str],
     alliance_prev: Mapping[str, str],
     alliance: str,
-    link: CrosswalkLink | None = None,
+    link: CrosswalkLink | None,
 ) -> float | None:
     """Swing for an alliance, summing member parties **as they stood at each
     event**.
@@ -295,9 +326,10 @@ def alliance_swing_pct(
     a party's votes to a bloc it was not in.
 
     NULL when either side has no members with a share, on the same reasoning as
-    `swing_pct`.
+    `swing_pct` - and on the same gate, for the same reason: `link` is required
+    and `None` means there is no crosswalk row, so there is no comparison (N1).
     """
-    if link is not None and not link.usable_for_comparison:
+    if not comparison_allowed(link):
         return None
 
     def total(shares: Mapping[str, float | None], mapping: Mapping[str, str]) -> float | None:

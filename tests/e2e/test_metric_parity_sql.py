@@ -268,6 +268,95 @@ def test_the_wide_view_agrees_with_python_row_by_row(cursor):
                 row["contest_party_a"], row["contest_party_b"])), where
 
 
+def test_the_ac_winner_agrees_with_the_booth_table(cursor):
+    """N2. The constituency headline must name the candidate the booths elected.
+
+    Summing `mv_result_booth_candidate` over every booth is what the AC winner
+    *means*, so that sum is the reference. `mv_ac_summary` used to rank over
+    party totals instead, where every independent shares a NULL `party_id` and
+    collapses into one row - the same bucketing D3 removed at booth grain and
+    left standing here, so the two grains could name different winners.
+    """
+    from tests.e2e.conftest import refresh_views
+
+    refresh_views(cursor)
+
+    cursor.execute(
+        "SELECT ac_id, election_id, winner_party, winner_candidate, "
+        "       winner_votes, runner_party, runner_candidate, runner_votes "
+        "FROM mv_ac_summary ORDER BY ac_id, election_id"
+    )
+    summary = cursor.fetchall()
+    if not summary:
+        pytest.skip(
+            "mv_ac_summary is empty: the seed loads no booth results, so there "
+            "is no winner to check. Not a pass - see items 8 and 9."
+        )
+
+    for row in summary:
+        cursor.execute(
+            "SELECT contestant, candidate_name, SUM(votes)::INT AS votes "
+            "FROM mv_result_booth_candidate "
+            "WHERE ac_id = %s AND election_id = %s "
+            "  AND party IS DISTINCT FROM 'NOTA' "
+            "GROUP BY contestant, candidate_name "
+            "ORDER BY votes DESC, candidate_name",
+            (row["ac_id"], row["election_id"]),
+        )
+        from_booths = cursor.fetchall()
+        if not from_booths:
+            continue
+
+        where = f"ac_id={row['ac_id']} election_id={row['election_id']}"
+        assert row["winner_party"] == from_booths[0]["contestant"], (
+            f"{where}: the AC summary names {row['winner_party']!r} as winner, "
+            f"but summing the booth table gives "
+            f"{from_booths[0]['contestant']!r} (N2)"
+        )
+        assert row["winner_candidate"] == from_booths[0]["candidate_name"], where
+        assert row["winner_votes"] == from_booths[0]["votes"], where
+
+        if len(from_booths) >= 2:
+            assert row["runner_party"] == from_booths[1]["contestant"], where
+            assert row["runner_candidate"] == from_booths[1]["candidate_name"], where
+            assert row["runner_votes"] == from_booths[1]["votes"], where
+        else:
+            assert row["runner_party"] is None, (
+                f"{where}: only one contestant, so there is no runner-up"
+            )
+
+
+def test_independents_are_not_bucketed_at_ac_grain(cursor):
+    """The specific shape of N2 and D3, constructed rather than hoped for.
+
+    The audit's example was eight independents on 500 votes each becoming a
+    single 4,000-vote pseudo-party that outranked a real winner on 3,000.
+    Ranked per candidate the real winner wins; bucketed, a seat is awarded to a
+    composite nobody voted for.
+    """
+    cursor.execute(
+        "SELECT contestant, candidate_name FROM mv_result_booth_candidate "
+        "WHERE party = 'IND' OR party IS NULL "
+        "GROUP BY contestant, candidate_name"
+    )
+    independents = cursor.fetchall()
+    if len(independents) < 2:
+        pytest.skip(
+            f"the fixture has {len(independents)} independent(s); bucketing "
+            "cannot be demonstrated with fewer than two. Item 8's mock Form 20 "
+            "is specified to include independents, which is what will make this "
+            "test meaningful."
+        )
+
+    # Each must be its own contestant. Were the key collapsing them, there
+    # would be one row here however many candidates stood.
+    keys = {row["contestant"] for row in independents}
+    assert len(keys) == len(independents), (
+        f"{len(independents)} independents share {len(keys)} contestant "
+        "key(s); they are being bucketed"
+    )
+
+
 def _approx_or_none(value):
     """`pytest.approx(None)` compares by identity, which is not what is wanted
     when the expected value may legitimately be NULL."""

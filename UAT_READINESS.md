@@ -116,9 +116,9 @@ There are two implementations that must agree, so there are four suites.
 | Suite | What it checks | Status |
 |---|---|---|
 | `tests/test_metrics.py` (60 tests) | `analytics/metrics.py` against hand-computed fixtures: every row of §3.2, every NULL rule in it, and the specific audit finding each rule prevents | **RUN — 60 passed** |
-| `tests/test_metric_parity.py` (82 tests) | the Python side against the shared hand-computed cases; that `0015_metrics.sql`'s generated block matches `analytics/metric_sql.py`; and that no view restates a formula, weight or threshold that belongs to a generated function | **RUN — 82 passed** |
+| `tests/test_metric_parity.py` (87 tests) | the Python side against the shared hand-computed cases; that `0015_metrics.sql`'s generated block matches `analytics/metric_sql.py`; and that no view restates a formula, weight or threshold that belongs to a generated function | **RUN — 82 passed** |
 | `tests/e2e/test_metrics_sql.py` (14 tests) | the same fixtures through the views in `db/migrations/0015_metrics.sql` | **NOT RUN — no PostgreSQL in the build environment** |
-| `tests/e2e/test_metric_parity_sql.py` (76 tests) | every §3.2 metric evaluated three ways — hand-computed, Python, and the generated SQL function — all asserted equal; plus a row-by-row recomputation of `mv_result_booth_wide`, because a view can call the right function with the wrong arguments | **NOT RUN — no PostgreSQL in the build environment** |
+| `tests/e2e/test_metric_parity_sql.py` (81 tests) | every §3.2 metric evaluated three ways — hand-computed, Python, and the generated SQL function — all asserted equal; plus a row-by-row recomputation of `mv_result_booth_wide`, because a view can call the right function with the wrong arguments | **NOT RUN — no PostgreSQL in the build environment** |
 
 **NOT RUN, not skipped.** pytest reports the last two as skipped, which is a weaker
 statement than the truth: the SQL implementation of every metric in this system is,
@@ -127,7 +127,7 @@ unverified until an operator runs:
 
 ```bash
 export E2E_DATABASE_URL='postgresql://user:pass@host:5432/giridih_test'
-pytest tests/e2e -v        # expect 90 passed
+pytest tests/e2e -v        # expect 95 passed
 ```
 
 Those suites drop and rebuild the schema, and refuse a URL whose database name does
@@ -235,13 +235,13 @@ Two audit claims the auditor could not execute, now verified empirically:
 
 | Gate | Latest result |
 |---|---|
-| `pytest -q` | **669 passed, 91 skipped** (was 96 at baseline) |
+| `pytest -q` | **677 passed, 96 skipped** (was 96 at baseline) |
 | `ruff check .` | **clean** |
 | `python scripts/lint_sql.py` | **17 migrations, no problems**. Verified against deliberately broken input: it catches transaction control inside a migration and a reference to a relation no earlier migration creates. |
 | `npm run build` | **clean** |
 | `docker compose build` | **NOT RUN — Docker not installed, no rights to install it** |
 
-Of the 91 skipped: 90 are the two e2e SQL suites above (NOT RUN, no database) and one
+Of the 96 skipped: 95 are the two e2e SQL suites above (NOT RUN, no database) and one
 is `Login`, exempted from the "every page fetches from the API" check because it posts
 credentials and renders nothing from the database.
 
