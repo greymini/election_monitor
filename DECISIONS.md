@@ -52,3 +52,46 @@ A named, weaker gate that actually ran is worth more than a stronger one that di
 running stack — Gate A-1's boot check, Gate A-2, Gate A-3's e2e suite, Gate A-4's `uat_seed.sh`
 run — is reported as `NOT VERIFIED HERE`, with the command the UAT operator must run, never as
 PASS. Approved by the operator at plan sign-off.
+
+---
+
+## D-003 · `0013` is the storage migration; multi-AC becomes `0014`
+
+**Conflict.** `claude_code_fix_and_expand_prompt.md` names the multi-AC migration
+`0013_multi_ac.sql` and the extended-data one `0014_extended_data.sql`. The operator then
+asked for per-kind document storage, which needs two columns on `source_doc` before any
+ingestion can use it - and migrations are forward-only and applied in filename order, so
+numbering has to follow build order.
+
+**Chosen.** `0013_source_doc_storage.sql` ships first. Multi-AC becomes `0014_multi_ac.sql`
+and extended data `0015_extended_data.sql`. Nothing is deployed yet, so no applied migration
+is renumbered and no checksum drifts.
+
+**Why.** The alternatives are a gap at `0013` reserved for work not yet written, which
+`scripts/lint_sql.py` reports as a hole, or shipping the storage columns after multi-AC and
+leaving the storage layer unreachable in between.
+
+---
+
+## D-004 · Roll documents are barred from remote storage, not merely defaulted to local
+
+**Conflict.** The operator asked for `STORAGE_BACKEND=local` for roll PDFs and `s3` for Form
+20. Read literally that is a configuration request, satisfiable with two environment
+variables.
+
+**Chosen.** Implemented as an invariant instead, with the operator's explicit agreement.
+`STORAGE_BACKEND` and per-kind overrides work as asked, but `roll_mother` and
+`roll_supplement` are refused any non-local backend regardless of configuration, in three
+places: `storage.assert_local_only`, a `roll_docs_stay_local` CHECK constraint in `0013`, and
+a reported line in `scripts/preflight.py`.
+
+**Why.** A roll PDF holds every elector's name, EPIC number, relative's name, house number
+and age. Under a pure-configuration design one mistyped variable - `STORAGE_BACKEND=s3`
+without the two roll overrides - uploads the entire electoral roll to third-party object
+storage, its access logs, its versioning history and its backups. That is the exact failure
+the aggregate-only design exists to prevent, and it would be silent. The CHECK constraint is
+there because the Python guard only protects the write paths that exist today; a future
+loader, admin endpoint or hand-written UPDATE would bypass it.
+
+**Would change the answer.** Nothing short of a legal basis for holding rolls off-host. If
+that arrives, the change is deliberate and touches three named places, which is the point.

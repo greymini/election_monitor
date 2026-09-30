@@ -100,10 +100,22 @@ claim a check passes on the strength of reading the SQL.
 ### A-0 · Baseline under version control (prerequisite, not in the master prompt)
 | # | Task | Status |
 |---|---|---|
-| A-0.1 | `git init` at `election_monitor/`; add a root `.gitignore` covering `giridih-monitor/.venv`, `node_modules`, `web/dist`, caches, `.env`, `raw/**`, `ocr/**`, `backups/**`, `pgdata/` | todo |
-| A-0.2 | Verify no secret is staged (`.env` excluded, grep the tree for live keys) before the first commit | todo |
-| A-0.3 | Commit `chore: baseline before audit fixes` — the codebase exactly as audited, so every later change is diffable | todo |
-| A-0.4 | Add `jellyfish` + `pdfplumber` to the dev requirements and a test asserting the `jellyfish` and fallback similarity implementations agree to 3 dp over the crosswalk fixtures (A7 — pulled forward because every crosswalk threshold in A-3 depends on it) | todo |
+| A-0.1 | `git init` at `election_monitor/`; root `.gitignore`; `.gitattributes` forcing LF on `*.sh`/`*.sql`/`Dockerfile*`/`*.yml` | **done** `1b0efed` |
+| A-0.2 | Verify no secret staged before the first commit | **done** — 166 files, no credential patterns, `.env` excluded |
+| A-0.3 | Commit `chore: baseline before audit fixes` | **done** `1b0efed` |
+| A-0.4 | `jellyfish` + `pdfplumber` in dev requirements; parity test (A7) | **done** `760a244` — found a real 0.12 divergence |
+
+### A-1B · Deployment topology (operator request, 30 Sep — inserted here because it touches the same files A-3 rewrites)
+| # | Task | Status |
+|---|---|---|
+| A-1B.1 | `common/storage.py`: per-kind backends, `local` + S3-compatible, roll kinds refused a remote backend as an invariant | **done** `33a51d3` |
+| A-1B.2 | `0013_source_doc_storage.sql`: `storage_backend`/`storage_key`, `roll_docs_stay_local` CHECK, `parse_status` lifecycle, `status_changed_at/by` | **done** `33a51d3` |
+| A-1B.3 | `scripts/lint_sql.py` — the substituted commit gate (D-002) | **done** `33a51d3` |
+| A-1B.4 | Worker-less API: topology tests, `/config`, honest `/health` (503), `/knowledge-cards`, Factors and Overview read from the DB | **done** `f7e5f73` |
+| A-1B.5 | Laptop ingestion: `ingest/documents.py` (`--doc`/`--key`), `fetch_ceo` writes through storage, `scripts/preflight.py` | **done** `252d6bd` |
+| A-1B.6 | `RUN.md` reconciliation: it documents `--ac` on every loader, which does not exist until A-2; and it must say `analytics.refresh` is an operator step with no worker | todo |
+| A-1B.7 | Compose: a worker-less profile, and `docker/Dockerfile.db` (folded into A-1.5) | todo |
+| **Gate A-1B** | 33 topology + 45 storage + 20 document tests green; API imports with all worker deps blocked | **PASS for the static half**; DB and S3 round-trips `NOT VERIFIED HERE` |
 
 ### A-1 · Safety (master prompt §2 A-1; fix prompt Phase 0)
 Audit IDs: **E1, C3, C13, A1, A3, A5, E3, E4, G2, A6**
@@ -199,9 +211,9 @@ Scrapers · Scenario · Performance.
 | A2 (TLS) | **likely deferred** — needs a domain and a host; will propose terminating TLS upstream and not publishing 443 from the container | todo |
 | A3 | A-1.6 | todo |
 | A4 | B-6 | todo |
-| A5 | A-1.7 | todo |
-| A6 | A-0.1–A-0.3 | todo |
-| A7 | A-0.4 | todo |
+| A5 | A-1.7 | **fixed** `f7e5f73` |
+| A6 | A-0.1–A-0.3 | **fixed** `1b0efed` |
+| A7 | A-0.4 | **fixed** `760a244` |
 | A8, A9, A10, A11, A12 | B-6 | todo |
 | B1 | A-3.7 | todo |
 | B2 | A-3.6 | todo |
@@ -212,14 +224,14 @@ Scrapers · Scenario · Performance.
 | B7 (no down-migrations) | **proposed deferred** — forward-only is a deliberate design; mitigation is the backup + restore drill in B-6 | todo |
 | B8 | B-3 | todo |
 | B9 | A-2.1 | todo |
-| B10 | A-3.13 | todo |
+| B10 | A-3.13 | **partly fixed** `252d6bd` (lifecycle + the three parsers; scrapers in B-1) |
 | B11 | A-2.1 | todo |
 | C1, C2 | A-3.2 | todo |
 | C3 | A-1.2, A-1.4 | todo |
 | C4, C5, C6, C17 | A-3.5 | todo |
 | C7, C8, C9, C12, C15 | A-3.8 | todo |
 | C10, C11, C16 | A-3.6 | todo |
-| C13 | A-1.3 | todo |
+| C13 | A-1.3 | **fixed** `33a51d3` |
 | C14 | A-3.10 | todo |
 | D1 | A-3.3 | todo |
 | D2, D4, D9 | A-3.9 | todo |
@@ -229,7 +241,7 @@ Scrapers · Scenario · Performance.
 | D8 | A-3.10 | todo |
 | E1 | A-1.1 | todo |
 | E2 | A-1.7 / B-3 role gates — booth card threads the caller's `User` and applies `sees_caste` + block scope | todo |
-| E3 | A-1.10 | todo |
+| E3 | A-1.10 | **fixed** `f7e5f73` |
 | E4 | A-1.9 | todo |
 | E5 | B-3 (`common/pii.py`) | todo |
 | E6 (no pagination) | **proposed deferred** — bounded by dataset size; B-5 addresses the hot paths | todo |
@@ -271,4 +283,11 @@ Scrapers · Scenario · Performance.
 
 | When | Commit | What |
 |---|---|---|
-| 30 Sep 2026 | — | State detection complete; this plan written; awaiting go-ahead before Track A |
+| 30 Sep 2026 | — | State detection complete; plan written; approved |
+| 30 Sep 2026 | `1b0efed` | Baseline committed. 166 files, no secret staged. A6 closed. |
+| 30 Sep 2026 | `283cd90` | Plan and decision log committed |
+| 30 Sep 2026 | `760a244` | A7 closed. Fallback Jaro-Winkler diverged from production by 0.12 on the abbreviation case the crosswalk exists to handle. 96 to 181 tests. |
+| 30 Sep 2026 | `33a51d3` | Storage backends, `0013`, SQL lint. Rolls barred from remote by guard and CHECK constraint. C13 closed. 181 to 226 tests. |
+| 30 Sep 2026 | `f7e5f73` | Worker-less API confirmed and tested. Two pages were not reading from the DB at all; `/health` reported healthy with the DB down. A5, E3 closed. 226 to 258 tests. |
+| 30 Sep 2026 | `252d6bd` | Laptop ingestion: `--doc`/`--key`, storage-backed fetch, preflight. B10 partly closed. 258 to 278 tests. |
+| 30 Sep 2026 | — | `UAT_READINESS.md` written as an interim report (line 1: NOT READY) |
