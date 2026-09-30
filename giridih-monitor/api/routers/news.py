@@ -7,12 +7,12 @@ from datetime import date, timedelta
 from fastapi import APIRouter, Query
 from pydantic import BaseModel, Field
 
-from api.deps import CurrentUser
+from api.deps import CurrentAC, CurrentUser
 from common.db import execute, query
 from common.logging_setup import get_logger
 
 log = get_logger(__name__)
-router = APIRouter(tags=["news"])
+router = APIRouter(prefix="/acs/{ac_number}", tags=["news"])
 
 ISSUES = [
     "water", "roads", "electricity", "health", "education", "employment/migration",
@@ -22,12 +22,25 @@ ISSUES = [
 
 
 @router.get("/news")
-def news_list(user: CurrentUser, q: str | None = None,
+def news_list(user: CurrentUser, ac: CurrentAC, q: str | None = None,
               date_from: date | None = None, date_to: date | None = None,
               issue: str | None = None, area_id: int | None = None,
+              include_unlabelled: bool = False,
               limit: int = Query(50, ge=1, le=200)) -> dict:
-    """Recent items. With `q`, ranks by vector similarity instead of date."""
-    clauses, params = ["labelled_at IS NOT NULL"], []
+    """Recent items for this constituency. With `q`, ranks by vector similarity.
+
+    An article can concern several constituencies, so `news_item.ac_ids` is an
+    array and this filters with the GIN-indexed `@>`.
+
+    `include_unlabelled` exists because labelling needs an Anthropic key. Without
+    one the crawl still works but nothing is ever labelled, and the page was
+    permanently empty with no explanation - the filter on labelled_at looked
+    like "no news" rather than "no key". Unlabelled items are keyword-tagged to
+    an AC and the UI marks them as such.
+    """
+    clauses, params = ["ac_ids @> ARRAY[%s]::INT[]"], [ac.ac_id]
+    if not include_unlabelled:
+        clauses.append("labelled_at IS NOT NULL")
     if date_from:
         clauses.append("published >= %s")
         params.append(date_from)
@@ -71,7 +84,8 @@ def news_list(user: CurrentUser, q: str | None = None,
 
 
 @router.get("/news/issues")
-def issue_clusters(user: CurrentUser, days: int = Query(30, ge=1, le=365)) -> dict:
+def issue_clusters(user: CurrentUser, ac: CurrentAC,
+                   days: int = Query(30, ge=1, le=365)) -> dict:
     """What the local press has been about lately, and how it is trending."""
     since = date.today() - timedelta(days=days)
     return {
@@ -80,8 +94,9 @@ def issue_clusters(user: CurrentUser, days: int = Query(30, ge=1, le=365)) -> di
             "SELECT issue, COUNT(*) AS items, ROUND(AVG(sentiment)::NUMERIC, 2) AS avg_sentiment "
             "FROM news_item, UNNEST(issues) AS issue "
             "WHERE published >= %s AND labelled_at IS NOT NULL "
+            "  AND ac_ids @> ARRAY[%s]::INT[] "
             "GROUP BY issue ORDER BY items DESC",
-            (since,),
+            (since, ac.ac_id),
         ),
         "by_week": query(
             "SELECT date_trunc('week', published)::date AS week, COUNT(*) AS items "
@@ -108,24 +123,25 @@ class GroundReport(BaseModel):
 
 
 @router.post("/ground-reports", status_code=201)
-def create_ground_report(body: GroundReport, user: CurrentUser) -> dict:
+def create_ground_report(body: GroundReport, user: CurrentUser, ac: CurrentAC) -> dict:
     """Field form from a booth in-charge. Highest signal, lowest volume (HLD 4).
 
     Reporters write about places and conditions, not about named individuals;
     the form text is stored as written and is never exposed to raw SQL.
     """
     execute(
-        "INSERT INTO ground_report (booth_uid, area_id, reporter_id, text, issues, sentiment) "
-        "VALUES (%s, %s, %s, %s, %s, %s)",
-        (body.booth_uid, body.area_id, user.user_id, body.text, body.issues, body.sentiment),
+        "INSERT INTO ground_report (ac_id, booth_uid, area_id, reporter_id, text, issues, "
+        "sentiment) VALUES (%s, %s, %s, %s, %s, %s, %s)",
+        (ac.ac_id, body.booth_uid, body.area_id, user.user_id, body.text, body.issues,
+         body.sentiment),
     )
     return {"saved": True}
 
 
 @router.get("/ground-reports")
-def list_ground_reports(user: CurrentUser, booth_uid: str | None = None,
+def list_ground_reports(user: CurrentUser, ac: CurrentAC, booth_uid: str | None = None,
                         limit: int = Query(50, ge=1, le=200)) -> dict:
-    clauses, params = ["true"], []
+    clauses, params = ["g.ac_id = %s"], [ac.ac_id]
     if booth_uid:
         clauses.append("g.booth_uid = %s")
         params.append(booth_uid)

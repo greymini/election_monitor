@@ -12,9 +12,9 @@ from fastapi import FastAPI, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from api.routers import admin, auth, data, news, scenario
+from api.routers import acs, admin, auth, data, legacy, news, scenario
 from common.config import get_settings
-from common.db import close_pools, query_one
+from common.db import close_pools, query, query_one
 from common.logging_setup import get_logger, setup_logging
 from common.secrets import check_jwt_secret
 
@@ -121,18 +121,39 @@ def config() -> dict:
     model names.
     """
     settings = get_settings()
+    # The constituency list is here as well as at /acs because the frontend
+    # needs it before it has a token: the AC switcher sits in the header, which
+    # renders on the login screen. Identity and the verified flag only, never a
+    # figure.
+    try:
+        acs_list = query(
+            "SELECT ac_number, name_en, name_hi, reservation, verified "
+            "FROM ac WHERE is_active ORDER BY ac_number"
+        )
+    except Exception as exc:
+        # /config has to answer even with the database down, or the frontend
+        # cannot boot far enough to show why it is broken.
+        log.warning("/config could not list constituencies (%s)", type(exc).__name__)
+        acs_list = []
     return {
         "chat_enabled": settings.chat_enabled,
+        "acs": acs_list,
+        "default_ac": acs_list[0]["ac_number"] if acs_list else None,
         "version": app.version,
         "build_time": BUILD_TIME,
     }
 
 
 app.include_router(auth.router)
+app.include_router(acs.router)
 app.include_router(data.router)
 app.include_router(news.router)
 app.include_router(scenario.router)
 app.include_router(admin.router)
+
+# Registered last so the scoped routes above always win a path match. These are
+# 308 redirects from the pre-multi-AC paths and come out one release later.
+app.include_router(legacy.router)
 
 # A5: the chat feature is parked. It used to be impossible to turn off without
 # editing source, and mounting it pulled `chatbot` -> `chatbot.sql_guard` ->

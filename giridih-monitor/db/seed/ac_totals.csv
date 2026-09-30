@@ -1,11 +1,17 @@
-election_label,candidate_name,party_abbr,metric,value,source
-VS-2014,Nirbhay Kumar Shahabadi,BJP,votes,57450,HLD 1.1 (secondary - re-verify vs Form 20)
-VS-2014,Sudivya Kumar,JMM,votes,47517,HLD 1.1 (secondary - re-verify vs Form 20)
-VS-2019,Sudivya Kumar,JMM,votes,80871,HLD 1.1 (secondary - re-verify vs Form 20)
-VS-2019,Nirbhay Kumar Shahabadi,BJP,votes,64987,HLD 1.1 (secondary - re-verify vs Form 20)
-VS-2019,,,electors,264814,HLD 1.1 (secondary - re-verify vs Form 20)
-VS-2024,Sudivya Kumar,JMM,votes,94042,HLD 1.1 (secondary - re-verify vs Form 20)
-VS-2024,Nirbhay Kumar Shahabadi,BJP,votes,90204,HLD 1.1 (secondary - re-verify vs Form 20)
-VS-2024,Navin Anand,JLKM,votes,10787,HLD 1.1 (secondary - re-verify vs Form 20)
-VS-2024,,,nota,2004,HLD 1.1 (secondary - re-verify vs Form 20)
-VS-2024,,,electors,304898,HLD 1.1 (secondary - re-verify vs Form 20)
+ac_number,election_label,candidate_name,party_abbr,metric,value,source
+32,VS-2014,Nirbhay Kumar Shahabadi,BJP,votes,57450,HLD 1.1 (secondary - re-verify vs Form 20)
+32,VS-2014,Sudivya Kumar,JMM,votes,47517,HLD 1.1 (secondary - re-verify vs Form 20)
+32,VS-2019,Sudivya Kumar,JMM,votes,80871,HLD 1.1 (secondary - re-verify vs Form 20)
+32,VS-2019,Nirbhay Kumar Shahabadi,BJP,votes,64987,HLD 1.1 (secondary - re-verify vs Form 20)
+32,VS-2019,,,electors,264814,HLD 1.1 (secondary - re-verify vs Form 20)
+32,VS-2024,Sudivya Kumar,JMM,votes,94042,HLD 1.1 (secondary - re-verify vs Form 20)
+32,VS-2024,Nirbhay Kumar Shahabadi,BJP,votes,90204,HLD 1.1 (secondary - re-verify vs Form 20)
+32,VS-2024,Navin Anand,JLKM,votes,10787,HLD 1.1 (secondary - re-verify vs Form 20)
+32,VS-2024,,,nota,2004,HLD 1.1 (secondary - re-verify vs Form 20)
+32,VS-2024,,,electors,304898,HLD 1.1 (secondary - re-verify vs Form 20)
+33,VS-2024,Jairam Mahato,JLKM,votes,94496,spec-unverified
+33,VS-2024,Baby Devi,JMM,votes,83551,spec-unverified
+65,VS-2024,Suresh Kumar Baitha,INC,votes,133499,spec-unverified
+65,VS-2024,Jitu Charan Ram,BJP,votes,132531,spec-unverified
+65,VS-2024,,JLKM,votes,25965,spec-unverified
+65,VS-2024,,,electors,481815,spec-unverified

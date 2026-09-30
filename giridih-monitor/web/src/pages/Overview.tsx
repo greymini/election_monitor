@@ -10,6 +10,7 @@ import { Empty, ErrorState, Loading } from '../components/States'
 import { api } from '../lib/api'
 import { dateShort, num, pct } from '../lib/format'
 import { chartInk, partyColor } from '../lib/tokens'
+import type { AcState } from '../lib/ac'
 
 interface ElectionRow {
   label: string
@@ -55,10 +56,14 @@ const PUBLISHED_MARGINS = [
   { year: '2024', margin: 3838, winner: 'JMM' },
 ]
 
-export default function Overview() {
+export default function Overview({ ac }: { ac: AcState }) {
   const { t, i18n } = useTranslation()
   const ink = chartInk()
-  const query = useQuery<Summary>({ queryKey: ['summary'], queryFn: () => api.get('/summary') })
+  const query = useQuery<Summary>({
+    queryKey: ['summary', ac.acNumber],
+    queryFn: () => api.get(ac.path('/summary')),
+    enabled: ac.acNumber !== null,
+  })
 
   if (query.isLoading) return <Loading />
   if (query.isError) return <ErrorState error={query.error} onRetry={() => void query.refetch()} />

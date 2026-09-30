@@ -1,0 +1,10 @@
+ac_number,event_label,party_a,party_b,source
+32,VS-2024,JMM,BJP,"HLD 1.1 - JMM held, BJP runner-up"
+32,VS-2019,JMM,BJP,HLD 1.1
+32,VS-2014,BJP,JMM,"HLD 1.1 - BJP held in 2014"
+32,LS-2024,AJSU,JMM,"HLD 1.1 - AJSU led the Giridih AC segment"
+31,VS-2024,JMM,BJP,spec-unverified
+33,VS-2024,JLKM,JMM,"spec 1 - JLKM beat JMM"
+42,VS-2024,JMM,BJP,"spec-unverified - spec 1 records only that JMM won; the runner-up needs confirming"
+61,VS-2024,JMM,AJSU,"spec 1 - JMM beat AJSU, JLKM third"
+65,VS-2024,INC,BJP,"spec 1 - INC beat BJP by 968"

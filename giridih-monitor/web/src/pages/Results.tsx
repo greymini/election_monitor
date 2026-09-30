@@ -9,6 +9,7 @@ import PartyChip from '../components/PartyChip'
 import { ErrorState, Loading } from '../components/States'
 import { api, downloadCsv } from '../lib/api'
 import { num, pct } from '../lib/format'
+import type { AcState } from '../lib/ac'
 
 interface Row {
   booth_uid: string; ps_numbers: string | null
@@ -24,14 +25,15 @@ interface Row {
 
 interface ElectionOption { label: string; type: string; year: number; is_baseline: boolean }
 
-export default function Results() {
+export default function Results({ ac }: { ac: AcState }) {
   const { t, i18n } = useTranslation()
   const params = useParams()
   const hi = i18n.language === 'hi'
   const [selected, setSelected] = useState<string | null>(null)
 
   const meta = useQuery<{ elections: ElectionOption[] }>({
-    queryKey: ['areas'], queryFn: () => api.get('/areas'),
+    queryKey: ['areas', ac.acNumber], queryFn: () => api.get(ac.path('/areas')),
+    enabled: ac.acNumber !== null,
   })
   const elections = meta.data?.elections ?? []
   const [election, setElection] = useState<string>('')
@@ -41,7 +43,7 @@ export default function Results() {
 
   const query = useQuery<{ rows: Row[] }>({
     queryKey: ['results', chosen],
-    queryFn: () => api.get(`/results/${encodeURIComponent(chosen)}/booths`),
+    queryFn: () => api.get(ac.path(`/results/${encodeURIComponent(chosen)}/booths`)),
     enabled: Boolean(chosen),
   })
 
@@ -90,7 +92,7 @@ export default function Results() {
         <button
           className="btn"
           onClick={() => void downloadCsv(
-            `/results/${encodeURIComponent(chosen)}/booths`,
+            ac.path(`/results/${encodeURIComponent(chosen)}/booths`),
             `${chosen.replace(/\s+/g, '_')}_booths.csv`,
           )}
           disabled={!query.data?.rows.length}
@@ -116,7 +118,7 @@ export default function Results() {
         />
       )}
 
-      {selected && <BoothDrawer boothUid={selected} onClose={() => setSelected(null)} />}
+      {selected && <BoothDrawer boothUid={selected} ac={ac} onClose={() => setSelected(null)} />}
     </div>
   )
 }

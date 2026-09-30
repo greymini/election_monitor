@@ -5,6 +5,7 @@ import PartyChip from './PartyChip'
 import { ErrorState, Loading } from './States'
 import { api } from '../lib/api'
 import { CONFIDENCE_FLOOR, num, pct, signedNum } from '../lib/format'
+import type { AcState } from '../lib/ac'
 
 interface BoothCard {
   booth: Record<string, string | number | null>
@@ -24,12 +25,18 @@ interface BoothCard {
   caveats: string[]
 }
 
-export default function BoothDrawer({ boothUid, onClose }: { boothUid: string; onClose: () => void }) {
+export default function BoothDrawer(
+  { boothUid, ac, onClose }: { boothUid: string; ac: AcState; onClose: () => void },
+) {
   const { t, i18n } = useTranslation()
   const hi = i18n.language === 'hi'
   const query = useQuery<BoothCard>({
-    queryKey: ['booth-card', boothUid],
-    queryFn: () => api.get(`/booths/${boothUid}/card`),
+    // Keyed by AC as well as uid: booth_uid carries its AC number now, so a
+    // stale cache entry cannot surface another constituency's booth, and the
+    // request has to be scoped or it hits the legacy redirect to AC-32.
+    queryKey: ['booth-card', ac.acNumber, boothUid],
+    queryFn: () => api.get(ac.path(`/booths/${boothUid}/card`)),
+    enabled: ac.acNumber !== null,
   })
   const card = query.data
 

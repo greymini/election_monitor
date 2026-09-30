@@ -1,4 +1,4 @@
-"""Auth and role scoping (LLD 9, 12).
+"""Auth, role scoping and constituency resolution (LLD 9, 12; spec 2).
 
 Three roles:
   admin       everything, including the review queue and spend reports
@@ -8,6 +8,19 @@ Three roles:
 Block scoping is enforced here rather than in each query, so a new endpoint
 cannot forget it: `scoped_block_id(user)` returns the block a query must be
 filtered to, or None for unrestricted roles.
+
+Constituency scoping works the same way. Every data route lives under
+`/acs/{ac_number}/...` and takes `CurrentAC`, which resolves the number to a row
+and 404s on an unknown or inactive one. Doing it in a dependency rather than in
+each handler is the point: the spec warns that a half-scoped schema is worse
+than an unscoped one because it silently mixes constituencies, and the same is
+true of the API. A route that forgets to filter by AC would serve one
+constituency's booths under another's URL.
+
+A block-role user belongs to a block, and a block belongs to exactly one AC, so
+asking for a different AC's data is a 403 rather than an empty result - an empty
+result would read as "nothing loaded" and send someone looking for a data
+problem that does not exist.
 """
 
 from __future__ import annotations
@@ -31,6 +44,24 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 bearer = HTTPBearer(auto_error=False)
 
 ROLES = ("admin", "strategist", "block")
+
+
+@dataclass
+class AC:
+    """One constituency, as resolved from the path."""
+
+    ac_id: int
+    ac_number: int
+    name_en: str
+    name_hi: str
+    reservation: str
+    verified: bool
+    bypoll_due: object | None
+    vacancy_date: object | None
+
+    @property
+    def label(self) -> str:
+        return f"AC-{self.ac_number}"
 
 
 @dataclass
@@ -115,3 +146,38 @@ StrategistUser = Annotated[User, Depends(require_role("admin", "strategist"))]
 def scoped_block_id(user: User) -> int | None:
     """The block a query must be restricted to, or None if unrestricted."""
     return user.block_id if user.role == "block" else None
+
+
+def current_ac(ac_number: int, user: CurrentUser) -> AC:
+    """Resolve `/acs/{ac_number}/...` to a constituency the caller may see."""
+    row = query_one(
+        "SELECT ac_id, ac_number, name_en, name_hi, reservation, verified, "
+        "bypoll_due, vacancy_date, is_active FROM ac WHERE ac_number = %s",
+        (ac_number,),
+    )
+    if row is None:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            f"No constituency numbered {ac_number}. Seeded constituencies are listed at /acs.",
+        )
+    if not row.pop("is_active"):
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            f"AC-{ac_number} ({row['name_en']}) is not active in this deployment.",
+        )
+
+    ac = AC(**row)
+
+    # A block belongs to one AC. Asking for another AC's data is a refusal, not
+    # an empty answer.
+    if user.role == "block" and user.block_id is not None:
+        owner = query_one("SELECT ac_id FROM block WHERE block_id = %s", (user.block_id,))
+        if owner is not None and owner["ac_id"] != ac.ac_id:
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN,
+                "Your block is not in this constituency.",
+            )
+    return ac
+
+
+CurrentAC = Annotated[AC, Depends(current_ac)]

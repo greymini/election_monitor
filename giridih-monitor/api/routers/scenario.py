@@ -6,9 +6,9 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 
 from analytics.scenario import ScenarioInput, jlkm_transfer_scenario, load_baseline, project
-from api.deps import StrategistUser
+from api.deps import CurrentAC, StrategistUser
 
-router = APIRouter(tags=["scenario"])
+router = APIRouter(prefix="/acs/{ac_number}", tags=["scenario"])
 
 
 class ScenarioBody(BaseModel):
@@ -28,17 +28,17 @@ class ScenarioBody(BaseModel):
 
 
 @router.post("/scenario")
-def run_scenario(body: ScenarioBody, user: StrategistUser) -> dict:
+def run_scenario(body: ScenarioBody, user: StrategistUser, ac: CurrentAC) -> dict:
     block_id = body.block_id
     if user.role == "block":
         block_id = user.block_id
 
-    booths = load_baseline(area_id=body.area_id, block_id=block_id)
+    booths = load_baseline(ac_id=ac.ac_id, area_id=body.area_id, block_id=block_id)
     if not booths:
         raise HTTPException(
             status.HTTP_409_CONFLICT,
-            "No baseline results are loaded yet. Load the VS-2024 Form 20 and run the "
-            "crosswalk and analytics refresh first.",
+            f"No baseline results are loaded for AC-{ac.ac_number} ({ac.name_en}). "
+            "Load its Form 20, run the crosswalk, then `python -m analytics.refresh`.",
         )
 
     transfer = dict(body.transfer)

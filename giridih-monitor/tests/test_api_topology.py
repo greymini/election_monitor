@@ -127,9 +127,13 @@ def frontend_endpoints() -> dict[str, set[str]]:
     template literals beginning with a slash.
     """
     calls: dict[str, set[str]] = {}
+    # Two shapes: a bare literal, and ac.path('/x') which prefixes
+    # /acs/{ac_number}. The second is how every data call is written now, so a
+    # scanner that only understood the first would find almost nothing and this
+    # test would pass vacuously.
     pattern = re.compile(
         r"(?:api\.(?:get|post)\s*(?:<[^>]*>)?\s*\(|downloadCsv\s*\(|fetch\s*\()\s*"
-        r"[`'\"]([^`'\"]*)[`'\"]",
+        r"(ac\.path\s*\(\s*)?[`'\"]([^`'\"]*)[`'\"]",
         re.DOTALL,
     )
     for source in sorted(WEB_SRC.rglob("*.ts*")):
@@ -137,11 +141,14 @@ def frontend_endpoints() -> dict[str, set[str]]:
             continue  # the client itself; its own paths are tested via callers
         text = source.read_text(encoding="utf-8")
         for match in pattern.finditer(text):
-            raw = match.group(1)
+            scoped = match.group(1) is not None
+            raw = match.group(2)
             # ChatPanel interpolates the base URL into the literal.
             raw = re.sub(r"^\$\{[^}]*\}", "", raw)
             if not raw.startswith("/"):
                 continue
+            if scoped:
+                raw = "/acs/{ac_number}" + raw
             calls.setdefault(normalise(raw), set()).add(
                 source.relative_to(ROOT).as_posix()
             )
@@ -385,9 +392,11 @@ def test_the_endpoint_scan_found_the_calls_it_should():
     """Keeps the coverage test honest: a regex that matches nothing would make
     it pass trivially."""
     endpoints = frontend_endpoints()
-    for expected in ("/summary", "/booths", "/areas", "/caste", "/transfer",
-                     "/news", "/rolls/changes", "/scenario", "/admin/review-queue",
-                     "/booths/{}/card", "/results/{}/booths"):
+    for expected in ("/acs/{}/summary", "/acs/{}/booths", "/acs/{}/areas",
+                     "/acs/{}/caste", "/acs/{}/transfer", "/acs/{}/news",
+                     "/acs/{}/rolls/changes", "/acs/{}/scenario",
+                     "/acs/{}/admin/review-queue", "/acs/{}/results/{}/booths",
+                     "/acs", "/compare"):
         assert expected in endpoints, f"the scan missed {expected}"
     assert len(endpoints) >= 15
 
@@ -397,7 +406,7 @@ def test_csv_export_paths_are_the_same_endpoints():
     every export target must be a real route too - covered by the test above,
     asserted here so the intent is explicit."""
     served = {normalise(path) for _, path in app_routes()}
-    for path in ("/results/{}/booths", "/rolls/changes", "/transfer"):
+    for path in ("/acs/{}/results/{}/booths", "/acs/{}/rolls/changes", "/acs/{}/transfer"):
         assert path in served
 
 
@@ -455,9 +464,19 @@ def test_no_page_hardcodes_election_results():
 
 
 def test_every_data_route_requires_authentication():
-    """Only the documented public routes may be reachable without a token."""
+    """Only the documented public routes may be reachable without a token.
+
+    The legacy paths are exempt because they are 308 redirects: they return a
+    Location header, never a row, and answering an unauthenticated client with
+    the new URL is more useful than a 401. `test_legacy_routes_only_redirect`
+    checks that redirecting is all they do.
+    """
     public = {"/health", "/config", "/auth/login", "/auth/otp", "/auth/verify",
               "/openapi.json", "/docs", "/docs/oauth2-redirect", "/redoc"}
+    from api.routers.legacy import router as legacy_router
+
+    public |= {normalise(getattr(r, "path", "")) for r in legacy_router.routes}
+
     from api.main import app
 
     unauthenticated: list[str] = []
@@ -482,3 +501,129 @@ def test_every_data_route_requires_authentication():
 
     walk(app.routes)
     assert not unauthenticated, f"routes reachable without a token: {unauthenticated}"
+
+
+# --------------------------------------------------------------------------
+# Multi-AC scoping
+# --------------------------------------------------------------------------
+
+
+def test_every_data_route_is_scoped_to_a_constituency():
+    """The spec's warning about a half-scoped schema applies to the API too: a
+    data route outside /acs/{ac_number} either serves one hardcoded
+    constituency or silently mixes all of them."""
+    unscoped_ok = {
+        "/health", "/config", "/acs", "/compare", "/acs/{}",
+        "/auth/login", "/auth/otp", "/auth/verify", "/auth/me",
+        "/openapi.json", "/docs", "/docs/oauth2-redirect", "/redoc",
+    }
+    from api.routers.legacy import router as legacy_router
+
+    unscoped_ok |= {normalise(getattr(r, "path", "")) for r in legacy_router.routes}
+
+    offenders = [
+        path for _, path in app_routes()
+        if normalise(path) not in unscoped_ok and not path.startswith("/acs/{ac_number}")
+    ]
+    assert not offenders, f"data routes outside the AC prefix: {sorted(set(offenders))}"
+
+
+def test_every_scoped_route_actually_takes_the_ac_dependency():
+    """Sitting under the prefix is not enough. A handler that ignores CurrentAC
+    would serve every constituency's rows under one AC's URL - exactly the
+    silent mixing the spec warns about."""
+    import inspect
+
+    from api.routers import admin, data, news, scenario
+
+    missing: list[str] = []
+    for module in (data, news, scenario, admin):
+        for route in module.router.routes:
+            handler = getattr(route, "endpoint", None)
+            if handler is None:
+                continue
+            annotations = {
+                str(param.annotation)
+                for param in inspect.signature(handler).parameters.values()
+            }
+            if not any("CurrentAC" in a or "AC]" in a for a in annotations):
+                missing.append(f"{module.__name__}.{handler.__name__}")
+    assert not missing, f"scoped handlers that ignore the AC: {missing}"
+
+
+def test_the_legacy_routes_cover_the_paths_that_moved():
+    """Bookmarks, RUN.md and the LLD's API table all point at the old paths."""
+    from api.routers.legacy import MOVED
+
+    for path in ("/summary", "/booths", "/caste", "/transfer", "/scenario", "/areas"):
+        assert path in MOVED, f"{path} moved without a redirect"
+
+
+def test_legacy_routes_only_redirect():
+    """They must not read anything. A legacy route that grew a query would be an
+    unauthenticated data route, since they carry no auth dependency."""
+    import inspect
+
+    from api.routers import legacy
+
+    source = inspect.getsource(legacy)
+    for forbidden in ("query(", "query_one(", "execute("):
+        assert forbidden not in source, f"legacy router calls {forbidden}"
+
+
+def test_legacy_redirects_preserve_the_method():
+    """308, not 301 or 302. POST /scenario and POST /ground-reports both moved,
+    and 301/302 let a client turn them into GETs - which looks like a silently
+    ignored request rather than an error."""
+    import inspect
+
+    from api.routers import legacy
+
+    source = inspect.getsource(legacy)
+    assert "HTTP_308_PERMANENT_REDIRECT" in source
+
+
+def test_the_frontend_never_builds_an_unscoped_data_path():
+    """Pages must go through ac.path(). A bare literal would hit the legacy
+    redirect and show AC-32's numbers under whatever constituency is selected -
+    the worst failure available here, because it looks like data."""
+    offenders: list[str] = []
+    allowed = {"/acs", "/compare", "/auth/login", "/auth/me", "/config", "/chat"}
+    pattern = re.compile(
+        r"(?:api\.(?:get|post)\s*(?:<[^>]*>)?\s*\(|downloadCsv\s*\()\s*"
+        r"(ac\.path\s*\(\s*)?[`'\"]([^`'\"]*)[`'\"]"
+    )
+    for source in sorted(WEB_SRC.rglob("*.tsx")):
+        for lineno, line in enumerate(source.read_text(encoding="utf-8").splitlines(), 1):
+            for match in pattern.finditer(line):
+                if match.group(1) is not None:
+                    continue
+                path = match.group(2)
+                if path.startswith("/") and normalise(path) not in allowed:
+                    offenders.append(
+                        f"{source.relative_to(ROOT).as_posix()}:{lineno}: {path}"
+                    )
+    assert not offenders, "unscoped data paths in the frontend:\n  " + "\n  ".join(offenders)
+
+
+def test_the_switcher_shows_the_unverified_badge():
+    """Five of the six constituencies are seeded from secondary sources. Anyone
+    reading a margin has to be able to tell which kind of number it is."""
+    switcher = (WEB_SRC / "components" / "AcSwitcher.tsx").read_text(encoding="utf-8")
+    assert "verified" in switcher
+    assert "ac.unverified" in switcher
+
+
+def test_the_selected_ac_is_in_the_url():
+    """So a view can be shared - the spec asks for it, and "look at this booth"
+    is the most common thing anyone sends a colleague."""
+    helper = (WEB_SRC / "lib" / "ac.ts").read_text(encoding="utf-8")
+    assert "useSearchParams" in helper
+    assert "'ac'" in helper
+
+
+def test_the_compare_page_renders_absence_as_a_dash():
+    """A constituency with no Form 20 must not appear to have won by nothing."""
+    compare = (WEB_SRC / "pages" / "Compare.tsx").read_text(encoding="utf-8")
+    assert "Not loaded" in compare or "notLoaded" in compare
+    assert "\u2014" in compare or "—" in compare

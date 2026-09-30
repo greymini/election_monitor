@@ -39,7 +39,8 @@ BUILTIN = {
 }
 
 CREATE_RE = re.compile(
-    r"CREATE\s+(?:UNIQUE\s+)?(?:MATERIALIZED\s+)?(TABLE|VIEW|SEQUENCE)\s+"
+    r"CREATE\s+(?:OR\s+REPLACE\s+)?(?:UNIQUE\s+)?(?:MATERIALIZED\s+)?"
+    r"(?:TEMP(?:ORARY)?\s+|UNLOGGED\s+)?(TABLE|VIEW|SEQUENCE)\s+"
     r"(?:IF\s+NOT\s+EXISTS\s+)?([a-z_][a-z0-9_]*)",
     re.IGNORECASE,
 )
@@ -95,6 +96,35 @@ def strip_sql_comments(sql: str) -> str:
             i = n if end == -1 else end + 2
             continue
         out.append(ch)
+        i += 1
+    return "".join(out)
+
+
+def strip_string_literals(sql: str) -> str:
+    """Blank out the contents of single-quoted literals.
+
+    Relation scanning must not read prose inside a string as code. A COMMENT ON
+    whose text contains "... derive a booth_uid from a PS number" made the
+    FROM/JOIN pattern report a missing relation called 'a'. Quotes are kept so
+    the balance checks still see the same structure.
+    """
+    out: list[str] = []
+    i, n = 0, len(sql)
+    while i < n:
+        if sql[i] == "'":
+            out.append("'")
+            i += 1
+            while i < n:
+                if sql[i] == "'":
+                    if i + 1 < n and sql[i + 1] == "'":
+                        i += 2
+                        continue
+                    out.append("'")
+                    i += 1
+                    break
+                i += 1
+            continue
+        out.append(sql[i])
         i += 1
     return "".join(out)
 
@@ -174,19 +204,23 @@ def lint(verbose: bool = False) -> int:
         problems += check_balanced(name, sql)
         problems += check_no_transaction_control(name, sql)
 
-        created = {m.group(2).lower() for m in CREATE_RE.finditer(sql)}
+        # Relation scanning runs over code with literals blanked; the balance
+        # and transaction checks above ran over the full text on purpose.
+        code = strip_string_literals(sql)
+
+        created = {m.group(2).lower() for m in CREATE_RE.finditer(code)}
         known |= created
         if verbose:
             print(f"{name}: creates {', '.join(sorted(created)) or '(nothing)'}")
 
         referenced: set[str] = set()
         for pattern in (ALTER_RE, REFERENCES_RE, INDEX_ON_RE, REFRESH_RE):
-            referenced |= {m.group(1).lower() for m in pattern.finditer(sql)}
+            referenced |= {m.group(1).lower() for m in pattern.finditer(code)}
         # FROM/JOIN only inside statements that actually query. In a GRANT or
         # REVOKE, 'FROM' is followed by a role name, not a relation
         # ("REVOKE ALL ON booth FROM giridih_ro"), and a role is not something
         # a migration creates with CREATE TABLE.
-        for statement in sql.split(";"):
+        for statement in code.split(";"):
             head = statement.strip()[:24].upper()
             if head.startswith(("GRANT", "REVOKE", "ALTER DEFAULT", "CREATE ROLE", "DROP ROLE")):
                 continue
@@ -198,7 +232,7 @@ def lint(verbose: bool = False) -> int:
 
         # Relations named in a GRANT/REVOKE ON clause are still worth checking.
         for m in re.finditer(r"\b(?:GRANT|REVOKE)\b[^;]*?\bON\s+(?:TABLE\s+)?"
-                             r"([a-z_][a-z0-9_]*)", sql, re.IGNORECASE | re.DOTALL):
+                             r"([a-z_][a-z0-9_]*)", code, re.IGNORECASE | re.DOTALL):
             candidate = m.group(1).lower()
             if candidate not in {"all", "schema", "database", "sequences", "tables", "functions"}:
                 referenced.add(candidate)

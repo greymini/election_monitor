@@ -10,6 +10,7 @@ import { Empty, ErrorState, Loading } from '../components/States'
 import { api } from '../lib/api'
 import { CONFIDENCE_FLOOR, num, pct } from '../lib/format'
 import { chartInk, partyColor, token } from '../lib/tokens'
+import type { AcState } from '../lib/ac'
 
 interface Row {
   booth_uid: string; area_id: number; area_hi: string; area_en: string
@@ -18,7 +19,7 @@ interface Row {
   [key: string]: unknown
 }
 
-export default function Caste() {
+export default function Caste({ ac }: { ac: AcState }) {
   const { t, i18n } = useTranslation()
   const hi = i18n.language === 'hi'
   const [minConf, setMinConf] = useState(CONFIDENCE_FLOOR)
@@ -26,7 +27,8 @@ export default function Caste() {
 
   const query = useQuery<{ rows: Row[]; disclaimer: string }>({
     queryKey: ['caste', minConf],
-    queryFn: () => api.get(`/caste?min_conf=${minConf}`),
+    queryFn: () => api.get(ac.path(`/caste?min_conf=${minConf}`)),
+    enabled: ac.acNumber !== null,
   })
   const rows = query.data?.rows ?? []
 

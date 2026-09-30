@@ -1,0 +1,42 @@
+party_abbr,event_label,alliance,source
+JMM,VS-2024,INDIA,seeded
+INC,VS-2024,INDIA,seeded
+RJD,VS-2024,INDIA,seeded
+CPIML,VS-2024,INDIA,seeded
+BJP,VS-2024,NDA,seeded
+AJSU,VS-2024,NDA,seeded
+JLKM,VS-2024,NONE,"new party in 2024, contested alone"
+BSP,VS-2024,NONE,seeded
+AIMIM,VS-2024,NONE,seeded
+IND,VS-2024,NONE,seeded
+OTH,VS-2024,NONE,seeded
+NOTA,VS-2024,NONE,"not a party; alliance is meaningless but the row keeps joins total"
+JMM,VS-2019,INDIA,seeded
+INC,VS-2019,INDIA,seeded
+RJD,VS-2019,INDIA,seeded
+BJP,VS-2019,NDA,seeded
+AJSU,VS-2019,NONE,"AJSU contested 2019 outside the NDA"
+JVM,VS-2019,NONE,"JVM(P) still separate; merged into BJP in Feb 2020"
+BSP,VS-2019,NONE,seeded
+IND,VS-2019,NONE,seeded
+OTH,VS-2019,NONE,seeded
+NOTA,VS-2019,NONE,seeded
+JMM,VS-2014,INDIA,"JMM-INC-RJD; the INDIA label is anachronistic for 2014 but the bloc is the same"
+INC,VS-2014,INDIA,seeded
+RJD,VS-2014,INDIA,seeded
+BJP,VS-2014,NDA,seeded
+AJSU,VS-2014,NDA,"AJSU allied with BJP in 2014"
+JVM,VS-2014,NONE,seeded
+BSP,VS-2014,NONE,seeded
+IND,VS-2014,NONE,seeded
+OTH,VS-2014,NONE,seeded
+NOTA,VS-2014,NONE,seeded
+JMM,LS-2024,INDIA,seeded
+INC,LS-2024,INDIA,seeded
+RJD,LS-2024,INDIA,seeded
+BJP,LS-2024,NDA,seeded
+AJSU,LS-2024,NDA,"AJSU contested Giridih PC as the NDA candidate"
+JLKM,LS-2024,NONE,seeded
+IND,LS-2024,NONE,seeded
+OTH,LS-2024,NONE,seeded
+NOTA,LS-2024,NONE,seeded

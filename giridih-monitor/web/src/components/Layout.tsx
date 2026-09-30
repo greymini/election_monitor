@@ -2,8 +2,10 @@ import { useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 
+import AcSwitcher from './AcSwitcher'
 import ChatPanel from './ChatPanel'
 import ThemeToggle from './ThemeToggle'
+import type { AcState } from '../lib/ac'
 import type { AppConfig, Me } from '../lib/api'
 
 interface Props {
@@ -12,11 +14,12 @@ interface Props {
    *  "chat off": showing a panel that then vanishes is worse than showing it a
    *  beat late, and the assistant is parked by default anyway. */
   config?: AppConfig
+  ac: AcState
   onSignOut: () => void
   children: React.ReactNode
 }
 
-export default function Layout({ me, config, onSignOut, children }: Props) {
+export default function Layout({ me, config, ac, onSignOut, children }: Props) {
   const { t, i18n } = useTranslation()
   const [chatOpen, setChatOpen] = useState(false)
   const chatEnabled = config?.chat_enabled === true
@@ -33,6 +36,7 @@ export default function Layout({ me, config, onSignOut, children }: Props) {
     { to: '/local', key: 'local' },
     { to: '/news', key: 'news' },
     { to: '/factors', key: 'factors' },
+    { to: '/compare', key: 'compare' },
     { to: '/scenario', key: 'scenario' },
     ...(me?.role === 'admin' ? [{ to: '/admin', key: 'admin' }] : []),
   ]
@@ -83,6 +87,7 @@ export default function Layout({ me, config, onSignOut, children }: Props) {
           </nav>
 
           <div className="ml-auto flex items-center gap-1.5">
+            <AcSwitcher state={ac} />
             <button className="btn px-2 py-1 text-2xs" onClick={toggleLanguage}>
               {t('common.language')}
             </button>

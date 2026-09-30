@@ -2,6 +2,20 @@
 
     python -m db.seed.load_seed
     python -m db.seed.load_seed --only parties,surnames
+
+Everything constituency-specific is keyed by `ac_number`, not by a surrogate id,
+because the CSVs are edited by hand and an AC number is a fact an operator can
+check against a PS list header. Blocks get a legible generated id
+(`ac_number * 100 + n`, so 3201 is Giridih's first block) which cannot collide
+across constituencies.
+
+**Nothing here invents a constituency fact.** The five ACs beyond Giridih are
+seeded from `MULTI_AC_EXPANSION_SPEC.md` 1, which itself says every figure must
+be verified against ECI/CEO Jharkhand before use, so those rows carry
+`verified=false` and their blocks carry `source='spec-unverified'`. Where the
+spec gives a margin but no vote totals - Gandey, Tundi, Silli - no
+`result_ac_total` row is written at all. A margin is not a total and deriving one
+from the other would be fabrication.
 """
 
 from __future__ import annotations
@@ -37,30 +51,142 @@ def _int(v: str | None) -> int | None:
     return int(v) if v else None
 
 
+def _ac_ids() -> dict[int, int]:
+    """ac_number -> ac_id."""
+    return {r["ac_number"]: r["ac_id"] for r in query("SELECT ac_id, ac_number FROM ac")}
+
+
+def _party_ids() -> dict[str, int]:
+    return {r["abbr"]: r["party_id"] for r in query("SELECT party_id, abbr FROM party")}
+
+
+# ---------------------------------------------------------------------------
+# Spine
+# ---------------------------------------------------------------------------
+
+
+def load_acs() -> int:
+    """The six constituencies, their districts and their parent PC.
+
+    `districts` is pipe-separated because Dumri spans Giridih and Bokaro; the
+    first named district is the primary one for display.
+    """
+    rows = _rows("ac.csv")
+    loaded = 0
+    with cursor() as cur:
+        cur.execute("SELECT state_id FROM state WHERE name_en = 'Jharkhand'")
+        state = cur.fetchone()
+        if state is None:
+            log.error("no Jharkhand row in `state`; apply migration 0014 first")
+            return 0
+        state_id = state["state_id"]
+
+        for r in rows:
+            ac_number = int(r["ac_number"])
+            pc_number = _int(r.get("pc_number"))
+            cur.execute(
+                "SELECT pc_id FROM pc WHERE state_id = %s AND pc_number = %s",
+                (state_id, pc_number),
+            )
+            pc = cur.fetchone()
+            if pc is None and pc_number is not None:
+                log.warning("ac.csv: AC %s names PC %s, which is not seeded", ac_number, pc_number)
+
+            cur.execute(
+                "INSERT INTO ac (state_id, ac_number, name_en, name_hi, reservation, pc_id, "
+                "bypoll_due, vacancy_date, verified, notes) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
+                "ON CONFLICT (state_id, ac_number) DO UPDATE SET "
+                "  name_en = EXCLUDED.name_en, name_hi = EXCLUDED.name_hi, "
+                "  reservation = EXCLUDED.reservation, pc_id = EXCLUDED.pc_id, "
+                "  bypoll_due = EXCLUDED.bypoll_due, vacancy_date = EXCLUDED.vacancy_date, "
+                "  notes = EXCLUDED.notes, "
+                # Never re-assert verified=false over a human's verified=true. A
+                # re-seed must not silently undo a reconciliation someone did.
+                "  verified = ac.verified OR EXCLUDED.verified "
+                "RETURNING ac_id",
+                (state_id, ac_number, r["name_en"], r["name_hi"], r["reservation"],
+                 pc["pc_id"] if pc else None, r.get("bypoll_due") or None,
+                 r.get("vacancy_date") or None, _bool(r.get("verified")), r.get("notes") or None),
+            )
+            ac_id = cur.fetchone()["ac_id"]
+
+            names = [d.strip() for d in (r.get("districts") or "").split("|") if d.strip()]
+            for index, name in enumerate(names):
+                cur.execute(
+                    "SELECT district_id FROM district WHERE state_id = %s AND name_en = %s",
+                    (state_id, name),
+                )
+                district = cur.fetchone()
+                if district is None:
+                    log.warning("ac.csv: AC %s names district %r, which is not seeded",
+                                ac_number, name)
+                    continue
+                cur.execute(
+                    "INSERT INTO ac_district (ac_id, district_id, is_primary) VALUES (%s, %s, %s) "
+                    "ON CONFLICT (ac_id, district_id) DO UPDATE SET is_primary = EXCLUDED.is_primary",
+                    (ac_id, district["district_id"], index == 0),
+                )
+            loaded += 1
+    return loaded
+
+
 def load_blocks() -> int:
-    rows = _rows("blocks.csv")
+    rows = _rows("ac_blocks.csv")
+    acs = _ac_ids()
+    loaded, per_ac = 0, {}
     with cursor() as cur:
         for r in rows:
+            ac_number = int(r["ac_number"])
+            ac_id = acs.get(ac_number)
+            if ac_id is None:
+                log.warning("ac_blocks.csv: AC %s is not seeded", ac_number)
+                continue
+            per_ac[ac_number] = per_ac.get(ac_number, 0) + 1
+            block_id = ac_number * 100 + per_ac[ac_number]
             cur.execute(
-                "INSERT INTO block (block_id, name_en, name_hi, kind) VALUES (%s, %s, %s, %s) "
-                "ON CONFLICT (block_id) DO UPDATE SET name_en = EXCLUDED.name_en, "
-                "name_hi = EXCLUDED.name_hi, kind = EXCLUDED.kind",
-                (int(r["block_id"]), r["name_en"], r["name_hi"], r["kind"]),
+                "INSERT INTO block (block_id, ac_id, name_en, name_hi, kind) "
+                "VALUES (%s, %s, %s, %s, %s) "
+                "ON CONFLICT (block_id) DO UPDATE SET ac_id = EXCLUDED.ac_id, "
+                "name_en = EXCLUDED.name_en, name_hi = EXCLUDED.name_hi, kind = EXCLUDED.kind",
+                (block_id, ac_id, r["name_en"], r["name_hi"], r["kind"]),
             )
-    return len(rows)
+            loaded += 1
+    return loaded
 
 
 def load_areas() -> int:
+    """Wards and panchayats, resolved to a block by (ac_number, block name).
+
+    `areas_panchayats.csv` ships empty on purpose: panchayat names come from the
+    published PS list, not from a seed file anyone typed. See db/seed/README.md.
+    """
     rows = _rows("areas_wards.csv") + _rows("areas_panchayats.csv")
+    acs = _ac_ids()
+    loaded = 0
     with cursor() as cur:
         for r in rows:
+            ac_number = int(r["ac_number"])
+            ac_id = acs.get(ac_number)
+            if ac_id is None:
+                log.warning("areas: AC %s is not seeded", ac_number)
+                continue
             cur.execute(
-                "INSERT INTO area (block_id, kind, name_en, name_hi, code, census_code) "
-                "VALUES (%s, %s, %s, %s, %s, %s) "
+                "SELECT block_id FROM block WHERE ac_id = %s AND name_en = %s",
+                (ac_id, r["block_name_en"]),
+            )
+            block = cur.fetchone()
+            if block is None:
+                log.warning("areas: AC %s has no block named %r", ac_number, r["block_name_en"])
+                continue
+            cur.execute(
+                "INSERT INTO area (block_id, ac_id, kind, name_en, name_hi, code, census_code) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s) "
                 "ON CONFLICT (block_id, kind, name_en) DO UPDATE SET name_hi = EXCLUDED.name_hi, "
-                "code = EXCLUDED.code, census_code = COALESCE(EXCLUDED.census_code, area.census_code) "
+                "ac_id = EXCLUDED.ac_id, code = EXCLUDED.code, "
+                "census_code = COALESCE(EXCLUDED.census_code, area.census_code) "
                 "RETURNING area_id",
-                (int(r["block_id"]), r["kind"], r["name_en"], r["name_hi"],
+                (block["block_id"], ac_id, r["kind"], r["name_en"], r["name_hi"],
                  r.get("code") or None, r.get("census_code") or None),
             )
             area_id = cur.fetchone()["area_id"]
@@ -69,11 +195,17 @@ def load_areas() -> int:
                 if not key:
                     continue
                 cur.execute(
-                    "INSERT INTO area_alias (alias, area_id, script, source) VALUES (%s, %s, %s, 'seed') "
-                    "ON CONFLICT (alias) DO NOTHING",
+                    "INSERT INTO area_alias (alias, area_id, script, source) "
+                    "VALUES (%s, %s, %s, 'seed') ON CONFLICT (alias) DO NOTHING",
                     (key, area_id, script),
                 )
-    return len(rows)
+            loaded += 1
+    return loaded
+
+
+# ---------------------------------------------------------------------------
+# Parties
+# ---------------------------------------------------------------------------
 
 
 def load_parties() -> int:
@@ -90,12 +222,238 @@ def load_parties() -> int:
     return len(rows)
 
 
+def load_party_aliases() -> int:
+    """Every spelling of a party we have seen, in either script.
+
+    This is what makes audit C1 go away. `resolve_candidates` built its lookup
+    from `abbr` and `name_en` only - never `name_hi`, which is seeded for all
+    thirteen parties - so a Devanagari Form 20 header could not match by
+    construction, every candidate loaded with party_id NULL, and
+    mv_result_booth_wide reported a 100% margin for a party that does not exist.
+
+    Aliases are normalised through the same `alias_key` the area matcher uses,
+    so a header cell gets the same treatment as the seed did.
+    """
+    rows = _rows("party_alias.csv")
+    parties = _party_ids()
+    loaded, unknown = 0, set()
+    with cursor() as cur:
+        for r in rows:
+            pid = parties.get(r["party_abbr"].strip())
+            if pid is None:
+                unknown.add(r["party_abbr"])
+                continue
+            for value in {r["alias"].strip(), alias_key(r["alias"])}:
+                if not value:
+                    continue
+                cur.execute(
+                    "INSERT INTO party_alias (alias, party_id, script, source) "
+                    "VALUES (%s, %s, %s, %s) ON CONFLICT (alias) DO UPDATE SET "
+                    "party_id = EXCLUDED.party_id, script = EXCLUDED.script, "
+                    "source = EXCLUDED.source",
+                    (value, pid, r.get("script") or "other", r.get("source") or None),
+                )
+            loaded += 1
+    if unknown:
+        log.error("party_alias.csv references unknown parties: %s", sorted(unknown))
+    return loaded
+
+
+def load_party_alliances() -> int:
+    """Alliance membership per event. JVM merged into BJP in 2020 and AJSU has
+    been in and out of the NDA, so a single column on `party` cannot express it
+    and the scenario engine needs the alliance as it stood at the event."""
+    rows = _rows("party_alliance.csv")
+    parties = _party_ids()
+    events = {r["label"]: r["event_id"] for r in query("SELECT event_id, label FROM election_event")}
+    loaded, unknown_party, unknown_event = 0, set(), set()
+    with cursor() as cur:
+        for r in rows:
+            pid = parties.get(r["party_abbr"].strip())
+            eid = events.get(r["event_label"].strip())
+            if pid is None:
+                unknown_party.add(r["party_abbr"])
+                continue
+            if eid is None:
+                unknown_event.add(r["event_label"])
+                continue
+            cur.execute(
+                "INSERT INTO party_alliance (party_id, event_id, alliance) VALUES (%s, %s, %s) "
+                "ON CONFLICT (party_id, event_id) DO UPDATE SET alliance = EXCLUDED.alliance",
+                (pid, eid, r["alliance"]),
+            )
+            loaded += 1
+    if unknown_party:
+        log.error("party_alliance.csv references unknown parties: %s", sorted(unknown_party))
+    if unknown_event:
+        log.error("party_alliance.csv references unknown events: %s", sorted(unknown_event))
+    return loaded
+
+
+# ---------------------------------------------------------------------------
+# Elections
+# ---------------------------------------------------------------------------
+
+
+def load_elections() -> int:
+    """Events, then one contest row per event per active AC.
+
+    A contest row is created for every AC even where no result is loaded. The
+    contest happened; whether we hold its Form 20 is a separate question, and
+    the row is what lets a page say "not loaded" for a specific election rather
+    than showing nothing at all.
+    """
+    events = _rows("election_event.csv")
+    acs = _ac_ids()
+    loaded = 0
+    with cursor() as cur:
+        for r in events:
+            cur.execute(
+                "INSERT INTO election_event (type, year, label, count_date, is_bypoll) "
+                "VALUES (%s, %s, %s, %s, %s) ON CONFLICT (label) DO UPDATE SET "
+                "count_date = COALESCE(EXCLUDED.count_date, election_event.count_date) "
+                "RETURNING event_id",
+                (r["type"], int(r["year"]), r["label"], r.get("count_date") or None,
+                 _bool(r.get("is_bypoll"))),
+            )
+            event_id = cur.fetchone()["event_id"]
+            is_baseline = _bool(r.get("is_baseline"))
+
+            for _ac_number, ac_id in sorted(acs.items()):
+                cur.execute(
+                    "INSERT INTO election (event_id, ac_id, type, year, label, is_baseline, notes) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s) "
+                    "ON CONFLICT (event_id, ac_id) DO UPDATE SET "
+                    "  label = EXCLUDED.label, is_baseline = EXCLUDED.is_baseline, "
+                    "  notes = EXCLUDED.notes",
+                    (event_id, ac_id,
+                     # `election.type` keeps the old CHECK, which has no 'ULB'.
+                     "WARD" if r["type"] == "ULB" else r["type"],
+                     int(r["year"]), r["label"], is_baseline, r.get("notes") or None),
+                )
+                loaded += 1
+    return loaded
+
+
+def load_ac_contests() -> int:
+    """The two parties a signed margin is measured between, per AC per event.
+
+    Without this the contest pair was hardcoded to ("JMM", "BJP") in
+    analytics/scenario.py, so a Dumri scenario reported a JMM/BJP winner for a
+    seat JLKM actually holds (audit D5).
+    """
+    rows = _rows("ac_contest.csv")
+    acs = _ac_ids()
+    parties = _party_ids()
+    events = {r["label"]: r["event_id"] for r in query("SELECT event_id, label FROM election_event")}
+    loaded = 0
+    with cursor() as cur:
+        for r in rows:
+            ac_id = acs.get(int(r["ac_number"]))
+            event_id = events.get(r["event_label"].strip())
+            a = parties.get(r["party_a"].strip())
+            b = parties.get(r["party_b"].strip())
+            if None in (ac_id, event_id, a, b):
+                log.warning("ac_contest.csv: cannot resolve %s / %s / %s vs %s",
+                            r["ac_number"], r["event_label"], r["party_a"], r["party_b"])
+                continue
+            cur.execute(
+                "INSERT INTO ac_contest (ac_id, event_id, party_a, party_b, source) "
+                "VALUES (%s, %s, %s, %s, %s) ON CONFLICT (ac_id, event_id) DO UPDATE SET "
+                "party_a = EXCLUDED.party_a, party_b = EXCLUDED.party_b, source = EXCLUDED.source",
+                (ac_id, event_id, a, b, r.get("source") or None),
+            )
+            loaded += 1
+    return loaded
+
+
+def load_ac_totals() -> int:
+    """AC-level published totals: the Form 20 validation target (LLD 4.2).
+
+    Candidates named here are created if absent so the totals have something to
+    hang off; the Form 20 parser fuzzy-matches its column headers onto them.
+
+    Rows are per (AC, election label). Where the spec gives only a margin -
+    Gandey, Tundi, Silli - there is no row, deliberately: a margin is not a
+    total and inventing totals to fit one would be fabrication.
+    """
+    rows = _rows("ac_totals.csv")
+    acs = _ac_ids()
+    parties = _party_ids()
+    elections = {
+        (r["ac_id"], r["label"]): r["election_id"]
+        for r in query("SELECT election_id, ac_id, label FROM election")
+    }
+    loaded = 0
+    with cursor() as cur:
+        for r in rows:
+            ac_id = acs.get(int(r["ac_number"]))
+            if ac_id is None:
+                log.warning("ac_totals.csv: AC %s is not seeded", r["ac_number"])
+                continue
+            eid = elections.get((ac_id, r["election_label"]))
+            if eid is None:
+                log.warning("ac_totals.csv: AC %s has no election %s",
+                            r["ac_number"], r["election_label"])
+                continue
+
+            cand_id = None
+            name = (r.get("candidate_name") or "").strip()
+            abbr = (r.get("party_abbr") or "").strip()
+            if name:
+                pid = parties.get(abbr)
+                cur.execute(
+                    "INSERT INTO candidate (election_id, ac_id, name_en, party_id) "
+                    "VALUES (%s, %s, %s, %s) "
+                    "ON CONFLICT (election_id, name_en, party_id) DO UPDATE SET "
+                    "name_en = EXCLUDED.name_en, ac_id = EXCLUDED.ac_id "
+                    "RETURNING candidate_id",
+                    (eid, ac_id, name, pid),
+                )
+                cand_id = cur.fetchone()["candidate_id"]
+            elif abbr and r["metric"] == "votes":
+                # Kanke's JLKM total is published without a candidate name. The
+                # party total is still a real published figure, so it is kept
+                # against a placeholder candidate rather than dropped.
+                pid = parties.get(abbr)
+                cur.execute(
+                    "INSERT INTO candidate (election_id, ac_id, name_en, party_id) "
+                    "VALUES (%s, %s, %s, %s) "
+                    "ON CONFLICT (election_id, name_en, party_id) DO UPDATE SET "
+                    "ac_id = EXCLUDED.ac_id RETURNING candidate_id",
+                    (eid, ac_id, f"({abbr} candidate, name not in source)", pid),
+                )
+                cand_id = cur.fetchone()["candidate_id"]
+
+            # result_ac_total is keyed by a COALESCE expression index, and
+            # ON CONFLICT inference against an expression index is brittle.
+            # Delete-then-insert is equivalent here and cannot mis-infer.
+            cur.execute(
+                "DELETE FROM result_ac_total WHERE election_id = %s AND metric = %s "
+                "AND candidate_id IS NOT DISTINCT FROM %s",
+                (eid, r["metric"], cand_id),
+            )
+            cur.execute(
+                "INSERT INTO result_ac_total (election_id, ac_id, candidate_id, metric, value, source) "
+                "VALUES (%s, %s, %s, %s, %s, %s)",
+                (eid, ac_id, cand_id, r["metric"], int(r["value"]), r.get("source") or None),
+            )
+            loaded += 1
+    return loaded
+
+
+# ---------------------------------------------------------------------------
+# Unchanged sections
+# ---------------------------------------------------------------------------
+
+
 def load_communities() -> int:
     rows = _rows("communities.csv")
     with cursor() as cur:
         for r in rows:
             cur.execute(
-                "INSERT INTO community (name_en, name_hi, category, sort_order) VALUES (%s, %s, %s, %s) "
+                "INSERT INTO community (name_en, name_hi, category, sort_order) "
+                "VALUES (%s, %s, %s, %s) "
                 "ON CONFLICT (name_en) DO UPDATE SET name_hi = EXCLUDED.name_hi, "
                 "category = EXCLUDED.category, sort_order = EXCLUDED.sort_order",
                 (r["name_en"], r["name_hi"], r["category"], int(r["sort_order"])),
@@ -103,24 +461,10 @@ def load_communities() -> int:
     return len(rows)
 
 
-def load_elections() -> int:
-    rows = _rows("elections.csv")
-    with cursor() as cur:
-        for r in rows:
-            cur.execute(
-                "INSERT INTO election (type, year, poll_date, label, is_baseline, notes) "
-                "VALUES (%s, %s, %s, %s, %s, %s) ON CONFLICT (label) DO UPDATE SET "
-                "poll_date = COALESCE(EXCLUDED.poll_date, election.poll_date), "
-                "is_baseline = EXCLUDED.is_baseline, notes = EXCLUDED.notes",
-                (r["type"], int(r["year"]), r.get("poll_date") or None, r["label"],
-                 _bool(r.get("is_baseline")), r.get("notes") or None),
-            )
-    return len(rows)
-
-
 def load_surnames() -> int:
     rows = _rows("surname_dict.csv")
-    comm = {r["name_en"]: r["community_id"] for r in query("SELECT community_id, name_en FROM community")}
+    comm = {r["name_en"]: r["community_id"]
+            for r in query("SELECT community_id, name_en FROM community")}
     loaded, unknown = 0, set()
     with cursor() as cur:
         for r in rows:
@@ -141,56 +485,13 @@ def load_surnames() -> int:
     return loaded
 
 
-def load_ac_totals() -> int:
-    """AC-level published totals used as the Form 20 validation target (LLD 4.2).
-
-    Candidates named here are created if absent so the totals have something to
-    hang off; the Form 20 parser will match its column headers onto them.
-    """
-    rows = _rows("ac_totals.csv")
-    elections = {r["label"]: r["election_id"] for r in query("SELECT election_id, label FROM election")}
-    parties = {r["abbr"]: r["party_id"] for r in query("SELECT party_id, abbr FROM party")}
-    loaded = 0
-    with cursor() as cur:
-        for r in rows:
-            eid = elections.get(r["election_label"])
-            if eid is None:
-                log.warning("ac_totals.csv: unknown election %s", r["election_label"])
-                continue
-            cand_id = None
-            name = (r.get("candidate_name") or "").strip()
-            if name:
-                pid = parties.get((r.get("party_abbr") or "").strip())
-                cur.execute(
-                    "INSERT INTO candidate (election_id, name_en, party_id) VALUES (%s, %s, %s) "
-                    "ON CONFLICT (election_id, name_en, party_id) DO UPDATE SET name_en = EXCLUDED.name_en "
-                    "RETURNING candidate_id",
-                    (eid, name, pid),
-                )
-                cand_id = cur.fetchone()["candidate_id"]
-            # result_ac_total is keyed by a COALESCE expression index, and
-            # ON CONFLICT inference against an expression index is brittle.
-            # Delete-then-insert is equivalent here and cannot mis-infer.
-            cur.execute(
-                "DELETE FROM result_ac_total WHERE election_id = %s AND metric = %s "
-                "AND candidate_id IS NOT DISTINCT FROM %s",
-                (eid, r["metric"], cand_id),
-            )
-            cur.execute(
-                "INSERT INTO result_ac_total (election_id, candidate_id, metric, value, source) "
-                "VALUES (%s, %s, %s, %s, %s)",
-                (eid, cand_id, r["metric"], int(r["value"]), r.get("source") or None),
-            )
-            loaded += 1
-    return loaded
-
-
 def load_news_sources() -> int:
     rows = _rows("news_sources.csv")
     with cursor() as cur:
         for r in rows:
             cur.execute(
-                "INSERT INTO news_source (name, kind, url, lang, is_active) VALUES (%s, %s, %s, %s, %s) "
+                "INSERT INTO news_source (name, kind, url, lang, is_active) "
+                "VALUES (%s, %s, %s, %s, %s) "
                 "ON CONFLICT (name) DO UPDATE SET url = EXCLUDED.url, kind = EXCLUDED.kind, "
                 "lang = EXCLUDED.lang, is_active = EXCLUDED.is_active",
                 (r["name"], r["kind"], r["url"], r["lang"], _bool(r.get("is_active"))),
@@ -199,26 +500,35 @@ def load_news_sources() -> int:
 
 
 def load_knowledge_cards() -> int:
-    """Markdown files in knowledge_cards/ with a small YAML-ish front matter."""
+    """Markdown files in knowledge_cards/ with a small YAML-ish front matter.
+
+    A card may name an `ac` in its front matter; cards without one are general
+    guidance that applies to every constituency (the caste guardrails and data
+    provenance cards), and keeping those AC-agnostic is deliberate.
+    """
     folder = SEED_DIR / "knowledge_cards"
     if not folder.exists():
         return 0
+    acs = _ac_ids()
     loaded = 0
     with cursor() as cur:
         for path in sorted(folder.glob("*.md")):
             meta, body = _split_front_matter(path.read_text(encoding="utf-8"))
             slug = meta.get("slug") or path.stem
             sources = [s.strip() for s in meta.get("sources", "").split("|") if s.strip()]
+            ac_id = acs.get(_int(meta.get("ac")) or -1)
             cur.execute(
-                "INSERT INTO knowledge_card (slug, topic, title_hi, title_en, body_hi, body_en, "
-                "sources, last_reviewed, in_prompt) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) "
-                "ON CONFLICT (slug) DO UPDATE SET topic = EXCLUDED.topic, title_hi = EXCLUDED.title_hi, "
-                "title_en = EXCLUDED.title_en, body_hi = EXCLUDED.body_hi, body_en = EXCLUDED.body_en, "
+                "INSERT INTO knowledge_card (slug, ac_id, topic, title_hi, title_en, body_hi, "
+                "body_en, sources, last_reviewed, in_prompt) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
+                "ON CONFLICT (slug) DO UPDATE SET topic = EXCLUDED.topic, ac_id = EXCLUDED.ac_id, "
+                "title_hi = EXCLUDED.title_hi, title_en = EXCLUDED.title_en, "
+                "body_hi = EXCLUDED.body_hi, body_en = EXCLUDED.body_en, "
                 "sources = EXCLUDED.sources, last_reviewed = EXCLUDED.last_reviewed, "
                 "in_prompt = EXCLUDED.in_prompt",
-                (slug, meta.get("topic", "general"), meta.get("title_hi"), meta.get("title_en"),
-                 body, body, sources, meta.get("last_reviewed") or None,
-                 _bool(meta.get("in_prompt", "true"))),
+                (slug, ac_id, meta.get("topic", "general"), meta.get("title_hi"),
+                 meta.get("title_en"), body, body, sources,
+                 meta.get("last_reviewed") or None, _bool(meta.get("in_prompt", "true"))),
             )
             loaded += 1
     return loaded
@@ -239,20 +549,26 @@ def _split_front_matter(text: str) -> tuple[dict[str, str], str]:
 
 
 LOADERS = {
+    "acs": load_acs,
     "blocks": load_blocks,
     "areas": load_areas,
     "parties": load_parties,
+    "party_aliases": load_party_aliases,
     "communities": load_communities,
     "elections": load_elections,
+    "party_alliances": load_party_alliances,
+    "ac_contests": load_ac_contests,
     "surnames": load_surnames,
     "ac_totals": load_ac_totals,
     "news_sources": load_news_sources,
     "cards": load_knowledge_cards,
 }
 
-# Order matters: communities before surnames, elections before ac_totals.
-ORDER = ["blocks", "areas", "parties", "communities", "elections",
-         "surnames", "ac_totals", "news_sources", "cards"]
+# Order matters: ACs before anything scoped to one, parties before aliases and
+# alliances, events before alliances and contests, elections before ac_totals.
+ORDER = ["acs", "blocks", "areas", "parties", "party_aliases", "communities",
+         "elections", "party_alliances", "ac_contests", "surnames", "ac_totals",
+         "news_sources", "cards"]
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -267,7 +583,7 @@ def main(argv: list[str] | None = None) -> int:
             log.error("unknown seed section %r", name)
             return 2
         n = fn()
-        log.info("seed %-14s %4d row(s)", name, n)
+        log.info("seed %-16s %4d row(s)", name, n)
     return 0
 
 

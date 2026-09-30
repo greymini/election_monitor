@@ -15,7 +15,8 @@
     "news": "News",
     "factors": "Factors",
     "scenario": "Scenarios",
-    "admin": "Admin"
+    "admin": "Admin",
+    "compare": "Compare"
   },
   "common": {
     "loading": "Loading…",
@@ -121,5 +122,19 @@
     "password": "Password",
     "submit": "Sign in",
     "failed": "Could not sign in"
+  },
+  "ac": {
+    "label": "Constituency",
+    "unverified": "unverified",
+    "unverifiedHelp": "Seeded from secondary sources. Check every figure against ECI or CEO Jharkhand before relying on it.",
+    "notLoaded": "Not loaded for this constituency yet."
+  },
+  "compare": {
+    "heading": "Compare constituencies",
+    "empty": "No results are loaded for any constituency yet.",
+    "marginTrend": "Margin trend",
+    "turnoutTrend": "Turnout",
+    "jlkmShare": "JLKM share",
+    "newVoters": "New voters"
   }
 }

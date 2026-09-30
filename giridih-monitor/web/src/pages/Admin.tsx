@@ -6,6 +6,7 @@ import StatTile from '../components/StatTile'
 import { Empty, ErrorState, Loading } from '../components/States'
 import { api } from '../lib/api'
 import { dateShort, num } from '../lib/format'
+import type { AcState } from '../lib/ac'
 
 interface ReviewItem {
   id: number; kind: string; ref: string; payload: unknown
@@ -23,7 +24,7 @@ interface Jobs {
 
 const TABS = ['review', 'usage', 'jobs'] as const
 
-export default function Admin() {
+export default function Admin({ ac }: { ac: AcState }) {
   const { t, i18n } = useTranslation()
   const [tab, setTab] = useState<(typeof TABS)[number]>('review')
   const client = useQueryClient()
@@ -31,19 +32,22 @@ export default function Admin() {
   const review = useQuery<{
     rows: ReviewItem[]; open_by_kind: Array<{ kind: string; open: number }>
   }>({
-    queryKey: ['review-queue'], queryFn: () => api.get('/admin/review-queue'),
-    enabled: tab === 'review',
+    queryKey: ['review-queue', ac.acNumber],
+    queryFn: () => api.get(ac.path('/admin/review-queue')),
+    enabled: tab === 'review' && ac.acNumber !== null,
   })
   const usage = useQuery<Usage>({
-    queryKey: ['usage'], queryFn: () => api.get('/admin/usage'), enabled: tab === 'usage',
+    queryKey: ['usage', ac.acNumber], queryFn: () => api.get(ac.path('/admin/usage')),
+    enabled: tab === 'usage' && ac.acNumber !== null,
   })
   const jobs = useQuery<Jobs>({
-    queryKey: ['jobs'], queryFn: () => api.get('/admin/jobs'), enabled: tab === 'jobs',
+    queryKey: ['jobs', ac.acNumber], queryFn: () => api.get(ac.path('/admin/jobs')),
+    enabled: tab === 'jobs' && ac.acNumber !== null,
   })
 
   const resolve = useMutation({
     mutationFn: ({ id, status }: { id: number; status: 'resolved' | 'rejected' }) =>
-      api.post(`/admin/review-queue/${id}`, { status }),
+      api.post(ac.path(`/admin/review-queue/${id}`), { status }),
     onSuccess: () => void client.invalidateQueries({ queryKey: ['review-queue'] }),
   })
 

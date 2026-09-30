@@ -9,6 +9,7 @@ import { Empty, ErrorState, Loading } from '../components/States'
 import { api, downloadCsv } from '../lib/api'
 import { num, pct, signed } from '../lib/format'
 import { divergingColor } from '../lib/tokens'
+import type { AcState } from '../lib/ac'
 
 interface Row {
   booth_uid: string; area_hi: string; area_en: string; block_id: number
@@ -19,13 +20,15 @@ interface Row {
   [key: string]: unknown
 }
 
-export default function Transfer() {
+export default function Transfer({ ac }: { ac: AcState }) {
   const { t, i18n } = useTranslation()
   const hi = i18n.language === 'hi'
   const [party, setParty] = useState('')
 
   const query = useQuery<{ rows: Row[]; note: string }>({
-    queryKey: ['transfer'], queryFn: () => api.get('/transfer?year=2024'),
+    queryKey: ['transfer', ac.acNumber],
+    queryFn: () => api.get(ac.path('/transfer?year=2024')),
+    enabled: ac.acNumber !== null,
   })
   const all = query.data?.rows ?? []
   const parties = useMemo(
@@ -64,7 +67,8 @@ export default function Transfer() {
           {parties.map((p) => <option key={p} value={p}>{p}</option>)}
         </select>
         <button className="btn" disabled={!rows.length}
-                onClick={() => void downloadCsv('/transfer?year=2024', 'transfer_2024.csv')}>
+                onClick={() => void downloadCsv(ac.path('/transfer?year=2024'),
+                                                `ac${ac.acNumber}_transfer_2024.csv`)}>
           {t('common.export')}
         </button>
       </div>

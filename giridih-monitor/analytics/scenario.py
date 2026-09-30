@@ -193,19 +193,24 @@ def project(booths: list[BoothBaseline], inp: ScenarioInput) -> ScenarioResult:
     )
 
 
-def load_baseline(area_id: int | None = None, block_id: int | None = None) -> list[BoothBaseline]:
-    """Read the baseline election's booth results plus additions since."""
+def load_baseline(ac_id: int, area_id: int | None = None,
+                  block_id: int | None = None) -> list[BoothBaseline]:
+    """Read one AC's baseline booth results plus additions since.
+
+    ac_id is required, not optional. A scenario run without it would project
+    across every constituency at once and report the total as one seat's margin.
+    """
     from common.db import query
 
-    where = []
-    params: list = []
+    where = ["w.ac_id = %s"]
+    params: list = [ac_id]
     if area_id is not None:
         where.append("w.area_id = %s")
         params.append(area_id)
     if block_id is not None:
         where.append("w.block_id = %s")
         params.append(block_id)
-    clause = (" AND " + " AND ".join(where)) if where else ""
+    clause = " AND " + " AND ".join(where)
 
     rows = query(
         f"""
@@ -214,6 +219,7 @@ def load_baseline(area_id: int | None = None, block_id: int | None = None) -> li
         FROM mv_result_booth_wide w
         JOIN election e ON e.election_id = w.election_id AND e.is_baseline
         LEFT JOIN mv_new_voter_share n ON n.booth_uid = w.booth_uid
+                                      AND n.ac_id = w.ac_id
         WHERE true {clause}
         """,
         params,

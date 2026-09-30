@@ -1,0 +1,81 @@
+alias,party_abbr,script,source
+झामुमो,JMM,hi,form20-header
+झाामुमो,JMM,hi,ocr-variant
+झारखंड मुक्ति मोर्चा,JMM,hi,eci
+झारखण्ड मुक्ति मोर्चा,JMM,hi,eci-spelling-variant
+जेएमएम,JMM,hi,news
+JMM,JMM,en,eci
+J.M.M.,JMM,en,form20-header
+JMM(S),JMM,en,tcpd
+Jharkhand Mukti Morcha,JMM,en,eci
+Jharkhand Mukti Morcha (JMM),JMM,en,tcpd
+भाजपा,BJP,hi,form20-header
+भारतीय जनता पार्टी,BJP,hi,eci
+बीजेपी,BJP,hi,news
+BJP,BJP,en,eci
+B.J.P.,BJP,en,form20-header
+Bharatiya Janata Party,BJP,en,eci
+Bhartiya Janta Party,BJP,en,spelling-variant
+आजसू,AJSU,hi,form20-header
+आजसू पार्टी,AJSU,hi,eci
+ऑल झारखंड स्टूडेंट्स यूनियन,AJSU,hi,eci
+AJSU,AJSU,en,eci
+AJSUP,AJSU,en,tcpd
+AJSU Party,AJSU,en,eci
+All Jharkhand Students Union,AJSU,en,eci
+All Jharkhand Students Union (AJSU),AJSU,en,tcpd
+जेएलकेएम,JLKM,hi,news
+झारखंड लोकतांत्रिक क्रांतिकारी मोर्चा,JLKM,hi,eci
+झालोक्रांमो,JLKM,hi,form20-header
+JLKM,JLKM,en,eci
+Jharkhand Loktantrik Krantikari Morcha,JLKM,en,eci
+JKLM,JLKM,en,common-transposition
+कांग्रेस,INC,hi,form20-header
+भारतीय राष्ट्रीय कांग्रेस,INC,hi,eci
+इंडियन नेशनल कांग्रेस,INC,hi,news
+INC,INC,en,eci
+Congress,INC,en,news
+Indian National Congress,INC,en,eci
+I.N.C.,INC,en,form20-header
+राजद,RJD,hi,form20-header
+राष्ट्रीय जनता दल,RJD,hi,eci
+RJD,RJD,en,eci
+Rashtriya Janata Dal,RJD,en,eci
+झाविमो,JVM,hi,form20-header
+झारखंड विकास मोर्चा,JVM,hi,eci
+झारखंड विकास मोर्चा (प्रजातांत्रिक),JVM,hi,eci
+JVM,JVM,en,eci
+JVM(P),JVM,en,eci
+JVM-P,JVM,en,tcpd
+Jharkhand Vikas Morcha,JVM,en,eci
+Jharkhand Vikas Morcha (Prajatantrik),JVM,en,eci
+भाकपा (माले),CPIML,hi,form20-header
+भाकपा (माले) लिबरेशन,CPIML,hi,eci
+CPI(ML)(L),CPIML,en,eci
+CPI(ML),CPIML,en,tcpd
+CPIML,CPIML,en,eci
+CPI(ML) Liberation,CPIML,en,eci
+बसपा,BSP,hi,form20-header
+बहुजन समाज पार्टी,BSP,hi,eci
+BSP,BSP,en,eci
+Bahujan Samaj Party,BSP,en,eci
+एआईएमआईएम,AIMIM,hi,news
+ऑल इंडिया मजलिस-ए-इत्तेहादुल मुस्लिमीन,AIMIM,hi,eci
+AIMIM,AIMIM,en,eci
+निर्दलीय,IND,hi,form20-header
+निर्दल,IND,hi,form20-header
+स्वतंत्र,IND,hi,form20-header
+IND,IND,en,eci
+Independent,IND,en,eci
+Independents,IND,en,tcpd
+नोटा,NOTA,hi,form20-header
+इनमें से कोई नहीं,NOTA,hi,form20-tail
+उपरोक्त में से कोई नहीं,NOTA,hi,form20-tail
+NOTA,NOTA,en,eci
+None of the Above,NOTA,en,form20-tail
+None of the above,NOTA,en,form20-tail
+अन्य,OTH,hi,form20-header
+अन्य दल,OTH,hi,eci
+OTH,OTH,en,internal
+Other,OTH,en,internal
+Others,OTH,en,internal

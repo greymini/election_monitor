@@ -1,0 +1,18 @@
+ac_number,name_en,name_hi,kind,source
+32,Giridih Municipal Corporation,गिरिडीह नगर निगम,ulb,seeded
+32,Giridih Block,गिरिडीह प्रखंड,rural,seeded
+32,Pirtand Block,पीरटांड़ प्रखंड,rural,seeded
+31,Gandey Block,गांडेय प्रखंड,rural,spec-unverified
+31,Bengabad Block,बेंगाबाद प्रखंड,rural,spec-unverified
+33,Dumri Block,डुमरी प्रखंड,rural,spec-unverified
+33,Nawadih Block,नावाडीह प्रखंड,rural,spec-unverified
+33,Chandrapura Block,चंद्रपुरा प्रखंड,rural,spec-unverified
+42,Tundi Block,टुंडी प्रखंड,rural,spec-unverified
+42,Purvi Tundi Block,पूर्वी टुंडी प्रखंड,rural,spec-unverified
+42,Topchanchi Block,तोपचांची प्रखंड,rural,spec-unverified
+61,Silli Block,सिल्ली प्रखंड,rural,spec-unverified
+61,Sonahatu Block,सोनाहातू प्रखंड,rural,spec-unverified
+61,Rahe Block,राहे प्रखंड,rural,spec-unverified
+65,Kanke Block,कांके प्रखंड,rural,spec-unverified
+65,Burmu Block,बुरमू प्रखंड,rural,spec-unverified
+65,Ranchi Municipal Corporation (Kanke wards),रांची नगर निगम (कांके वार्ड),ulb,spec-unverified

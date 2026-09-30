@@ -112,6 +112,16 @@ export const getMe = () => api.get<Me>('/auth/me')
  */
 export interface AppConfig {
   chat_enabled: boolean
+  /** Identity only, no figures. Present so the header switcher can render
+   *  before the user has a token. */
+  acs: Array<{
+    ac_number: number
+    name_en: string
+    name_hi: string
+    reservation: string
+    verified: boolean
+  }>
+  default_ac: number | null
   version: string
   build_time: string
 }

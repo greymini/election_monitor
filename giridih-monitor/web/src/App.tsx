@@ -16,7 +16,9 @@ const News = lazy(() => import('./pages/News'))
 const Factors = lazy(() => import('./pages/Factors'))
 const Scenario = lazy(() => import('./pages/Scenario'))
 const Admin = lazy(() => import('./pages/Admin'))
+import { useAc } from './lib/ac'
 import { getConfig, getMe, getToken, setSession, type AppConfig, type Me } from './lib/api'
+const Compare = lazy(() => import('./pages/Compare'))
 
 export default function App() {
   const [authed, setAuthed] = useState<boolean>(() => Boolean(getToken()))
@@ -43,27 +45,32 @@ export default function App() {
     return <Login onSignedIn={() => setAuthed(true)} />
   }
 
+  /** Selected constituency: ?ac= in the URL, then localStorage, then the first
+   *  AC /config lists. Every page takes it so nothing can query unscoped. */
+  const ac = useAc(config.data)
+
   const signOut = () => {
     setSession(null)
     setAuthed(false)
   }
 
   return (
-    <Layout me={me.data} config={config.data} onSignOut={signOut}>
+    <Layout me={me.data} config={config.data} ac={ac} onSignOut={signOut}>
       <Suspense fallback={<Loading />}>
       <Routes>
-        <Route path="/" element={<Overview />} />
-        <Route path="/map" element={<MapExplorer />} />
-        <Route path="/results" element={<Results />} />
-        <Route path="/results/:electionLabel" element={<Results />} />
-        <Route path="/voters" element={<Voters />} />
-        {me.data?.sees_caste && <Route path="/caste" element={<Caste />} />}
-        <Route path="/transfer" element={<Transfer />} />
-        <Route path="/local" element={<LocalPolls />} />
-        <Route path="/news" element={<News />} />
-        <Route path="/factors" element={<Factors />} />
-        <Route path="/scenario" element={<Scenario />} />
-        {me.data?.role === 'admin' && <Route path="/admin" element={<Admin />} />}
+        <Route path="/" element={<Overview ac={ac} />} />
+        <Route path="/map" element={<MapExplorer ac={ac} />} />
+        <Route path="/results" element={<Results ac={ac} />} />
+        <Route path="/results/:electionLabel" element={<Results ac={ac} />} />
+        <Route path="/voters" element={<Voters ac={ac} />} />
+        {me.data?.sees_caste && <Route path="/caste" element={<Caste ac={ac} />} />}
+        <Route path="/transfer" element={<Transfer ac={ac} />} />
+        <Route path="/local" element={<LocalPolls ac={ac} />} />
+        <Route path="/news" element={<News ac={ac} />} />
+        <Route path="/factors" element={<Factors ac={ac} />} />
+        <Route path="/scenario" element={<Scenario ac={ac} />} />
+        <Route path="/compare" element={<Compare />} />
+        {me.data?.role === 'admin' && <Route path="/admin" element={<Admin ac={ac} />} />}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       </Suspense>

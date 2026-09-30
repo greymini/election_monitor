@@ -7,6 +7,7 @@ import { Empty, ErrorState, Loading } from '../components/States'
 import { api } from '../lib/api'
 import { dateShort, num } from '../lib/format'
 import { chartInk, token } from '../lib/tokens'
+import type { AcState } from '../lib/ac'
 
 interface Item {
   news_id: number; published: string; source: string; title: string
@@ -22,7 +23,7 @@ interface Issues {
   by_party: Array<{ party: string; mentions: number }>
 }
 
-export default function News() {
+export default function News({ ac }: { ac: AcState }) {
   const { t, i18n } = useTranslation()
   const hi = i18n.language === 'hi'
   const [q, setQ] = useState('')
@@ -31,7 +32,9 @@ export default function News() {
   const ink = chartInk()
 
   const clusters = useQuery<Issues>({
-    queryKey: ['news-issues'], queryFn: () => api.get('/news/issues?days=30'),
+    queryKey: ['news-issues', ac.acNumber],
+    queryFn: () => api.get(ac.path('/news/issues?days=30')),
+    enabled: ac.acNumber !== null,
   })
   const query = useQuery<{ rows: Item[]; issues: string[] }>({
     queryKey: ['news', submitted, issue],
@@ -39,7 +42,7 @@ export default function News() {
       const params = new URLSearchParams()
       if (submitted) params.set('q', submitted)
       if (issue) params.set('issue', issue)
-      return api.get(`/news?${params.toString()}`)
+      return api.get(ac.path(`/news?${params.toString()}`))
     },
   })
   const rows = query.data?.rows ?? []

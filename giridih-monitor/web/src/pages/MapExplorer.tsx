@@ -11,6 +11,7 @@ import { ErrorState, Loading } from '../components/States'
 import { api } from '../lib/api'
 import { num, pct } from '../lib/format'
 import { divergingColor, sequentialColor, token } from '../lib/tokens'
+import type { AcState } from '../lib/ac'
 
 const GIRIDIH_CENTRE: [number, number] = [24.1854, 86.3094]
 
@@ -33,14 +34,15 @@ interface Feature {
   }
 }
 
-export default function MapExplorer() {
+export default function MapExplorer({ ac }: { ac: AcState }) {
   const { t, i18n } = useTranslation()
   const [metric, setMetric] = useState<string>('margin_pct')
   const [selected, setSelected] = useState<string | null>(null)
 
   const query = useQuery<{ features: Feature[]; meta: { count: number; ungeocoded: number } }>({
     queryKey: ['booths', metric],
-    queryFn: () => api.get(`/booths?metric=${metric}`),
+    queryFn: () => api.get(ac.path(`/booths?metric=${metric}`)),
+    enabled: ac.acNumber !== null,
   })
 
   const spec = METRICS.find((m) => m.key === metric)!
@@ -139,7 +141,7 @@ export default function MapExplorer() {
         {t('map.clickBooth')} · Marker size is the electorate; colour is the selected metric.
       </p>
 
-      {selected && <BoothDrawer boothUid={selected} onClose={() => setSelected(null)} />}
+      {selected && <BoothDrawer boothUid={selected} ac={ac} onClose={() => setSelected(null)} />}
     </div>
   )
 }

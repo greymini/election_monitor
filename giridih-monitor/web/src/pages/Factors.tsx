@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 
 import { Empty, ErrorState, Loading } from '../components/States'
 import { api } from '../lib/api'
+import type { AcState } from '../lib/ac'
 
 /**
  * Curated knowledge cards (HLD module 9), read from the database.
@@ -38,12 +39,13 @@ interface CardsResponse {
   note: string
 }
 
-export default function Factors() {
+export default function Factors({ ac }: { ac: AcState }) {
   const { t, i18n } = useTranslation()
   const hi = i18n.language === 'hi'
   const query = useQuery<CardsResponse>({
-    queryKey: ['knowledge-cards'],
-    queryFn: () => api.get('/knowledge-cards'),
+    queryKey: ['knowledge-cards', ac.acNumber],
+    queryFn: () => api.get(ac.path('/knowledge-cards')),
+    enabled: ac.acNumber !== null,
   })
 
   if (query.isLoading) return <Loading />

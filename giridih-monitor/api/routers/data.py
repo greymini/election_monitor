@@ -1,5 +1,15 @@
 """Core data endpoints: summary, booths (GeoJSON), results, rolls, caste,
-transfer, local elections (LLD 9)."""
+transfer, local elections (LLD 9), all scoped to one constituency.
+
+Every route here lives under `/acs/{ac_number}/` and takes `CurrentAC`, which
+resolves the number and refuses an unknown one. The AC is applied to the query,
+not just accepted as a parameter - the failure this guards against is a route
+that takes an AC and then serves every constituency's rows under it.
+
+`api/routers/legacy.py` keeps the old unscoped paths alive as 308 redirects to
+`/acs/32/...` for one release, because bookmarks and the run guide both point at
+them.
+"""
 
 from __future__ import annotations
 
@@ -10,14 +20,14 @@ from datetime import date
 from fastapi import APIRouter, HTTPException, Query, Response, status
 
 from api.booth_card import build_booth_card
-from api.deps import CurrentUser, StrategistUser, scoped_block_id
+from api.deps import CurrentAC, CurrentUser, StrategistUser, scoped_block_id
 from common.db import query, query_one
 
-router = APIRouter(tags=["data"])
+router = APIRouter(prefix="/acs/{ac_number}", tags=["data"])
 
-# HLD 1: the seat fell vacant on 6 Sep 2026 and the ECI must poll within six months.
-VACANCY_DATE = date(2026, 9, 6)
-BYPOLL_DEADLINE = date(2027, 3, 6)
+# The vacancy and deadline used to be module constants here, which could only
+# ever describe Giridih and would have reported its bypoll date for all six
+# constituencies. They live on the `ac` row now.
 
 
 def _csv_response(rows: list[dict], filename: str) -> Response:
@@ -34,7 +44,7 @@ def _csv_response(rows: list[dict], filename: str) -> Response:
 
 
 @router.get("/summary")
-def summary(user: CurrentUser) -> dict:
+def summary(user: CurrentUser, ac: CurrentAC) -> dict:
     # AC-level party totals per election, so the margin trend on the overview is
     # the loaded data rather than a constant compiled into the frontend. The
     # winner and margin are computed from the summed party columns here because
@@ -59,6 +69,7 @@ def summary(user: CurrentUser) -> dict:
         "         SUM(w.jvm) AS jvm, SUM(w.others) AS others"
         "  FROM election e"
         "  LEFT JOIN mv_result_booth_wide w ON w.election_id = e.election_id"
+        "  WHERE e.ac_id = %s"
         "  GROUP BY e.election_id, e.label, e.type, e.year, e.is_baseline"
         "), ranked AS ("
         "  SELECT t.*, r.abbr, r.votes,"
@@ -80,30 +91,63 @@ def summary(user: CurrentUser) -> dict:
         "FROM totals t "
         "LEFT JOIN ranked win ON win.election_id = t.election_id AND win.rn = 1 "
         "LEFT JOIN ranked run ON run.election_id = t.election_id AND run.rn = 2 "
-        "ORDER BY t.year DESC, t.type"
+        "ORDER BY t.year DESC, t.type",
+        (ac.ac_id,),
     )
     baseline = query_one(
         "SELECT e.label, SUM(w.jmm) AS jmm, SUM(w.bjp) AS bjp, SUM(w.jlkm) AS jlkm, "
         "SUM(w.nota) AS nota, SUM(w.electors) AS electors, SUM(w.votes_counted) AS votes "
         "FROM mv_result_booth_wide w JOIN election e ON e.election_id = w.election_id "
-        "WHERE e.is_baseline GROUP BY e.label"
+        "WHERE e.is_baseline AND e.ac_id = %s GROUP BY e.label",
+        (ac.ac_id,),
     )
+
+    # The data-health strip (spec 7.1). Each dataset reports loaded / partial /
+    # missing so a page can say which command fills the gap rather than
+    # rendering a blank panel. Counting per AC matters: five of the six have
+    # nothing at booth level yet, and that has to read as "not loaded" rather
+    # than as a fault.
     data_health = query_one(
-        "SELECT (SELECT COUNT(*) FROM booth WHERE is_active) AS booths, "
-        "(SELECT COUNT(*) FROM review_queue WHERE status = 'open') AS open_reviews, "
-        "(SELECT COUNT(*) FROM booth_crosswalk WHERE confidence < 0.85 AND NOT reviewed) "
-        "  AS weak_crosswalks, "
-        "(SELECT MAX(revision_date) FROM roll_revision) AS latest_roll"
+        "SELECT (SELECT COUNT(*) FROM booth WHERE is_active AND ac_id = %(ac)s) AS booths, "
+        "(SELECT COUNT(*) FROM booth WHERE is_active AND ac_id = %(ac)s AND geom IS NOT NULL) "
+        "  AS booths_geocoded, "
+        "(SELECT COUNT(*) FROM ps_list_entry WHERE ac_id = %(ac)s) AS ps_list_rows, "
+        "(SELECT COUNT(DISTINCT election_id) FROM result_booth WHERE ac_id = %(ac)s) "
+        "  AS elections_with_results, "
+        "(SELECT COUNT(*) FROM review_queue WHERE status = 'open' AND ac_id = %(ac)s) "
+        "  AS open_reviews, "
+        "(SELECT COUNT(*) FROM booth_crosswalk WHERE ac_id = %(ac)s "
+        "   AND confidence < 0.85 AND NOT reviewed) AS weak_crosswalks, "
+        "(SELECT COUNT(*) FROM booth_crosswalk WHERE ac_id = %(ac)s) AS crosswalk_rows, "
+        "(SELECT MAX(revision_date) FROM roll_revision WHERE ac_id = %(ac)s) AS latest_roll, "
+        "(SELECT COUNT(*) FROM roll_revision WHERE ac_id = %(ac)s) AS roll_revisions, "
+        "(SELECT COUNT(*) FROM caste_estimate WHERE ac_id = %(ac)s AND source = 'blend') "
+        "  AS caste_rows, "
+        "(SELECT COUNT(*) FROM demography WHERE ac_id = %(ac)s) AS census_rows, "
+        "(SELECT COUNT(*) FROM local_result WHERE ac_id = %(ac)s) AS local_result_rows, "
+        "(SELECT COUNT(*) FROM source_doc WHERE ac_id = %(ac)s) AS source_docs",
+        {"ac": ac.ac_id},
     )
+
     today = date.today()
+    deadline = ac.bypoll_due
     return {
-        "constituency": {"code": "AC-32", "name_en": "Giridih", "name_hi": "गिरिडीह",
-                         "parent_pc": "PC-11 Giridih"},
+        "constituency": {
+            "ac_number": ac.ac_number,
+            "code": ac.label,
+            "name_en": ac.name_en,
+            "name_hi": ac.name_hi,
+            "reservation": ac.reservation,
+            # The badge every page shows until a human has reconciled this AC's
+            # seeded facts against ECI/CEO publications.
+            "verified": ac.verified,
+        },
         "bypoll": {
-            "vacancy_date": VACANCY_DATE,
-            "deadline": BYPOLL_DEADLINE,
-            "days_to_deadline": (BYPOLL_DEADLINE - today).days,
-            "note": "The ECI must hold the poll within six months of the vacancy.",
+            "vacancy_date": ac.vacancy_date,
+            "deadline": deadline,
+            "days_to_deadline": (deadline - today).days if deadline else None,
+            "note": ("The ECI must hold the poll within six months of the vacancy."
+                     if deadline else "No by-election is pending in this constituency."),
         },
         "elections": elections,
         "baseline": baseline,
@@ -113,7 +157,7 @@ def summary(user: CurrentUser) -> dict:
 
 
 @router.get("/knowledge-cards")
-def knowledge_cards(user: CurrentUser) -> dict:
+def knowledge_cards(user: CurrentUser, ac: CurrentAC) -> dict:
     """Curated context cards (HLD module 9), from the database.
 
     The Factors page used to render these as a hardcoded array in the frontend.
@@ -124,9 +168,14 @@ def knowledge_cards(user: CurrentUser) -> dict:
     the two had already drifted: five cards against six seeded, with a
     mismatched slug. One source now, so the stated property is actually true.
     """
+    # This AC's cards, plus the ones with no ac_id: the caste guardrails and
+    # data-provenance cards are general guidance and apply everywhere.
     cards = query(
         "SELECT slug, topic, title_en, title_hi, body_en, body_hi, sources, "
-        "last_reviewed, in_prompt FROM knowledge_card ORDER BY slug"
+        "last_reviewed, in_prompt, ac_id IS NULL AS is_general "
+        "FROM knowledge_card WHERE ac_id = %s OR ac_id IS NULL "
+        "ORDER BY ac_id NULLS LAST, slug",
+        (ac.ac_id,),
     )
     return {
         "cards": cards,
@@ -140,27 +189,45 @@ def knowledge_cards(user: CurrentUser) -> dict:
 @router.get("/booths")
 def booths_geojson(
     user: CurrentUser,
+    ac: CurrentAC,
     election_label: str | None = None,
     area_id: int | None = None,
+    block_id: int | None = None,
     metric: str = Query("margin_pct", pattern=r"^[a-z_]{3,32}$"),
 ) -> dict:
-    """Booth points as GeoJSON, carrying the metric the map is colouring by."""
+    """Booth points as GeoJSON, carrying the metric the map is colouring by.
+
+    `block_id` and `election_label` are honoured, not merely accepted. The audit
+    found /booths echoing election_label back in its metadata while serving
+    baseline numbers regardless (F2), so a caller asking for VS-2019 got 2024
+    figures labelled 2019.
+    """
     allowed_metrics = {
-        "margin_pct", "turnout_pct", "new_voter_pct", "priority_score",
-        "floating_pct", "margin_stddev", "electors",
+        "margin_pct", "signed_margin_pct", "turnout_pct", "new_voter_pct",
+        "priority_score", "floating_pct", "margin_stddev", "electors",
     }
     if metric not in allowed_metrics:
         raise HTTPException(status.HTTP_400_BAD_REQUEST,
                             f"metric must be one of: {', '.join(sorted(allowed_metrics))}")
 
-    clauses, params = ["b.is_active"], []
-    block_id = scoped_block_id(user)
-    if block_id is not None:
+    clauses, params = ["b.is_active", "b.ac_id = %s"], [ac.ac_id]
+    scoped = scoped_block_id(user)
+    if scoped is not None:
+        clauses.append("a.block_id = %s")
+        params.append(scoped)
+    elif block_id is not None:
         clauses.append("a.block_id = %s")
         params.append(block_id)
     if area_id is not None:
         clauses.append("b.area_id = %s")
         params.append(area_id)
+
+    # The metric columns live on mv_booth_priority, which is baseline-only by
+    # construction. Asking for a different election has to change which rows are
+    # joined, not just the label in the response.
+    if election_label:
+        clauses.append("p.election_label = %s")
+        params.append(election_label)
     where = " AND ".join(clauses)
 
     rows = query(
@@ -170,11 +237,15 @@ def booths_geojson(
                ST_X(b.geom) AS lon, ST_Y(b.geom) AS lat,
                a.area_id, a.name_hi AS area_hi, a.name_en AS area_en, a.kind AS area_kind,
                a.block_id,
-               p.margin_pct, p.turnout_pct, p.new_voter_pct, p.priority_score,
-               p.floating_pct, p.margin_stddev, p.electors, p.winner_party, p.runner_party
+               p.margin_pct, p.signed_margin_pct, p.turnout_pct, p.new_voter_pct,
+               p.priority_score, p.floating_pct, p.margin_stddev, p.electors,
+               p.winner_party, p.runner_party, p.election_label,
+               x.confidence AS crosswalk_confidence, x.reviewed AS crosswalk_reviewed
         FROM booth b
         JOIN area a ON a.area_id = b.area_id
         LEFT JOIN mv_booth_priority p ON p.booth_uid = b.booth_uid
+        LEFT JOIN booth_crosswalk x ON x.booth_uid = b.booth_uid
+                                   AND x.ps_number = b.current_ps_number
         WHERE {where}
         ORDER BY b.booth_uid
         """,
@@ -196,16 +267,24 @@ def booths_geojson(
         "type": "FeatureCollection",
         "features": features,
         "meta": {"count": len(features), "ungeocoded": ungeocoded, "metric": metric,
-                 "election_label": election_label},
+                 "election_label": election_label, "ac_number": ac.ac_number,
+                 # Marker size is the electorate (F3), which is NULL until a roll
+                 # snapshot is linked; the map must size by a real number or say
+                 # it cannot.
+                 "electors_known": sum(1 for f in features
+                                       if f["properties"].get("electors") is not None)},
     }
 
 
 @router.get("/booths/{booth_uid}/card")
-def booth_card(booth_uid: str, user: CurrentUser) -> dict:
+def booth_card(booth_uid: str, user: CurrentUser, ac: CurrentAC) -> dict:
     try:
-        card = build_booth_card(booth_uid, include_caste=user.sees_caste)
+        card = build_booth_card(booth_uid, include_caste=user.sees_caste, ac_id=ac.ac_id)
     except LookupError:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, f"No booth {booth_uid}") from None
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            f"No booth {booth_uid} in AC-{ac.ac_number}",
+        ) from None
     block_id = scoped_block_id(user)
     if block_id is not None and card["booth"]["block_id"] != block_id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "This booth is outside your block")
@@ -213,12 +292,16 @@ def booth_card(booth_uid: str, user: CurrentUser) -> dict:
 
 
 @router.get("/results/{election_label}/booths")
-def results_by_booth(election_label: str, user: CurrentUser, area_id: int | None = None,
+def results_by_booth(election_label: str, user: CurrentUser, ac: CurrentAC,
+                     area_id: int | None = None, block_id: int | None = None,
                      format: str = Query("json", pattern="^(json|csv)$")):
     """Full Form 20 table for one election, sortable and exportable (module 3)."""
-    clauses, params = ["w.election_label = %s"], [election_label]
-    block_id = scoped_block_id(user)
-    if block_id is not None:
+    clauses, params = ["w.election_label = %s", "w.ac_id = %s"], [election_label, ac.ac_id]
+    scoped = scoped_block_id(user)
+    if scoped is not None:
+        clauses.append("w.block_id = %s")
+        params.append(scoped)
+    elif block_id is not None:
         clauses.append("w.block_id = %s")
         params.append(block_id)
     if area_id is not None:
@@ -229,28 +312,34 @@ def results_by_booth(election_label: str, user: CurrentUser, area_id: int | None
         f"""
         SELECT w.booth_uid, w.ps_numbers, a.name_hi AS area_hi, a.name_en AS area_en,
                bl.name_en AS block_en, b.building, b.village_or_locality,
-               w.electors, w.votes_counted, w.turnout_pct,
+               w.electors, w.votes_polled, w.valid_votes, w.turnout_pct,
                w.jmm, w.bjp, w.ajsu, w.jlkm, w.inc, w.rjd, w.jvm, w.others, w.nota,
                w.winner_party, w.runner_party, w.margin_votes, w.margin_pct,
+               w.signed_margin_pct, w.rejected, w.lineage_kind,
+               x.confidence AS crosswalk_confidence, x.reviewed AS crosswalk_reviewed,
                w.source_doc, w.source_page
         FROM mv_result_booth_wide w
         JOIN booth b ON b.booth_uid = w.booth_uid
         JOIN area a ON a.area_id = w.area_id
         JOIN block bl ON bl.block_id = a.block_id
+        LEFT JOIN booth_crosswalk x ON x.booth_uid = w.booth_uid
+                                   AND x.election_id = w.election_id
         WHERE {' AND '.join(clauses)}
         ORDER BY w.booth_uid
         """,
         params,
     )
     if format == "csv":
-        return _csv_response(rows, f"{election_label.replace(' ', '_')}_booths.csv")
-    return {"election_label": election_label, "rows": rows, "count": len(rows)}
+        return _csv_response(
+            rows, f"ac{ac.ac_number}_{election_label.replace(' ', '_')}_booths.csv")
+    return {"election_label": election_label, "ac_number": ac.ac_number,
+            "rows": rows, "count": len(rows)}
 
 
 @router.get("/results/{election_label}/areas")
-def results_by_area(election_label: str, user: CurrentUser,
+def results_by_area(election_label: str, user: CurrentUser, ac: CurrentAC,
                     format: str = Query("json", pattern="^(json|csv)$")):
-    clauses, params = ["election_label = %s"], [election_label]
+    clauses, params = ["election_label = %s", "ac_id = %s"], [election_label, ac.ac_id]
     block_id = scoped_block_id(user)
     if block_id is not None:
         clauses.append("block_id = %s")
@@ -261,22 +350,27 @@ def results_by_area(election_label: str, user: CurrentUser,
         params,
     )
     if format == "csv":
-        return _csv_response(rows, f"{election_label.replace(' ', '_')}_areas.csv")
-    return {"election_label": election_label, "rows": rows, "count": len(rows)}
+        return _csv_response(
+            rows, f"ac{ac.ac_number}_{election_label.replace(' ', '_')}_areas.csv")
+    return {"election_label": election_label, "ac_number": ac.ac_number,
+            "rows": rows, "count": len(rows)}
 
 
 @router.get("/rolls/changes")
-def roll_changes(user: CurrentUser, revision_label: str | None = None,
-                 area_id: int | None = None,
+def roll_changes(user: CurrentUser, ac: CurrentAC, revision_label: str | None = None,
+                 area_id: int | None = None, block_id: int | None = None,
                  format: str = Query("json", pattern="^(json|csv)$")):
     """New and deleted voters per booth per revision (module 4).
 
     Deletions matter as much as additions if the roll is post-SIR, so the
     revision's is_post_sir flag rides along with every row.
     """
-    clauses, params = ["true"], []
-    block_id = scoped_block_id(user)
-    if block_id is not None:
+    clauses, params = ["c.ac_id = %s"], [ac.ac_id]
+    scoped = scoped_block_id(user)
+    if scoped is not None:
+        clauses.append("a.block_id = %s")
+        params.append(scoped)
+    elif block_id is not None:
         clauses.append("a.block_id = %s")
         params.append(block_id)
     if area_id is not None:
@@ -299,31 +393,50 @@ def roll_changes(user: CurrentUser, revision_label: str | None = None,
         JOIN roll_revision r ON r.revision_id = c.revision_id
         JOIN booth b ON b.booth_uid = c.booth_uid
         JOIN area a ON a.area_id = b.area_id
-        LEFT JOIN roll_snapshot s ON s.booth_uid = c.booth_uid AND s.revision_id = c.revision_id
+        -- D7: roll_change rows are written for supplements and roll_snapshot
+        -- rows only for mother rolls, and is_mother = NOT supplement, so a
+        -- single revision_id can never be both. Joining on an equal revision_id
+        -- therefore left electors NULL for every row, and additions_pct and
+        -- deletions_pct NULL with it. The denominator has to come from the most
+        -- recent mother roll at or before this change.
+        LEFT JOIN LATERAL (
+            SELECT s.electors
+            FROM roll_snapshot s
+            JOIN roll_revision mr ON mr.revision_id = s.revision_id
+            WHERE s.booth_uid = c.booth_uid
+              AND mr.is_mother
+              AND mr.ac_id = c.ac_id
+              AND mr.revision_date <= r.revision_date
+            ORDER BY mr.revision_date DESC
+            LIMIT 1
+        ) s ON true
         WHERE {' AND '.join(clauses)}
         ORDER BY r.revision_date DESC, c.booth_uid
         """,
         params,
     )
     if format == "csv":
-        return _csv_response(rows, "roll_changes.csv")
-    return {"rows": rows, "count": len(rows)}
+        return _csv_response(rows, f"ac{ac.ac_number}_roll_changes.csv")
+    return {"rows": rows, "count": len(rows), "ac_number": ac.ac_number}
 
 
 @router.get("/rolls/revisions")
-def roll_revisions(user: CurrentUser) -> dict:
+def roll_revisions(user: CurrentUser, ac: CurrentAC) -> dict:
     return {"rows": query(
         "SELECT revision_id, label, revision_date, is_post_sir, is_mother "
-        "FROM roll_revision ORDER BY revision_date DESC"
+        "FROM roll_revision WHERE ac_id = %s ORDER BY revision_date DESC",
+        (ac.ac_id,),
     )}
 
 
 @router.get("/caste")
-def caste(user: StrategistUser, area_id: int | None = None, booth_uid: str | None = None,
+def caste(user: StrategistUser, ac: CurrentAC, area_id: int | None = None,
+          booth_uid: str | None = None,
           min_conf: float = Query(0.4, ge=0.0, le=1.0),
           source: str = Query("blend", pattern="^(blend|surname|census|survey)$")) -> dict:
     """Aggregate community estimates only (HLD 5). Hidden from block-role users."""
-    clauses, params = ["ce.source = %s", "ce.confidence >= %s"], [source, min_conf]
+    clauses = ["ce.source = %s", "ce.confidence >= %s", "ce.ac_id = %s"]
+    params = [source, min_conf, ac.ac_id]
     if area_id is not None:
         clauses.append("b.area_id = %s")
         params.append(area_id)
@@ -335,7 +448,8 @@ def caste(user: StrategistUser, area_id: int | None = None, booth_uid: str | Non
         f"""
         SELECT ce.booth_uid, b.area_id, a.name_hi AS area_hi, a.name_en AS area_en,
                c.name_en AS community_en, c.name_hi AS community_hi, c.category,
-               ce.est_count, ce.est_pct, ce.confidence, ce.source
+               ce.est_count, ce.est_pct, ce.matched_pct, ce.confidence, ce.source,
+               ce.method_version
         FROM caste_estimate ce
         JOIN community c ON c.community_id = ce.community_id
         JOIN booth b ON b.booth_uid = ce.booth_uid
@@ -359,10 +473,11 @@ def caste(user: StrategistUser, area_id: int | None = None, booth_uid: str | Non
 
 
 @router.get("/transfer")
-def transfer(user: StrategistUser, year: int = 2024, area_id: int | None = None,
+def transfer(user: StrategistUser, ac: CurrentAC, year: int = 2024,
+             area_id: int | None = None,
              format: str = Query("json", pattern="^(json|csv)$")):
     """Where the Lok Sabha vote went at the assembly poll (module 6)."""
-    clauses, params = ["t.year = %s"], [year]
+    clauses, params = ["t.year = %s", "t.ac_id = %s"], [year, ac.ac_id]
     if area_id is not None:
         clauses.append("b.area_id = %s")
         params.append(area_id)
@@ -377,25 +492,27 @@ def transfer(user: StrategistUser, year: int = 2024, area_id: int | None = None,
         JOIN booth b ON b.booth_uid = t.booth_uid
         JOIN area a ON a.area_id = b.area_id
         LEFT JOIN mv_floating_vote f ON f.booth_uid = t.booth_uid AND f.year = t.year
+                                    AND f.ac_id = t.ac_id
         WHERE {' AND '.join(clauses)}
         ORDER BY f.floating_pct DESC NULLS LAST, t.booth_uid, t.party
         """,
         params,
     )
     if format == "csv":
-        return _csv_response(rows, f"transfer_{year}.csv")
+        return _csv_response(rows, f"ac{ac.ac_number}_transfer_{year}.csv")
     return {
-        "year": year, "rows": rows, "count": len(rows),
-        "note": ("Lok Sabha figures here are the AC-32 segment of PC-11 Giridih, not the whole "
-                 "parliamentary seat. floating_pct is the Pedersen index between the two polls."),
+        "year": year, "ac_number": ac.ac_number, "rows": rows, "count": len(rows),
+        "note": (f"Lok Sabha figures here are the AC-{ac.ac_number} segment of its parliamentary "
+                 "seat, not the whole PC. floating_pct is the Pedersen index between the two "
+                 "polls and is NULL, not 50%, where only one of them is loaded."),
     }
 
 
 @router.get("/local-results")
-def local_results(user: CurrentUser, election_label: str | None = None,
+def local_results(user: CurrentUser, ac: CurrentAC, election_label: str | None = None,
                   seat_type: str | None = None) -> dict:
     """Panchayat and municipal results (module 7)."""
-    clauses, params = ["true"], []
+    clauses, params = ["lr.ac_id = %s"], [ac.ac_id]
     if election_label:
         clauses.append("e.label = %s")
         params.append(election_label)
@@ -430,10 +547,10 @@ def local_results(user: CurrentUser, election_label: str | None = None,
 
 
 @router.get("/priority")
-def priority(user: CurrentUser, limit: int = Query(50, ge=1, le=500),
+def priority(user: CurrentUser, ac: CurrentAC, limit: int = Query(50, ge=1, le=500),
              format: str = Query("json", pattern="^(json|csv)$")):
     """Booth priority ranking (module 10)."""
-    clauses, params = ["true"], []
+    clauses, params = ["p.ac_id = %s"], [ac.ac_id]
     block_id = scoped_block_id(user)
     if block_id is not None:
         clauses.append("a.block_id = %s")
@@ -445,7 +562,8 @@ def priority(user: CurrentUser, limit: int = Query(50, ge=1, le=500),
         SELECT p.booth_uid, a.name_hi AS area_hi, a.name_en AS area_en, a.block_id,
                b.building, p.margin_pct, p.margin_votes, p.electors, p.turnout_pct,
                p.new_voter_pct, p.additions, p.margin_stddev, p.floating_pct,
-               p.priority_score, p.priority_quartile, p.winner_party, p.runner_party
+               p.priority_score, p.priority_quartile, p.winner_party, p.runner_party,
+               p.inputs_used
         FROM mv_booth_priority p
         JOIN booth b ON b.booth_uid = p.booth_uid
         JOIN area a ON a.area_id = p.area_id
@@ -455,23 +573,36 @@ def priority(user: CurrentUser, limit: int = Query(50, ge=1, le=500),
         params,
     )
     if format == "csv":
-        return _csv_response(rows, "booth_priority.csv")
+        return _csv_response(rows, f"ac{ac.ac_number}_booth_priority.csv")
     return {
         "rows": rows, "count": len(rows),
+        "ac_number": ac.ac_number,
         "formula": ("0.35 x tight margin + 0.25 x new-voter share + 0.20 x volatility "
-                    "+ 0.20 x floating vote, each percentile-ranked across booths."),
+                    "+ 0.20 x floating vote, each percentile-ranked within this AC. "
+                    "Missing inputs are dropped and the remaining weights renormalised; "
+                    "inputs_used records which contributed."),
     }
 
 
 @router.get("/areas")
-def areas(user: CurrentUser) -> dict:
-    clauses, params = ["true"], []
+def areas(user: CurrentUser, ac: CurrentAC) -> dict:
+    """Filter vocabulary for this AC: its blocks, areas, elections and parties.
+
+    Every page's filters are built from this, so it has to be AC-scoped or a
+    block picker would offer another constituency's blocks.
+    """
+    clauses, params = ["a.ac_id = %s"], [ac.ac_id]
     block_id = scoped_block_id(user)
     if block_id is not None:
         clauses.append("a.block_id = %s")
         params.append(block_id)
     return {
-        "blocks": query("SELECT block_id, name_en, name_hi, kind FROM block ORDER BY block_id"),
+        "ac_number": ac.ac_number,
+        "blocks": query(
+            "SELECT block_id, name_en, name_hi, kind FROM block WHERE ac_id = %s "
+            "ORDER BY block_id",
+            (ac.ac_id,),
+        ),
         "areas": query(
             f"SELECT a.area_id, a.block_id, a.kind, a.name_en, a.name_hi, a.code, "
             f"COUNT(b.booth_uid) AS booths "
@@ -481,8 +612,25 @@ def areas(user: CurrentUser) -> dict:
             f"ORDER BY a.block_id, a.kind, a.name_en",
             params,
         ),
-        "elections": query("SELECT election_id, label, type, year, is_baseline "
-                           "FROM election ORDER BY year DESC, type"),
-        "parties": query("SELECT party_id, abbr, name_en, name_hi, alliance_2024, colour "
-                         "FROM party ORDER BY party_id"),
+        # Contests for this AC, with whether any result is actually loaded, so a
+        # picker can grey out an election rather than offering an empty table.
+        "elections": query(
+            "SELECT e.election_id, e.label, e.type, e.year, e.is_baseline, "
+            "       EXISTS (SELECT 1 FROM result_booth rb "
+            "               WHERE rb.election_id = e.election_id) AS has_results "
+            "FROM election e WHERE e.ac_id = %s ORDER BY e.year DESC, e.type",
+            (ac.ac_id,),
+        ),
+        "parties": query("SELECT party_id, abbr, name_en, name_hi, colour FROM party "
+                         "ORDER BY party_id"),
+        # The pair the signed margin ramp is oriented by, for this AC's baseline.
+        "contest": query_one(
+            "SELECT pa.abbr AS party_a, pb.abbr AS party_b, c.source "
+            "FROM ac_contest c "
+            "JOIN election e ON e.event_id = c.event_id AND e.ac_id = c.ac_id "
+            "JOIN party pa ON pa.party_id = c.party_a "
+            "JOIN party pb ON pb.party_id = c.party_b "
+            "WHERE c.ac_id = %s AND e.is_baseline",
+            (ac.ac_id,),
+        ),
     }

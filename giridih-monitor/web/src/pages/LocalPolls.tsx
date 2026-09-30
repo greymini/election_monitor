@@ -7,6 +7,7 @@ import PartyChip from '../components/PartyChip'
 import { Empty, ErrorState, Loading } from '../components/States'
 import { api } from '../lib/api'
 import { num } from '../lib/format'
+import type { AcState } from '../lib/ac'
 
 interface Row {
   local_result_id: number; election: string; seat_type: string; seat_name: string
@@ -17,14 +18,15 @@ interface Row {
   [key: string]: unknown
 }
 
-export default function LocalPolls() {
+export default function LocalPolls({ ac }: { ac: AcState }) {
   const { t, i18n } = useTranslation()
   const hi = i18n.language === 'hi'
   const [seatType, setSeatType] = useState('')
 
   const query = useQuery<{ rows: Row[]; note: string }>({
     queryKey: ['local', seatType],
-    queryFn: () => api.get(`/local-results${seatType ? `?seat_type=${seatType}` : ''}`),
+    queryFn: () => api.get(ac.path(`/local-results${seatType ? `?seat_type=${seatType}` : ''}`)),
+    enabled: ac.acNumber !== null,
   })
   const rows = query.data?.rows ?? []
 

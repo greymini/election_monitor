@@ -1,0 +1,12 @@
+type,year,label,count_date,is_bypoll,is_baseline,notes
+VS,2005,VS-2005,,false,false,AC-level result only; Form 20 may not be online
+VS,2009,VS-2009,,false,false,
+VS,2014,VS-2014,,false,false,
+VS,2019,VS-2019,,false,false,
+VS,2024,VS-2024,,false,true,Baseline for swing and scenario modelling in every AC
+LS,2019,LS-2019,,false,false,Per-AC rows are the assembly segments of the PC contest
+LS,2024,LS-2024,,false,false,Per-AC rows are the assembly segments of the PC contest
+PANCHAYAT,2010,PANCHAYAT-2010,,false,false,Party-less; affiliation tagged manually
+PANCHAYAT,2015,PANCHAYAT-2015,,false,false,Party-less; affiliation tagged manually
+PANCHAYAT,2022,PANCHAYAT-2022,,false,false,Party-less; affiliation tagged manually
+ULB,2018,ULB-2018,,false,false,Municipal ward polls; verify whether a later ULB poll exists

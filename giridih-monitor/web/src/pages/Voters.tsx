@@ -8,6 +8,7 @@ import { Empty, ErrorState, Loading } from '../components/States'
 import { api, downloadCsv } from '../lib/api'
 import { num, pct, signedNum } from '../lib/format'
 import { chartInk, token } from '../lib/tokens'
+import type { AcState } from '../lib/ac'
 
 interface Row {
   booth_uid: string; revision: string; revision_date: string; is_post_sir: boolean
@@ -21,19 +22,21 @@ interface Row {
 
 interface Revision { revision_id: number; label: string; revision_date: string; is_post_sir: boolean }
 
-export default function Voters() {
+export default function Voters({ ac }: { ac: AcState }) {
   const { t, i18n } = useTranslation()
   const hi = i18n.language === 'hi'
   const [revision, setRevision] = useState('')
   const ink = chartInk()
 
   const revisions = useQuery<{ rows: Revision[] }>({
-    queryKey: ['roll-revisions'], queryFn: () => api.get('/rolls/revisions'),
+    queryKey: ['roll-revisions', ac.acNumber],
+    queryFn: () => api.get(ac.path('/rolls/revisions')),
+    enabled: ac.acNumber !== null,
   })
   const query = useQuery<{ rows: Row[] }>({
     queryKey: ['roll-changes', revision],
     queryFn: () =>
-      api.get(`/rolls/changes${revision ? `?revision_label=${encodeURIComponent(revision)}` : ''}`),
+      api.get(ac.path(`/rolls/changes${revision ? `?revision_label=${encodeURIComponent(revision)}` : ''}`)),
   })
 
   const rows = query.data?.rows ?? []
@@ -92,7 +95,7 @@ export default function Voters() {
           ))}
         </select>
         <button className="btn" disabled={!rows.length}
-                onClick={() => void downloadCsv('/rolls/changes', 'roll_changes.csv')}>
+                onClick={() => void downloadCsv(ac.path('/rolls/changes'), 'roll_changes.csv')}>
           {t('common.export')}
         </button>
       </div>

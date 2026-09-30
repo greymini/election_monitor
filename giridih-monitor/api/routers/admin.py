@@ -8,28 +8,30 @@ from datetime import date
 from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
-from api.deps import AdminUser
+from api.deps import AdminUser, CurrentAC
 from common.db import execute, query, query_one
 
-router = APIRouter(prefix="/admin", tags=["admin"])
+router = APIRouter(prefix="/acs/{ac_number}/admin", tags=["admin"])
 
 
 @router.get("/review-queue")
-def review_queue(user: AdminUser, kind: str | None = None,
+def review_queue(user: AdminUser, ac: CurrentAC, kind: str | None = None,
                  status_filter: str = Query("open", alias="status"),
                  limit: int = Query(100, ge=1, le=500)) -> dict:
-    clauses, params = ["status = %s"], [status_filter]
+    clauses, params = ["status = %s"], [ac.ac_id, status_filter]
     if kind:
         clauses.append("kind = %s")
         params.append(kind)
     params.append(limit)
     rows = query(
         f"SELECT id, kind, ref, payload, status, note, created_at "
-        f"FROM review_queue WHERE {' AND '.join(clauses)} ORDER BY id DESC LIMIT %s",
+        f"FROM review_queue WHERE ac_id = %s AND {' AND '.join(clauses)} "
+        f"ORDER BY id DESC LIMIT %s",
         params,
     )
     counts = query("SELECT kind, COUNT(*) AS open FROM review_queue "
-                   "WHERE status = 'open' GROUP BY kind ORDER BY open DESC")
+                   "WHERE status = 'open' AND ac_id = %s "
+                   "GROUP BY kind ORDER BY open DESC", (ac.ac_id,))
     return {"rows": rows, "count": len(rows), "open_by_kind": counts}
 
 
@@ -39,11 +41,12 @@ class ResolveItem(BaseModel):
 
 
 @router.post("/review-queue/{item_id}")
-def resolve_item(item_id: int, body: ResolveItem, user: AdminUser) -> dict:
+def resolve_item(item_id: int, body: ResolveItem, user: AdminUser, ac: CurrentAC) -> dict:
     n = execute(
         "UPDATE review_queue SET status = %s, note = COALESCE(%s, note), "
-        "resolved_at = now(), resolved_by = %s WHERE id = %s AND status = 'open'",
-        (body.status, body.note, user.user_id, item_id),
+        "resolved_at = now(), resolved_by = %s "
+        "WHERE id = %s AND status = 'open' AND ac_id = %s",
+        (body.status, body.note, user.user_id, item_id, ac.ac_id),
     )
     if not n:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No open review item with that id")
@@ -57,16 +60,20 @@ class CrosswalkFix(BaseModel):
 
 
 @router.post("/crosswalk")
-def fix_crosswalk(body: CrosswalkFix, user: AdminUser) -> dict:
+def fix_crosswalk(body: CrosswalkFix, user: AdminUser, ac: CurrentAC) -> dict:
     """Correct a PS-to-booth mapping by hand.
 
     A manual fix is marked reviewed with confidence 1.0, which stops the
     crosswalk job overwriting it on the next run.
     """
-    election = query_one("SELECT election_id FROM election WHERE label = %s", (body.election_label,))
+    election = query_one(
+        "SELECT election_id FROM election WHERE label = %s AND ac_id = %s",
+        (body.election_label, ac.ac_id),
+    )
     if election is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"No election {body.election_label!r}")
-    if query_one("SELECT 1 AS ok FROM booth WHERE booth_uid = %s", (body.booth_uid,)) is None:
+    if query_one("SELECT 1 AS ok FROM booth WHERE booth_uid = %s AND ac_id = %s",
+                 (body.booth_uid, ac.ac_id)) is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"No booth {body.booth_uid!r}")
 
     execute(
@@ -80,8 +87,16 @@ def fix_crosswalk(body: CrosswalkFix, user: AdminUser) -> dict:
 
 
 @router.get("/crosswalk")
-def crosswalk_status(user: AdminUser, election_label: str | None = None) -> dict:
-    clauses, params = ["true"], []
+def crosswalk_status(user: AdminUser, ac: CurrentAC,
+                     election_label: str | None = None) -> dict:
+    """Crosswalk health for this AC.
+
+    The coverage denominator is `ps_list_entry`, not `booth_crosswalk` (audit
+    C11): review-band stations used to get no crosswalk row at all, so they were
+    missing from both the numerator and the denominator and the check reported
+    100% healthy while 17% of the constituency had been dropped from every view.
+    """
+    clauses, params = ["x.ac_id = %s"], [ac.ac_id]
     if election_label:
         clauses.append("e.label = %s")
         params.append(election_label)
@@ -114,7 +129,11 @@ class SurnameEntry(BaseModel):
 
 
 @router.get("/surnames")
-def list_surnames(user: AdminUser, q: str | None = None) -> dict:
+def list_surnames(user: AdminUser, ac: CurrentAC, q: str | None = None) -> dict:
+    """The surname dictionary is deliberately global: a surname maps to a
+    community the same way in every constituency, and splitting it per AC would
+    multiply the maintenance for no gain. `ac` is taken because the route lives
+    under the AC prefix, not because it filters anything."""
     clauses, params = ["true"], []
     if q:
         clauses.append("(s.surname_hi ILIKE %s OR s.surname_en ILIKE %s)")
@@ -129,7 +148,7 @@ def list_surnames(user: AdminUser, q: str | None = None) -> dict:
 
 
 @router.post("/surnames")
-def upsert_surname(body: SurnameEntry, user: AdminUser) -> dict:
+def upsert_surname(body: SurnameEntry, user: AdminUser, ac: CurrentAC) -> dict:
     execute(
         "INSERT INTO surname_dict (surname_hi, surname_en, community_id, weight, notes) "
         "VALUES (%s, %s, %s, %s, %s) ON CONFLICT (surname_hi, community_id) DO UPDATE SET "
@@ -140,7 +159,9 @@ def upsert_surname(body: SurnameEntry, user: AdminUser) -> dict:
 
 
 @router.get("/usage")
-def usage(user: AdminUser, days: int = Query(30, ge=1, le=180)) -> dict:
+def usage(user: AdminUser, ac: CurrentAC, days: int = Query(30, ge=1, le=180)) -> dict:
+    """Token spend is per user and per month, not per constituency - the budget
+    is global and so is the cap. `ac` is taken for route consistency only."""
     """Token spend - the number the monthly cap is enforced against."""
     return {
         "by_day": query(
@@ -173,12 +194,13 @@ def usage(user: AdminUser, days: int = Query(30, ge=1, le=180)) -> dict:
 
 
 @router.get("/jobs")
-def jobs(user: AdminUser, limit: int = Query(50, ge=1, le=200)) -> dict:
+def jobs(user: AdminUser, ac: CurrentAC, limit: int = Query(50, ge=1, le=200)) -> dict:
     return {
         "recent": query(
             "SELECT id, job, started, finished, status, meta, LEFT(log, 2000) AS log "
-            "FROM job_run ORDER BY started DESC LIMIT %s",
-            (limit,),
+            "FROM job_run WHERE ac_id = %s OR ac_id IS NULL "
+            "ORDER BY started DESC LIMIT %s",
+            (ac.ac_id, limit),
         ),
         "last_per_job": query(
             "SELECT DISTINCT ON (job) job, started, finished, status "
@@ -188,8 +210,11 @@ def jobs(user: AdminUser, limit: int = Query(50, ge=1, le=200)) -> dict:
 
 
 @router.get("/sources")
-def sources(user: AdminUser) -> dict:
+def sources(user: AdminUser, ac: CurrentAC) -> dict:
     return {"rows": query(
         "SELECT doc_id, kind, filename, sha256, pages, ocr_pages, parse_status, "
-        "fetched_at, parsed_at, note FROM source_doc ORDER BY fetched_at DESC LIMIT 200"
+        "fetched_at, parsed_at, status_changed_at, status_changed_by, "
+        "storage_backend, storage_key "
+        "FROM source_doc WHERE ac_id = %s ORDER BY fetched_at DESC LIMIT 200",
+        (ac.ac_id,),
     )}

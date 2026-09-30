@@ -7,6 +7,7 @@ import { ErrorState } from '../components/States'
 import { api } from '../lib/api'
 import { num, signedNum } from '../lib/format'
 import { partyColor, token } from '../lib/tokens'
+import type { AcState } from '../lib/ac'
 
 interface Result {
   booths: number
@@ -19,7 +20,7 @@ interface Result {
   disclaimer: string
 }
 
-export default function Scenario() {
+export default function Scenario({ ac }: { ac: AcState }) {
   const { t } = useTranslation()
   const [turnout, setTurnout] = useState(1.0)
   const [sympathy, setSympathy] = useState(0)
@@ -28,7 +29,7 @@ export default function Scenario() {
 
   const run = useMutation<Result>({
     mutationFn: () =>
-      api.post('/scenario', {
+      api.post(ac.path('/scenario'), {
         turnout_multiplier: turnout,
         sympathy_swing: sympathy,
         jlkm_to_bjp: jlkmToBjp,

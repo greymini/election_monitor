@@ -9,15 +9,24 @@ from __future__ import annotations
 from common.db import query, query_one
 
 
-def build_booth_card(booth_uid: str, include_caste: bool = True) -> dict:
+def build_booth_card(booth_uid: str, include_caste: bool = True,
+                     ac_id: int | None = None) -> dict:
+    """Everything known about one booth.
+
+    `ac_id`, when given, is part of the lookup rather than a filter applied
+    afterwards: a booth_uid carries its AC number now, so a mismatch means the
+    caller asked the wrong constituency for it and should get a 404, not
+    another AC's booth.
+    """
     booth = query_one(
         "SELECT b.booth_uid, b.ps_name_hi, b.building, b.village_or_locality, "
         "b.current_ps_number, b.geocode_conf, "
         "a.area_id, a.name_en AS area_en, a.name_hi AS area_hi, a.kind AS area_kind, "
         "bl.block_id, bl.name_en AS block_en, bl.name_hi AS block_hi "
         "FROM booth b JOIN area a ON a.area_id = b.area_id "
-        "JOIN block bl ON bl.block_id = a.block_id WHERE b.booth_uid = %s",
-        (booth_uid,),
+        "JOIN block bl ON bl.block_id = a.block_id "
+        "WHERE b.booth_uid = %s AND (%s::INT IS NULL OR b.ac_id = %s)",
+        (booth_uid, ac_id, ac_id),
     )
     if booth is None:
         raise LookupError(booth_uid)
