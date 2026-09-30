@@ -54,9 +54,19 @@ def test_census_pulls_st_share_toward_the_published_figure():
         census_st_pct=35.0, census_year=2011,
     )
     pct, _ = blend_booth(bi, COMMUNITIES)
-    expected_st = 0.7 * 15.0 + 0.3 * 35.0        # 21.0, before renormalisation
+    expected_st = 0.7 * 15.0 + 0.3 * 35.0        # 21.0
+
+    # D8. This assertion used to read
+    #     pct[3] == 100 * expected_st / (85.0 + expected_st)
+    # which is 19.81 - the value the *bug* produced, and so the test locked the
+    # bug in place. `_rescale_category` scaled ST to its 21.0 target and then
+    # renormalised the whole distribution, which partly undid the rescale it had
+    # just performed, so the documented 0.7/0.3 blend was not what the code
+    # computed. The target is now held and the difference absorbed by the other
+    # categories, so the blend comes out at exactly the documented figure.
     assert pct[3] > 15.0
-    assert pct[3] == pytest.approx(100 * expected_st / (85.0 + expected_st), abs=0.01)
+    assert pct[3] == pytest.approx(expected_st, abs=0.01)
+    assert sum(pct.values()) == pytest.approx(100.0, abs=0.01)
 
 
 def test_census_sc_lands_in_the_other_bucket_when_surnames_found_none():

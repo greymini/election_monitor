@@ -56,10 +56,42 @@ class BoothInputs:
 
 
 def _as_pct(counts: dict[int, float]) -> dict[int, float]:
+    """Percentages over the matched tokens only.
+
+    Kept for the survey path, where every respondent is by definition matched.
+    The surname path must use `_as_pct_of_electors` instead - see C14.
+    """
     total = sum(counts.values())
     if total <= 0:
         return {}
     return {cid: 100.0 * v / total for cid, v in counts.items()}
+
+
+def _as_pct_of_electors(counts: dict[int, float], electors: int | None) -> dict[int, float]:
+    """Percentages over **all electors**, with the shortfall left unallocated.
+
+    C14. The surname pass matches a fraction of names - 176 dictionary entries
+    against a real roll - and the old code normalised over the matched tokens
+    only, then multiplied by the full electorate to get `est_count`. So shares
+    of the matched subset were presented as shares of the booth, and because
+    dictionary coverage is uneven by community (26 Muslim entries, 19 Brahmin,
+    18 Baniya, but only 6 Kurmi/Mahato - the single most electorally
+    consequential community in this seat), the extrapolation was biased in a
+    direction nobody could see from the output. The confidence score recorded
+    *how much* was matched but not that the matched sample was unrepresentative.
+
+    Leaving the residual explicitly unallocated is the honest alternative: the
+    caller adds it as an UNMATCHED bucket, so a booth with 40% coverage reads as
+    40% attributed and 60% unknown rather than as a complete picture.
+    """
+    if not electors or electors <= 0:
+        return {}
+    return {cid: 100.0 * v / electors for cid, v in counts.items()}
+
+
+# The explicit residual. Not a community: a statement about how much of the
+# electorate the surname dictionary could not place.
+UNMATCHED_NAME = "UNMATCHED"
 
 
 def _category_total(pct: dict[int, float], communities: dict[int, CommunityRef], category: str) -> float:
@@ -68,12 +100,27 @@ def _category_total(pct: dict[int, float], communities: dict[int, CommunityRef],
 
 def _rescale_category(pct: dict[int, float], communities: dict[int, CommunityRef],
                       category: str, target_pct: float) -> dict[int, float]:
-    """Scale a category's communities so they sum to target_pct, keeping their
-    relative proportions. If the surname pass found none of that category, the
-    target is dropped into the category's 'other' bucket."""
+    """Set a category's communities to sum to `target_pct`, then scale **only
+    the members of other categories** so the whole distribution sums to 100.
+
+    D8. The previous version scaled the category to its target and then
+    renormalised everything, which partly undid the rescale it had just
+    performed: with surname SC at 10% and census SC at 30%, the blended target
+    is 0.7x10 + 0.3x30 = 16%, the total after rescaling is 106, and
+    renormalising gives SC = 15.1% rather than 16%. So the documented formula
+    was not what the code computed. Holding the target fixed and absorbing the
+    difference in the remainder is what the formula actually says.
+
+    If the surname pass found none of that category, the target goes into the
+    category's 'other' bucket - the alternative is to discard a census figure we
+    have because the surname dictionary happens not to cover that community,
+    which is the wrong way round.
+    """
     members = [cid for cid in pct if communities.get(cid) and communities[cid].category == category]
+    others = [cid for cid in pct if cid not in members]
     current = sum(pct[cid] for cid in members)
     out = dict(pct)
+
     if current > 0:
         factor = target_pct / current
         for cid in members:
@@ -81,8 +128,22 @@ def _rescale_category(pct: dict[int, float], communities: dict[int, CommunityRef
     elif target_pct > 0:
         fallback = next((c.community_id for c in communities.values()
                          if c.category == category and "other" in c.name_en.lower()), None)
-        if fallback is not None:
-            out[fallback] = out.get(fallback, 0.0) + target_pct
+        if fallback is None:
+            # Nowhere to put it. Returning the input unchanged is better than
+            # inventing a bucket, and the caller's coverage figure already
+            # reflects that the census arm did not apply.
+            return out
+        out[fallback] = out.get(fallback, 0.0) + target_pct
+        members = [fallback]
+        others = [cid for cid in out if cid not in members]
+
+    # Absorb the difference in the remainder, so the target survives.
+    other_total = sum(out[cid] for cid in others)
+    remaining = 100.0 - target_pct
+    if other_total > 0 and remaining >= 0:
+        factor = remaining / other_total
+        for cid in others:
+            out[cid] = out[cid] * factor
     return out
 
 
@@ -101,7 +162,8 @@ def blend_booth(inputs: BoothInputs, communities: dict[int, CommunityRef],
         pct = _as_pct(inputs.survey)
         return pct, SURVEY_CONFIDENCE
 
-    surname_pct = _as_pct(inputs.surname_counts)
+    # Shares of all electors, not of the matched subset (C14).
+    surname_pct = _as_pct_of_electors(inputs.surname_counts, inputs.electors)
     if not surname_pct:
         return {}, 0.0
 
@@ -116,9 +178,9 @@ def blend_booth(inputs: BoothInputs, communities: dict[int, CommunityRef],
         target = SURNAME_WEIGHT * surname_share + CENSUS_WEIGHT * census_pct
         blended = _rescale_category(blended, communities, category, target)
 
-    total = sum(blended.values())
-    if total > 0:
-        blended = {cid: 100.0 * v / total for cid, v in blended.items()}
+    # No final renormalisation to 100 across the attributed communities: the
+    # shortfall is the unmatched share and belongs to the UNMATCHED bucket the
+    # caller adds, not spread proportionally over the communities we did match.
 
     coverage = (inputs.matched_tokens / inputs.electors) if inputs.electors else 0.0
     coverage = min(1.0, coverage)
