@@ -203,56 +203,142 @@ Scrapers · Scenario · Performance.
 
 ---
 
-## 5. Audit ID ledger — every ID must end `fixed` / `deferred (reason)` / `not reproducible (evidence)`
+## 5. Audit ID ledger — all 70 findings
 
-| ID | Where handled | Status |
+Every ID in `AUDIT_REPORT.md`, with its status now. `fixed` carries the commit that
+closed it. Real Form 20 loading is deferred and will be mocked, so nothing here is
+blocked on obtaining a document.
+
+**Of the 70 lettered findings: 32 fixed · 9 partial · 29 open.** Of the 29 open, 5 are deployment items the
+operator has scoped out, 8 are ops work not yet started, and 4 are proposed deferrals —
+leaving 12 that this batch closes. Section H adds 8 testing items: 3 fixed, 1 partial,
+4 open.
+
+### A · Structure and build (12)
+
+| ID | Severity | What | Status |
+|---|---|---|---|
+| A1 | Critical | Compose pins `pgvector/pgvector:pg16`, which has no PostGIS, so migration 0001 fails and a clean checkout cannot start | **open** — next item of work: a DB image so the SQL tests can run locally |
+| A2 | High | Port 443 published and a certs volume mounted, but nginx has one `listen 80` block and no certbot exists | **open** — deployment, scoped out |
+| A3 | High | Worker mounts volumes at paths absent from the image, so Docker creates them root-owned and every write fails | **open** — needs a live host to verify; deployment |
+| A4 | Medium | No `web/.dockerignore`, so the host's `node_modules` enters the build context | **open** — deployment |
+| A5 | Medium | No chatbot feature flag; mounting the router made `sqlglot` a hard import requirement of the whole API | **fixed** `f7e5f73` |
+| A6 | Medium | No version control anywhere under `election_monitor/` | **fixed** `1b0efed` |
+| A7 | Medium | `jellyfish` absent from everything `requirements-dev.txt` pulled in, so every crosswalk threshold test ran against a fallback that disagreed with production by up to 0.12 | **fixed** `760a244` |
+| A8 | Low | `pandas`, `scipy`, `pypdf`, `rapidfuzz`, `python-multipart`, `vega` declared and unused | **open** — `boto3` was added for storage; nothing removed yet |
+| A9 | Low | `POSTGRES_HOST`/`PORT`, `SMS_API_KEY`/`SENDER_ID` documented and read by nothing | **open** |
+| A10 | Low | `./db/migrations:/migrations:ro` mounted into the db container and read by nothing | **open** — deployment |
+| A11 | Low | Fonts fetched from `fonts.googleapis.com` on every page view; no CSP | **open** |
+| A12 | Low | Stub audit — the finding was that the codebase is clean; one bare `pass` in `chatbot/agent.py` | **partial** — two pre-existing lint findings in `scripts/demo_api.py` fixed `f7e5f73`; the bare `pass` remains, chatbot untouched by instruction |
+
+### B · Data model and migrations (11)
+
+| ID | Severity | What | Status |
+|---|---|---|---|
+| B1 | Critical | Nothing writes `election_roll_link`, so `mv_new_voter_share` reported 0 additions everywhere while another screen showed the real numbers | **partial** — the metric returns NULL rather than 0 (`ea466bf`) and the view reads the link table; **seeding and using the link is item 3 of this batch** |
+| B2 | Critical | Review-band matches got no `booth_crosswalk` row, and every view inner-joins it, so those booths' votes vanished silently | **fixed** `8ffb603` |
+| B3 | Critical | `next_uid_start=0` hardcoded, so a second crosswalk run reused the first's booth UIDs and summed unrelated stations onto one booth | **fixed** `5def601` (per-AC sequence, structural) + `8ffb603` (write path) |
+| B4 | High | `result_booth_meta.electors` has no writer, so turnout is NULL everywhere it appears | **partial** — turnout is correctly NULL with a stated reason rather than 0; **populating electors is item 3 of this batch** |
+| B5 | High | `parse_pslist --anchor` re-mints `booth_uid` from a new PS list, silently rebinding every FK keyed on it | **partial** — UIDs no longer derive from PS numbers (`5def601`), which removes the mechanism; **the `--re-anchor` guard is item 6 of this batch** |
+| B6 | Medium | `booth_crosswalk.election_id` and `ps_list_entry.election_id` had no FK | **fixed** `5def601` |
+| B7 | Medium | Forward-only migrations, no rollback path | **open** — proposed deferral: forward-only is deliberate; mitigation is the backup and restore drill (G1) |
+| B8 | Medium | `demography` and `caste_survey` are read and written by nothing — no Census loader, no survey intake | **open** |
+| B9 | Medium | `is_baseline` had no uniqueness constraint; a second baseline doubles every scenario total | **fixed** `5def601` |
+| B10 | Low | `parse_status` never advanced past `extracted`; `parsed_at` never set | **partial** — lifecycle, columns and the three parsers done (`252d6bd`); scrapers are Track B |
+| B11 | Low | `roll_revision` upsert targeted `(label)` while the constraint was `(revision_date, is_mother)` | **fixed** `5def601` |
+
+### C · Ingestion and data correctness (17)
+
+| ID | Severity | What | Status |
+|---|---|---|---|
+| C1 | Critical | Form 20 columns never resolved to a party — the lookup never consulted `name_hi` — so every candidate loaded unattributed and every booth reported a 100% margin | **fixed** `ea466bf`, tightened `0db8578` |
+| C2 | Critical | AC-total validation keyed on `"Name (ABBR)"` against raw header cells, so it never matched and the operator had to disable the check to load anything | **fixed** `ea466bf` — resolution matches onto the seeded candidates, which is what the totals hang off |
+| C3 | Critical | Every roll page's full text written to `OCR_DIR` as plaintext JSON and kept, while the source PDF was deleted | **fixed** `934e629` |
+| C4 | High | `parse_int(c) or 0` turns an unreadable cell into zero votes, and the arithmetic check that would catch it is skipped when the same damage hit the total | **open** — **item 4 of this batch** |
+| C5 | High | The load docstring says one transaction; it is three, so a mid-load failure leaves committed deletes and partial rows | **open** — **item 4 of this batch** |
+| C6 | High | Candidate uniqueness on `(election_id, name_en, party_id)` with NULL party never fires, so every re-parse inserts fresh candidates and doubles every vote total | **open** — **item 4 of this batch** |
+| C7 | High | Gender and age read from a different line than the EPIC count, so a layout mismatch silently makes every elector "other" and all age bands zero | **open** — **item 5 of this batch** |
+| C8 | Medium | Supplement section state resets per PS group, so every group after the first records 0 additions | **open** — **item 5 of this batch** |
+| C9 | Medium | One deletion reason applied to every entry on a line, and `\bS\b` matches the S in S/O | **open** — **item 5 of this batch** |
+| C10 | Medium | `booth` carried no `roll_part`, so the documented 0.20 crosswalk term never contributed | **fixed** `5def601` (column) + `8ffb603` (supplied and scored) |
+| C11 | Medium | Crosswalk coverage measured against `booth_crosswalk`, which is circular — the dropped rows were missing from the denominator too | **fixed** `ea466bf` — `mv_ac_summary` measures against `ps_list_entry` |
+| C12 | Medium | `check_roll_continuity` compares consecutive revisions including supplements, which write no snapshots, so it fails loudly on correct data | **open** — **item 5 of this batch** |
+| C13 | Medium | `discard_raw` deletes the source PDF by default, destroying the audit trail while the cache kept the text | **fixed** `33a51d3` + `934e629` |
+| C14 | Medium | Surname percentages normalised over matched tokens then multiplied by the full electorate, biasing against under-covered communities | **fixed** `448b456` — shares over all electors, explicit `UNMATCHED` |
+| C15 | Medium | `roll_snapshot` and `roll_change` record no source document or page | **partial** — columns added `5def601`; **writers are item 6 of this batch** |
+| C16 | Low | `review_queue` inserts had no dedupe, so the queue doubled on every re-run | **fixed** `5def601` (unique index) + `8ffb603` (upsert) |
+| C17 | Low | Pages that produced some rows via the table path are excluded from the regex fallback | **open** — **item 6 of this batch** |
+
+### D · Analytics correctness (9)
+
+| ID | Severity | What | Status |
+|---|---|---|---|
+| D1 | Critical | Three mutually inconsistent totals in one row; the margin divided by the NOTA-excluding total while displaying the NOTA-including one, giving 1.87% against a published 1.85% | **fixed** `ea466bf` |
+| D2 | High | `LAG` COALESCEd to 0, so the earliest loaded election reported each party's entire vote share as its swing | **fixed** `ea466bf` |
+| D3 | High | Ranking grouped on `COALESCE(party_id, -1)`, so independents competed as one bucket that could outrank a real winner | **fixed** `ea466bf` |
+| D4 | Medium | Pedersen index over one poll type gives exactly 50.00, reported for every booth in the constituency | **fixed** `ea466bf` |
+| D5 | Medium | Scenario winner was `jmm if margin >= 0 else bjp` with the pair hardcoded, so the response contradicted its own votes dict | **fixed** `448b456` |
+| D6 | Medium | Noise multiplied then renormalised, cancelling exactly on identity rows, so the band came from one arbitrary constant on one row | **fixed** `448b456` |
+| D7 | Medium | `/rolls/changes` joined `roll_snapshot` on an equal `revision_id`, which can never match, so electors and both percentages were always NULL | **fixed** `5def601` |
+| D8 | Low | `_rescale_category` renormalised after rescaling, partly undoing it, so the documented blend was not what was computed | **fixed** `448b456` |
+| D9 | Low | A party that vanished between elections has no later row, so its collapse never appeared opposite the winner's gain | **fixed** `ea466bf` — `mv_swing_vanished` |
+
+### E · API layer (9)
+
+| ID | Severity | What | Status |
+|---|---|---|---|
+| E1 | High | Empty `JWT_SECRET` accepted at startup; HS256 verification with an empty key succeeds, so anyone could mint an admin token | **fixed** `eeccb19` |
+| E2 | Medium | `/chat`'s `get_booth_card` tool calls `build_booth_card` with caste included and no block filter, bypassing both role gates | **partial** — the route does not exist with `CHAT_ENABLED=false` (`f7e5f73`), and `build_booth_card` now takes `ac_id`; `chatbot/tools.py` still passes no user. Not live, and the instruction is not to touch chatbot logic |
+| E3 | Medium | Chat SSE error path streamed `str(exc)[:200]`, leaking table and column names | **fixed** `f7e5f73` |
+| E4 | Medium | No rate limit, lockout or backoff on `/auth/login`; timing side channel on unknown phone | **open** — **item 10 of this batch** |
+| E5 | Medium | `POST /ground-reports` took 4,000 characters of free text with no PII screening and embedded it for vector search | **fixed** `934e629` |
+| E6 | Low | No pagination on seven list endpoints | **open** — proposed deferral: bounded by dataset size |
+| E7 | Low | `AUTH_MODE=otp` returns `{"sent": true}` from a sender that only logs | **open** — proposed deferral: no SMS credentials. Should at least refuse to start |
+| E8 | Low | `/summary` returns AC-wide totals and review counts to block-role users with no block filter | **partial** — now AC-scoped (`5def601`); the block filter on `data_health` is still absent |
+| E9 | Low | `Content-Disposition` built from an unsanitised path parameter | **partial** — filenames are now prefixed and constructed, but `election_label` still reaches the header |
+
+### F · Frontend (6)
+
+| ID | Severity | What | Status |
+|---|---|---|---|
+| F1 | High | Unsigned `margin_pct` fed to a diverging ramp, so only half the scale was reachable and a JMM hold rendered identically to a BJP hold | **fixed** `c3e55c9` |
+| F2 | Medium | `/booths` accepted `election_label` and ignored it; no year, block or area filters | **fixed** `5def601` (API) + `c3e55c9` (UI) |
+| F3 | Medium | Marker radius from `electors ?? 400` where electors was always NULL, so every marker was the clamped minimum under a caption claiming size meant electorate | **fixed** `c3e55c9` |
+| F4 | Medium | The caste scatter plotted community share against a constant zero with the Y axis hidden | **fixed** `c3e55c9` |
+| F5 | Low | `vega`, `vega-lite`, `vega-embed` declared and imported by nothing | **open** |
+| F6 | Low | JWT in `localStorage` with a 12-hour TTL and no TLS | **open** — proposed deferral: standard SPA trade-off; revisit with A2 |
+
+### G · Operations and security (6)
+
+| ID | Severity | What | Status |
+|---|---|---|---|
+| G1 | High | Backups on the same host as the data; restore drill never run | **open** — deployment, scoped out |
+| G2 | Medium | `pg_dump` receives the full connection URI in `argv`, so the password is visible in the process table | **open** — was listed in the A-1 plan and **not implemented**; verified still present in `worker/ops.py:35` |
+| G3 | Medium | Plain-text stdout logging, no request id, no rotation | **open** |
+| G4 | Medium | Job failures are recorded but never notified | **open** |
+| G5 | Low | `common/jobs.already_done()` implements the documented idempotency key and is never called | **open** |
+| G6 | Low | `scripts/demo_api.py` sets `allow_origins=["*"]` with credentials | **open** — unreferenced scaffolding; should be deleted |
+
+### H · Testing
+
+| Item | What | Status |
 |---|---|---|
-| A1 | A-1.5 | todo |
-| A2 (TLS) | **likely deferred** — needs a domain and a host; will propose terminating TLS upstream and not publishing 443 from the container | todo |
-| A3 | A-1.6 | todo |
-| A4 | B-6 | todo |
-| A5 | A-1.7 | **fixed** `f7e5f73` |
-| A6 | A-0.1–A-0.3 | **fixed** `1b0efed` |
-| A7 | A-0.4 | **fixed** `760a244` |
-| A8, A9, A10, A11, A12 | B-6 | todo |
-| B1 | A-3.7 | todo |
-| B2 | A-3.6 | todo |
-| B3 | A-2.2 (structural) | todo |
-| B4 | A-3.7 | todo |
-| B5 | A-3.6 | todo |
-| B6 | A-2.1 | todo |
-| B7 (no down-migrations) | **proposed deferred** — forward-only is a deliberate design; mitigation is the backup + restore drill in B-6 | todo |
-| B8 | B-3 | todo |
-| B9 | A-2.1 | todo |
-| B10 | A-3.13 | **partly fixed** `252d6bd` (lifecycle + the three parsers; scrapers in B-1) |
-| B11 | A-2.1 | todo |
-| C1, C2 | A-3.2 | todo |
-| C3 | A-1.2, A-1.4 | todo |
-| C4, C5, C6, C17 | A-3.5 | todo |
-| C7, C8, C9, C12, C15 | A-3.8 | todo |
-| C10, C11, C16 | A-3.6 | todo |
-| C13 | A-1.3 | **fixed** `33a51d3` |
-| C14 | A-3.10 | todo |
-| D1 | A-3.3 | todo |
-| D2, D4, D9 | A-3.9 | todo |
-| D3 | A-3.2 | todo |
-| D5, D6 | A-3.11 | todo |
-| D7 | A-3.7 | todo |
-| D8 | A-3.10 | todo |
-| E1 | A-1.1 | todo |
-| E2 | A-1.7 / B-3 role gates — booth card threads the caller's `User` and applies `sees_caste` + block scope | todo |
-| E3 | A-1.10 | **fixed** `f7e5f73` |
-| E4 | A-1.9 | todo |
-| E5 | B-3 (`common/pii.py`) | todo |
-| E6 (no pagination) | **proposed deferred** — bounded by dataset size; B-5 addresses the hot paths | todo |
-| E7 (SMS stub) | **proposed deferred** — no SMS provider credentials; will make `AUTH_MODE=otp` refuse to start rather than return `{"sent": true}` | todo |
-| E8, E9 | A-2.8 (route rework touches both) | todo |
-| F1, F2, F3, F4, F5 | B-4 | todo |
-| F6 (JWT in localStorage) | **proposed deferred** — standard SPA trade-off; revisit with A2 | todo |
-| G1, G3, G4, G5 | B-6 | todo |
-| G2 | A-1.11 | todo |
-| G6 (`demo_api.py` CORS) | B-6 — delete the file or fix the header; it is unreferenced scaffolding | todo |
-| H (no SQL under test) | A-3 `tests/e2e/` + §5 test matrix | todo |
+| H.1 | Materialized views against a hand-built fixture — the audit's top-ranked missing test | **partial** — written (`ea466bf`, 14 cases) but **NOT RUN**: no Postgres. Item 2 of this batch makes it runnable |
+| H.2 | Crosswalk write path, not just scoring | **fixed** `8ffb603` |
+| H.3 | Form 20 end to end against a known booth | **open** — **item 8 of this batch** (mocked, per instruction) |
+| H.4 | Re-run idempotency per loader | **open** — **item 4 of this batch** |
+| H.5 | Privacy assertion beyond the parser | **fixed** `934e629` |
+| H.6 | Roll composition invariants | **open** — **item 5 of this batch** |
+| H.7 | API contract tests for block-role scoping | **open** — **item 7 of this batch** |
+| H.8 | `jellyfish` vs fallback agreement | **fixed** `760a244` |
+
+### What the 24 open items are, grouped
+
+- **This batch will close:** A1, B1, B4, B5, C4, C5, C6, C7, C8, C9, C12, C15, C17, E4, H.3, H.4, H.6, H.7 — plus the parity test and mock generator, which are new work rather than audit IDs.
+- **Deployment, scoped out by the operator:** A2, A3, A4, A10, G1.
+- **Ops, not yet started:** A8, A9, A11, G2, G3, G4, G5, G6.
+- **Proposed deferrals:** B7, E6, E7, F6.
+- **Blocked on other work:** B8 (needs Census/survey loaders, Track B), E2 (chatbot is parked and not to be touched), F5 (trivial, bundled with A8).
 
 ---
 
