@@ -1,0 +1,52 @@
+# Repo-root ignores. The application subtree has its own giridih-monitor/.gitignore;
+# this file covers the root and repeats the dangerous patterns so a mistake in one
+# place cannot commit a secret or a voter record.
+
+# Secrets & local config — never commit
+.env
+.env.local
+*.env
+!.env.example
+
+# Source data and derived text. raw/ holds government PDFs (audit trail, kept on the
+# host); ocr/ holds extracted page text, which for a roll would be personal data.
+**/raw/**
+!**/raw/.gitkeep
+**/ocr/**
+!**/ocr/.gitkeep
+**/backups/**
+!**/backups/.gitkeep
+pgdata/
+**/pgdata/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Node
+node_modules/
+**/node_modules/
+web/dist/
+**/web/dist/
+**/web/.vite/
+*.tsbuildinfo
+
+# Playwright
+test-results/
+playwright-report/
+
+# OS / editor
+Thumbs.db
+.DS_Store
+desktop.ini
+*~
+.idea/
+.vscode/

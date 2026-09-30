@@ -1,0 +1,115 @@
+{
+  "app": {
+    "title": "Giridih AC-32 Election Monitor",
+    "short": "Giridih Monitor",
+    "constituency": "Giridih Assembly (AC-32)"
+  },
+  "nav": {
+    "overview": "Overview",
+    "map": "Booth map",
+    "results": "Results",
+    "voters": "New voters",
+    "caste": "Composition",
+    "transfer": "LS vs VS",
+    "local": "Local polls",
+    "news": "News",
+    "factors": "Factors",
+    "scenario": "Scenarios",
+    "admin": "Admin"
+  },
+  "common": {
+    "loading": "Loading…",
+    "error": "Error",
+    "retry": "Try again",
+    "noData": "Data not available",
+    "export": "Export CSV",
+    "search": "Search",
+    "all": "All",
+    "block": "Block",
+    "area": "Panchayat / ward",
+    "booth": "Booth",
+    "booths": "booths",
+    "election": "Election",
+    "metric": "Metric",
+    "electors": "Electors",
+    "votes": "Votes",
+    "turnout": "Turnout",
+    "margin": "Margin",
+    "winner": "Winner",
+    "runnerUp": "Runner-up",
+    "party": "Party",
+    "signOut": "Sign out",
+    "language": "हिन्दी",
+    "theme": "Theme",
+    "close": "Close",
+    "source": "Source",
+    "confidence": "Confidence",
+    "estimate": "Estimate"
+  },
+  "overview": {
+    "heading": "Constituency overview",
+    "bypollIn": "By-election deadline",
+    "daysLeft": "{{count}} days left",
+    "marginTrend": "Winning margin (assembly)",
+    "electorTrend": "Electors and turnout",
+    "dataHealth": "Data health",
+    "openReviews": "Open review items",
+    "weakCrosswalks": "Weak booth matches",
+    "latestRoll": "Latest roll revision"
+  },
+  "map": {
+    "heading": "Booth map",
+    "legendMargin": "Winning margin",
+    "jmmLead": "JMM lead",
+    "bjpLead": "BJP lead",
+    "ungeocoded": "{{count}} booths have no location yet",
+    "clickBooth": "Click a booth for its card"
+  },
+  "results": {
+    "heading": "Booth-wise results",
+    "sourceNote": "Every figure comes from Form 20; the source page is in the table"
+  },
+  "voters": {
+    "heading": "Additions and deletions",
+    "additions": "Additions",
+    "deletions": "Deletions",
+    "net": "Net change",
+    "newVoterShare": "New-voter share",
+    "sirNote": "This revision follows an SIR — deletions matter as much as additions"
+  },
+  "caste": {
+    "heading": "Estimated community composition",
+    "disclaimer": "Every figure here is an estimate. Electoral rolls do not record caste. These are derived from surname inference, Census 2011 proportions and booth surveys, at booth level only — never about any individual.",
+    "insufficient": "Estimate insufficient",
+    "minConfidence": "Minimum confidence"
+  },
+  "transfer": {
+    "heading": "Lok Sabha to Vidhan Sabha transfer",
+    "note": "Lok Sabha figures are the Giridih assembly segment, not the whole parliamentary seat"
+  },
+  "scenario": {
+    "heading": "By-election scenarios",
+    "turnout": "Turnout multiplier",
+    "sympathy": "Sympathy swing",
+    "jlkmToBjp": "JLKM vote moving to BJP",
+    "newVoterTurnout": "New-voter turnout",
+    "run": "Project",
+    "projectedMargin": "Projected margin",
+    "disclaimer": "This is not a forecast. It is arithmetic on the stated assumptions applied to the 2024 result."
+  },
+  "chat": {
+    "title": "Assistant",
+    "placeholder": "Ask a question… e.g. which booth swung most in Pirtand?",
+    "send": "Send",
+    "thinking": "Thinking…",
+    "toolRan": "ran {{name}}",
+    "disclaimer": "Answers come from the database. Check them before relying on them."
+  },
+  "login": {
+    "heading": "Sign in",
+    "phone": "Phone number",
+    "password": "Password",
+    "submit": "Sign in",
+    "failed": "Could not sign in"
+  }
+}

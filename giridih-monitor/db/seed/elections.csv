@@ -1,0 +1,12 @@
+type,year,poll_date,label,is_baseline,notes
+VS,2005,,VS-2005,false,AC-level result only; Form 20 may not be online
+VS,2009,,VS-2009,false,
+VS,2014,,VS-2014,false,
+VS,2019,,VS-2019,false,
+VS,2024,,VS-2024,true,Baseline for swing and scenario modelling
+LS,2019,,LS-2019 (AC seg),false,"PC-11 Giridih; Giridih AC segment"
+LS,2024,,LS-2024 (AC seg),false,"PC-11 Giridih; Giridih AC segment"
+PANCHAYAT,2010,,PANCHAYAT-2010,false,Party-less; affiliation tagged manually
+PANCHAYAT,2015,,PANCHAYAT-2015,false,Party-less; affiliation tagged manually
+PANCHAYAT,2022,,PANCHAYAT-2022,false,Party-less; affiliation tagged manually
+WARD,2018,,WARD-2018,false,GMC ward polls; verify whether a later ULB poll exists

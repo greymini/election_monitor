@@ -1,0 +1,17 @@
+* text=auto
+
+# Files that are executed inside Linux containers must keep LF regardless of the
+# checkout platform, or the shebang line carries a \r and the script will not run.
+*.sh      text eol=lf
+*.sql     text eol=lf
+Dockerfile*   text eol=lf
+*.yml     text eol=lf
+*.yaml    text eol=lf
+.env.example  text eol=lf
+
+# Binary
+*.pdf     binary
+*.png     binary
+*.jpg     binary
+*.gz      binary
+*.zip     binary

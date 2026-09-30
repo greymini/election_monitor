@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# Node
+node_modules/
+web/dist/
+web/.vite/
+
+# Secrets & local config
+.env
+.env.local
+
+# Data volumes (never commit source PDFs or extracted rolls)
+raw/**
+!raw/.gitkeep
+ocr/**
+!ocr/.gitkeep
+backups/**
+!backups/.gitkeep
+pgdata/
+
+# OS
+Thumbs.db
+.DS_Store

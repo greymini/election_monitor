@@ -1,0 +1,93 @@
+@import './tokens.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    font-family: 'Inter', 'Noto Sans Devanagari', system-ui, sans-serif;
+  }
+  html[lang='hi'] body {
+    font-family: 'Noto Sans Devanagari', 'Inter', system-ui, sans-serif;
+  }
+  body {
+    background: var(--plane);
+    color: var(--text-primary);
+    -webkit-font-smoothing: antialiased;
+  }
+  /* Tabular figures everywhere numbers are compared down a column. */
+  .tnum {
+    font-variant-numeric: tabular-nums;
+  }
+  :focus-visible {
+    outline: 2px solid var(--div-a3);
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  .card {
+    background: var(--surface-1);
+    border: 1px solid var(--gridline);
+    border-radius: 0.75rem;
+  }
+  .btn {
+    @apply inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors;
+    border-color: var(--gridline);
+    color: var(--text-primary);
+    background: var(--surface-1);
+  }
+  .btn:hover {
+    background: var(--surface-2);
+  }
+  .btn-primary {
+    background: var(--div-a3);
+    border-color: var(--div-a3);
+    color: #fff;
+  }
+  .btn-primary:hover {
+    background: var(--div-a4);
+  }
+  .chip {
+    @apply inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-2xs font-medium;
+    background: var(--surface-2);
+    color: var(--text-secondary);
+  }
+  .field {
+    @apply rounded-lg border px-2.5 py-1.5 text-sm;
+    border-color: var(--gridline);
+    background: var(--surface-1);
+    color: var(--text-primary);
+  }
+  .th {
+    @apply sticky top-0 z-10 px-3 py-2 text-left text-2xs font-semibold uppercase tracking-wide;
+    background: var(--surface-2);
+    color: var(--text-secondary);
+  }
+  .td {
+    @apply px-3 py-1.5 text-sm;
+    border-top: 1px solid var(--gridline);
+  }
+}
+
+/* Leaflet needs a concrete height and should not fight the theme. */
+.leaflet-container {
+  height: 100%;
+  width: 100%;
+  background: var(--surface-2);
+  font-family: inherit;
+}
+.leaflet-popup-content-wrap,
+.leaflet-tooltip {
+  background: var(--surface-1);
+  color: var(--text-primary);
+  border-radius: 0.5rem;
+}
+
+/* Texture channel for the colour-blind / print / forced-colours case. */
+@media (forced-colors: active) {
+  .card {
+    border: 1px solid CanvasText;
+  }
+}

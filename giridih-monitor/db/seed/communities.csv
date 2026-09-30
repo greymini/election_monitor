@@ -1,0 +1,23 @@
+name_en,name_hi,category,sort_order
+Kurmi (Mahato),कुर्मी (महतो),OBC,10
+Yadav,यादव,OBC,20
+Baniya,बनिया,OBC,30
+Teli,तेली,OBC,40
+Koeri / Kushwaha,कोइरी / कुशवाहा,OBC,50
+OBC (other),अन्य पिछड़ा वर्ग,OBC,60
+Brahmin,ब्राह्मण,GEN,70
+Rajput,राजपूत,GEN,80
+Bhumihar,भूमिहार,GEN,90
+Kayastha,कायस्थ,GEN,100
+Muslim,मुस्लिम,MUSLIM,110
+Dusadh / Paswan,दुसाध / पासवान,SC,120
+Turi,तुरी,SC,130
+Rajwar,रजवार,SC,140
+Bhuiyan,भुइयां,SC,150
+Chamar / Ravidas,चमार / रविदास,SC,160
+SC (other),अन्य अनुसूचित जाति,SC,170
+Santhal,संताल,ST,180
+Munda,मुंडा,ST,190
+Oraon,उरांव,ST,200
+ST (other),अन्य अनुसूचित जनजाति,ST,210
+Unclassified,अवर्गीकृत,OTHER,999
