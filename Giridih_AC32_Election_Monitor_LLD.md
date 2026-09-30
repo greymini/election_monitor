@@ -369,4 +369,45 @@ Rates used: Haiku 4.5 $1/$5, Sonnet 5 $2/$10 per MTok; cache reads ≈10% of inp
 
 ---
 
+## Amendments
+
+Changes made during implementation that depart from the design above. The design
+text is left as written, so that what was specified and what was built can both
+be read; each entry says which is now authoritative.
+
+### A-1 · §6.4 geography columns no longer use PostGIS — see `DECISIONS.md` D-006
+
+**Specified above** (lines 88 and 92): `area.geom geometry(MultiPolygon,4326)` and
+`booth.geom geometry(Point,4326)`, with GiST indexes.
+
+**Built instead:** `booth.lon` and `booth.lat` as `DOUBLE PRECISION` with range
+CHECKs and a both-or-neither constraint; `area.boundary` as `JSONB` holding a
+GeoJSON geometry, beside explicit `area.centroid_lon` / `area.centroid_lat`. One
+partial composite index on located booths replaces the two GiST indexes.
+Migration `0001` creates only `vector`; `postgis`, `pg_trgm` and `unaccent` are no
+longer required.
+
+**Why.** The geometry columns were doing less than their type implied.
+`booth.geom` was written from a longitude/latitude pair and read back with
+`ST_X`/`ST_Y` — a round trip through PostGIS to recover the two numbers that went
+into it. `area.geom` was read only by `ST_Centroid`, and no loader ever wrote it,
+so the area-centroid geocoding fallback it fed could not fire. `pg_trgm` and
+`unaccent` were created and never used at all.
+
+The requirement they imposed was expensive: a pip-installable PostgreSQL provides
+none of the three, so the schema could not be applied without Docker, and in
+practice it had never been applied anywhere. Removing the requirement took the
+test suite from 759 passed / 94 skipped to 849 passed / 4 skipped, and exposed on
+its first run that `0015_metrics.sql` could not be applied at all.
+
+**What it costs.** No spatial *query* is possible — no point-in-polygon, no
+distance ordering, no tile cutting. None is performed today. `docker/Dockerfile.db`
+still installs PostGIS, so reinstating a geometry column is a migration rather
+than an infrastructure change.
+
+**Authoritative:** the built form. Signed off by the operator, 30 Sep 2026. If a
+spatial query is ever needed, revisit D-006 first.
+
+---
+
 *All figures and derived estimates produced by this system must be reviewed for accuracy and completeness before any decision relies on them.*
