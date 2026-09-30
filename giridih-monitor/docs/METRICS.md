@@ -3,17 +3,41 @@
 Every figure this system displays is defined here, once. The table is master
 prompt §3.2 verbatim, with the location of each implementation added.
 
-Two implementations exist on purpose and must agree:
+Two implementations exist on purpose, because neither can do the other's job —
+the parsers must compute before a transaction commits, and the views must
+aggregate over whole tables:
 
 - **`analytics/metrics.py`** — Python, used by the loaders, the validator and
   the unit tests. Its docstrings are the specification.
 - **`db/migrations/0015_metrics.sql`** — SQL, the same definitions over whole
   tables, which is what the API reads.
 
-`tests/test_metrics.py` checks the Python against hand-computed fixtures.
-`tests/e2e/test_metrics_sql.py` runs the same fixtures through the SQL so the
-two cannot drift. Where they disagree, the Python docstring is the specification
-and the SQL is the bug.
+**The formula text, however, exists once.** `analytics/metric_sql.py` declares
+one canonical SQL expression per metric and generates a `CREATE FUNCTION` for
+each; that block sits inside `0015_metrics.sql` between two markers, and every
+view calls the functions instead of restating the arithmetic. Change a formula
+and the migration is wrong until you run:
+
+```
+python -m analytics.metric_sql
+```
+
+`tests/test_metric_parity.py` regenerates the block and fails if the checked-in
+migration has drifted, so "implemented exactly once" is enforced rather than
+merely intended. It also scans the views for the arithmetic that used to be
+inlined — the percentage quotients, the four priority weights, the 0.85
+crosswalk threshold, `stddev_samp`, the Pedersen halving — and fails if any of
+them reappears outside a function.
+
+This is not tidiness. When this exercise started, the margin quotient
+`100.0 * (winner − runner) / NULLIF(valid_votes, 0)` was written out **seven
+times** across two views: once for `margin_pct`, twice more inside the signed
+variant's `CASE` arms, and the same four again at AC grain. That is how D1
+survived review. Correcting the denominator in one arm and not the others is a
+one-character omission, and no test tells it apart from correctness.
+
+Where they disagree, the Python docstring is the specification and the SQL is
+the bug.
 
 > Every figure here should be checked against the source document before it is
 > relied on. The system makes that a one-click check; it does not remove the
@@ -44,6 +68,71 @@ and the SQL is the bug.
 The **contest pair** for the signed margin and the scenario is configured per AC
 per event in `ac_contest(ac_id, event_id, party_a, party_b)` — Giridih JMM/BJP,
 Silli JMM/AJSU, Dumri JLKM/JMM, Kanke INC/BJP. It is not hardcoded anywhere.
+
+Each row's SQL column is produced by the generated function of the same name:
+`mv_result_booth_wide.margin_pct` is `metric_margin_pct(...)`, and so on. Two
+functions in that set are not metrics in the table but rules extracted from it,
+because more than one metric needs them and a second copy is a second place for
+them to drift:
+
+| Function | Rule it owns |
+|---|---|
+| `metric_comparison_allowed` | Whether a booth may be compared against its own past at all: the crosswalk must be reviewed or ≥0.85, and the booth must not have split or merged without its lineage group being aggregated. Shared by `swing_pct`, `swing_votes` and the vanished-party rows. |
+| `metric_priority_weight` | How much of the priority weight was available, reported beside the score so that a score renormalised over part of the weight is identifiable rather than looking like the full four-factor ranking. |
+
+---
+
+## How parity is actually checked
+
+Three values must agree for every metric, and the third is what makes this a
+correctness check rather than a diff:
+
+```
+hand-computed expectation  ==  analytics/metrics.py  ==  metric_*() in SQL
+```
+
+The cases live in `tests/metric_cases.py`, worked out on paper from the
+definitions above. Two implementations agreeing only proves they are consistent;
+the failure mode this project keeps meeting is both of them being wrong in the
+same plausible way — a denominator that excludes NOTA, a `COALESCE` to zero
+where the answer is unknown.
+
+- `tests/test_metric_parity.py` — the Python side against the expectations, plus
+  the generated-block and no-inlined-formula checks. **No database**, so it runs
+  in the default suite.
+- `tests/e2e/test_metric_parity_sql.py` — the same cases through PostgreSQL,
+  asserting all three agree; then a row-by-row recomputation of
+  `mv_result_booth_wide` in Python, because a view can call the right function
+  with the wrong arguments and every function-level test still passes.
+
+Four of the audit's wrong answers are asserted *as wrong* there, so the tests
+degrade loudly rather than silently: the 1.87% D1 denominator, the 50.00%
+one-poll Pedersen index, the zero margin at an uncontested booth, and the
+ramp-midpoint zero for a third-party win. If a refactor ever makes the correct
+and incorrect forms agree, those tests fail on the grounds that they no longer
+distinguish anything.
+
+### Two known asymmetries, recorded rather than smoothed over
+
+**An absent crosswalk means different things on the two sides.** In SQL, a NULL
+confidence comes from a `LEFT JOIN` that found no `booth_crosswalk` row, so the
+booth cannot be shown to be the station it was and no comparison is carried. In
+Python, `link=None` is the *default* and means the caller is asserting there is
+nothing to gate on — an anchor booth. Same absent input, opposite answers. The
+Python default is the risky half: a caller who forgets to pass the link gets
+ungated swings, which is the exact shape of D2. `metrics.swing_pct` has no
+production callers yet, so nothing is wrong today; when the Form 20 loader
+starts computing swings it must pass the link explicitly.
+
+**`mv_ac_summary` still ranks by party, not by candidate.** D3 was fixed at booth
+grain — `mv_result_booth_candidate` ranks per candidate, so eight independents on
+500 votes each no longer sum into one 4,000-vote pseudo-party that outranks a
+real winner. The AC-grain summary was not changed, and it ranks over
+`party_totals`, where every independent shares a NULL `party_id` and collapses
+into a single row. So the AC headline can in principle name a winner that the
+booth table does not. It does not affect Giridih 2024, where the top two are
+both major parties. Fixing it belongs with the full per-AC candidate lists, not
+with the parity work.
 
 ---
 

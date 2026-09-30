@@ -111,26 +111,35 @@ Requested explicitly: write a test for every metric in §3.2 against hand-comput
 fixtures, run them if a Postgres is available, and **mark them NOT RUN rather than
 skipping them** if not.
 
-There are two suites, because there are two implementations that must agree.
+There are two implementations that must agree, so there are four suites.
 
 | Suite | What it checks | Status |
 |---|---|---|
 | `tests/test_metrics.py` (60 tests) | `analytics/metrics.py` against hand-computed fixtures: every row of §3.2, every NULL rule in it, and the specific audit finding each rule prevents | **RUN — 60 passed** |
-| `tests/e2e/test_metrics_sql.py` (14 tests) | the same fixtures through `db/migrations/0015_metrics.sql`, so the Python and the SQL cannot drift | **NOT RUN — no PostgreSQL in the build environment** |
+| `tests/test_metric_parity.py` (82 tests) | the Python side against the shared hand-computed cases; that `0015_metrics.sql`'s generated block matches `analytics/metric_sql.py`; and that no view restates a formula, weight or threshold that belongs to a generated function | **RUN — 82 passed** |
+| `tests/e2e/test_metrics_sql.py` (14 tests) | the same fixtures through the views in `db/migrations/0015_metrics.sql` | **NOT RUN — no PostgreSQL in the build environment** |
+| `tests/e2e/test_metric_parity_sql.py` (76 tests) | every §3.2 metric evaluated three ways — hand-computed, Python, and the generated SQL function — all asserted equal; plus a row-by-row recomputation of `mv_result_booth_wide`, because a view can call the right function with the wrong arguments | **NOT RUN — no PostgreSQL in the build environment** |
 
-**NOT RUN, not skipped.** pytest reports the second suite as skipped, which is a
-weaker statement than the truth: the SQL implementation of every metric in this
-system is, at the time of writing, unexecuted. The Python is tested; the SQL that
-the API actually reads is not. Treat any figure the dashboard shows as unverified
-until an operator runs:
+**NOT RUN, not skipped.** pytest reports the last two as skipped, which is a weaker
+statement than the truth: the SQL implementation of every metric in this system is,
+at the time of writing, unexecuted. Treat any figure the dashboard shows as
+unverified until an operator runs:
 
 ```bash
 export E2E_DATABASE_URL='postgresql://user:pass@host:5432/giridih_test'
-pytest tests/e2e -v        # expect 14 passed
+pytest tests/e2e -v        # expect 90 passed
 ```
 
-That suite drops and rebuilds the schema, and refuses a URL whose database name does
+Those suites drop and rebuild the schema, and refuse a URL whose database name does
 not contain `test`.
+
+**What is now provable without a database, and what still is not.** The formulas
+themselves live in one place — `analytics/metric_sql.py` declares the canonical SQL
+expression per metric and generates the functions the views call — so a Python/SQL
+divergence in a *formula* is now caught by `test_metric_parity.py` in the default
+suite. What that cannot catch is a view calling the right function with the wrong
+arguments, or SQL that does not apply at all. Both need Postgres. The honest summary
+is that the arithmetic is verified and its wiring is not.
 
 ### What the 60 Python tests pin, by §3.2 row
 
@@ -226,14 +235,14 @@ Two audit claims the auditor could not execute, now verified empirically:
 
 | Gate | Latest result |
 |---|---|
-| `pytest -q` | **587 passed, 15 skipped** (was 96 at baseline) |
+| `pytest -q` | **669 passed, 91 skipped** (was 96 at baseline) |
 | `ruff check .` | **clean** |
 | `python scripts/lint_sql.py` | **17 migrations, no problems**. Verified against deliberately broken input: it catches transaction control inside a migration and a reference to a relation no earlier migration creates. |
 | `npm run build` | **clean** |
 | `docker compose build` | **NOT RUN — Docker not installed, no rights to install it** |
 
-Of the 15 skipped: 14 are the e2e SQL suite above (NOT RUN, no database) and one is
-`Login`, exempted from the "every page fetches from the API" check because it posts
+Of the 91 skipped: 90 are the two e2e SQL suites above (NOT RUN, no database) and one
+is `Login`, exempted from the "every page fetches from the API" check because it posts
 credentials and renders nothing from the database.
 
 ---

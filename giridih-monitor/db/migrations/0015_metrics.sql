@@ -46,6 +46,277 @@
 --
 -- No transaction control: apply_migrations wraps each file in one transaction.
 
+-- >>> GENERATED FROM analytics/metric_sql.py - DO NOT EDIT BY HAND
+--
+-- Regenerate with:  python -m analytics.metric_sql
+--
+-- These functions are the canonical SQL form of the master prompt 3.2
+-- metrics. The views below call them instead of restating the formulas,
+-- and analytics/metrics.py implements the same rules in Python for the
+-- loaders and the validator. tests/test_metric_parity.py regenerates this
+-- block and fails if it has drifted, then runs both implementations over
+-- identical fixtures.
+--
+-- IMMUTABLE, so they can appear in index expressions and so the planner
+-- may inline them into the surrounding view - which is what makes a
+-- function call per row acceptable inside a materialized view refresh.
+
+CREATE OR REPLACE FUNCTION metric_votes_polled(valid_votes BIGINT, rejected BIGINT)
+RETURNS BIGINT AS $fn$
+SELECT CASE WHEN valid_votes IS NULL THEN NULL
+            ELSE valid_votes + COALESCE(rejected, 0) END
+$fn$ LANGUAGE sql IMMUTABLE;
+
+COMMENT ON FUNCTION metric_votes_polled(BIGINT, BIGINT) IS
+    'valid_votes + rejected. Tendered votes are excluded: a tendered '
+    'ballot is recorded separately and is not in the count. NULL when '
+    'there is no result, but a missing rejected count is treated as '
+    'zero, because Form 20 omits that column when it is zero.';
+
+CREATE OR REPLACE FUNCTION metric_turnout_pct(votes_polled BIGINT, electors BIGINT)
+RETURNS NUMERIC AS $fn$
+SELECT ROUND((100.0 * votes_polled / NULLIF(electors, 0))::NUMERIC, 2)
+$fn$ LANGUAGE sql IMMUTABLE;
+
+COMMENT ON FUNCTION metric_turnout_pct(BIGINT, BIGINT) IS
+    'votes_polled / electors * 100. Electors come from the linked roll '
+    'snapshot, falling back to the polling-station list, never from '
+    'Form 20, which does not print them. NULL when electors are unknown '
+    '- audit B4, where the column had no writer at all, so turnout was '
+    'NULL for every booth while the map still offered it as a choosable '
+    'metric.';
+
+CREATE OR REPLACE FUNCTION metric_share_pct(candidate_votes BIGINT, valid_votes BIGINT)
+RETURNS NUMERIC AS $fn$
+SELECT ROUND((100.0 * candidate_votes / NULLIF(valid_votes, 0))::NUMERIC, 2)
+$fn$ LANGUAGE sql IMMUTABLE;
+
+COMMENT ON FUNCTION metric_share_pct(BIGINT, BIGINT) IS
+    'candidate_votes / valid_votes * 100, with NOTA inside the '
+    'denominator, because that is what Form 20 prints as total valid '
+    'votes and what the published margin percentage divides by.';
+
+CREATE OR REPLACE FUNCTION metric_margin_votes(winner_votes BIGINT, runner_votes BIGINT, contestants BIGINT)
+RETURNS BIGINT AS $fn$
+SELECT CASE WHEN contestants >= 2
+            THEN winner_votes - runner_votes END
+$fn$ LANGUAGE sql IMMUTABLE;
+
+COMMENT ON FUNCTION metric_margin_votes(BIGINT, BIGINT, BIGINT) IS
+    'Winner minus runner-up, both real candidates - NOTA never ranks. '
+    'NULL with fewer than two contestants, and never zero: an '
+    'uncontested booth has no margin, and zero would sort it as the '
+    'tightest contest in the constituency.';
+
+CREATE OR REPLACE FUNCTION metric_margin_pct(winner_votes BIGINT, runner_votes BIGINT, contestants BIGINT, valid_votes BIGINT)
+RETURNS NUMERIC AS $fn$
+SELECT ROUND((100.0 * metric_margin_votes(winner_votes, runner_votes,
+                                          contestants)
+              / NULLIF(valid_votes, 0))::NUMERIC, 2)
+$fn$ LANGUAGE sql IMMUTABLE;
+
+COMMENT ON FUNCTION metric_margin_pct(BIGINT, BIGINT, BIGINT, BIGINT) IS
+    'margin_votes / valid_votes * 100. Audit D1: the old views divided '
+    'by a NOTA-excluding total while displaying the NOTA-including one '
+    'in the same row, giving 1.87 percent for Giridih 2024 against the '
+    'published 1.85, and making the row impossible to reconcile against '
+    'itself. Calls metric_margin_votes rather than repeating the '
+    'subtraction, so the fewer-than-two rule cannot be fixed in one '
+    'place and missed in another.';
+
+CREATE OR REPLACE FUNCTION metric_signed_margin_pct(winner_party TEXT, winner_votes BIGINT, runner_votes BIGINT, contestants BIGINT, valid_votes BIGINT, party_a TEXT, party_b TEXT)
+RETURNS NUMERIC AS $fn$
+SELECT CASE
+    WHEN winner_party IS NULL THEN NULL
+    WHEN winner_party = party_a
+        THEN metric_margin_pct(winner_votes, runner_votes,
+                               contestants, valid_votes)
+    WHEN winner_party = party_b
+        THEN -metric_margin_pct(winner_votes, runner_votes,
+                                contestants, valid_votes)
+END
+$fn$ LANGUAGE sql IMMUTABLE;
+
+COMMENT ON FUNCTION metric_signed_margin_pct(TEXT, BIGINT, BIGINT, BIGINT, BIGINT, TEXT, TEXT) IS
+    'Plus margin_pct if the contest pair first party won, minus if the '
+    'second, NULL if neither did. Drives the diverging colour ramp on '
+    'the map. NULL rather than zero for a third-party win, because zero '
+    'sits at the ramp neutral midpoint - visually identical to a '
+    'knife-edge contest between the pair, which is the opposite of what '
+    'happened (F1). The pair comes from ac_contest, per AC per event, '
+    'so no view hardcodes JMM against BJP.';
+
+CREATE OR REPLACE FUNCTION metric_comparison_allowed(crosswalk_confidence REAL, crosswalk_reviewed BOOLEAN, lineage_kind TEXT, lineage_aggregated BOOLEAN)
+RETURNS BOOLEAN AS $fn$
+SELECT (COALESCE(lineage_kind, '') NOT IN ('split', 'merge')
+        OR COALESCE(lineage_aggregated, false))
+       AND (COALESCE(crosswalk_reviewed, false)
+            OR COALESCE(crosswalk_confidence, 0) >= 0.85)
+$fn$ LANGUAGE sql IMMUTABLE;
+
+COMMENT ON FUNCTION metric_comparison_allowed(REAL, BOOLEAN, TEXT, BOOLEAN) IS
+    'Whether this booth may be compared against its own past at all. '
+    'Two conditions, each of which makes a difference rather than a '
+    'number: a station matched in the 0.65-0.85 confidence band has a '
+    'crosswalk row so the booth still appears in rollups (B2 - it used '
+    'to have none, and every view inner-joined that table, so its votes '
+    'vanished silently), but it carries no comparison until a human '
+    'reviews the match; and a booth that split or merged cannot be '
+    'compared station to station, because half an electorate against '
+    'the whole of last time is not a swing - unless the lineage group '
+    'has been aggregated back together, which is what '
+    'lineage_aggregated records. Every view currently passes false '
+    'there, because nothing in the schema aggregates lineage groups '
+    'yet; the argument exists so that the SQL signature matches '
+    'metrics.swing_pct rather than quietly being stricter than it. '
+    'Extracted as its own function because swing share, swing votes and '
+    'the vanished-party rows all need the identical gate, and three '
+    'copies of a two-clause rule is how one copy ends up with a '
+    'different threshold from the others.';
+
+CREATE OR REPLACE FUNCTION metric_swing_pct(share_now NUMERIC, share_prev NUMERIC, crosswalk_confidence REAL, crosswalk_reviewed BOOLEAN, lineage_kind TEXT, lineage_aggregated BOOLEAN)
+RETURNS NUMERIC AS $fn$
+SELECT CASE
+    WHEN share_now IS NULL OR share_prev IS NULL THEN NULL
+    WHEN NOT metric_comparison_allowed(crosswalk_confidence,
+                                       crosswalk_reviewed,
+                                       lineage_kind,
+                                       lineage_aggregated) THEN NULL
+    ELSE ROUND((share_now - share_prev)::NUMERIC, 2)
+END
+$fn$ LANGUAGE sql IMMUTABLE;
+
+COMMENT ON FUNCTION metric_swing_pct(NUMERIC, NUMERIC, REAL, BOOLEAN, TEXT, BOOLEAN) IS
+    'share_now - share_prev for the same election type and the same '
+    'booth. NULL when there is no prior election - audit D2, where a '
+    'COALESCE to zero made the earliest loaded election report every '
+    'party entire vote share as its swing, a fabricated plus 38.3 '
+    'points - or when the crosswalk is weak and unreviewed, or when the '
+    'booth split or merged and the lineage group has not been '
+    'aggregated. A party that contested and polled nothing has '
+    'share_prev of zero and a real swing; the distinction between that '
+    'and absence is the whole point.';
+
+CREATE OR REPLACE FUNCTION metric_new_voter_pct(additions BIGINT, electors_at_end BIGINT)
+RETURNS NUMERIC AS $fn$
+SELECT CASE WHEN additions IS NOT NULL AND electors_at_end > 0
+            THEN ROUND((100.0 * additions
+                        / electors_at_end)::NUMERIC, 2) END
+$fn$ LANGUAGE sql IMMUTABLE;
+
+COMMENT ON FUNCTION metric_new_voter_pct(BIGINT, BIGINT) IS
+    'Additions in the window over electors at window end, times 100. '
+    'The window runs from the roll linked to the previous general '
+    'election to the roll linked to the target one. NULL when either '
+    'roll link is missing - audit B1, where an empty baseline CTE gave '
+    'every booth zero additions while a different screen read '
+    'roll_change directly and showed the real numbers, so the system '
+    'disagreed with itself on the same page load.';
+
+CREATE OR REPLACE FUNCTION metric_net_roll_change_pct(additions BIGINT, deletions BIGINT, electors_at_start BIGINT)
+RETURNS NUMERIC AS $fn$
+SELECT CASE WHEN additions IS NOT NULL AND deletions IS NOT NULL
+                 AND electors_at_start > 0
+            THEN ROUND((100.0 * (additions - deletions)
+                        / electors_at_start)::NUMERIC, 2) END
+$fn$ LANGUAGE sql IMMUTABLE;
+
+COMMENT ON FUNCTION metric_net_roll_change_pct(BIGINT, BIGINT, BIGINT) IS
+    '(additions - deletions) over electors at window start, times 100. '
+    'Can be negative, which is the post-revision case and a real '
+    'finding rather than an error to clamp away. NULL when either roll '
+    'is missing.';
+
+CREATE OR REPLACE FUNCTION metric_transfer_delta(share_vs NUMERIC, share_ls NUMERIC)
+RETURNS NUMERIC AS $fn$
+SELECT CASE WHEN share_vs IS NOT NULL AND share_ls IS NOT NULL
+            THEN ROUND((share_vs - share_ls)::NUMERIC, 2) END
+$fn$ LANGUAGE sql IMMUTABLE;
+
+COMMENT ON FUNCTION metric_transfer_delta(NUMERIC, NUMERIC) IS
+    'share in the assembly poll minus share in the parliamentary poll, '
+    'one party, same year, same booth. NULL when either leg is missing, '
+    'which is most booths in most years.';
+
+CREATE OR REPLACE FUNCTION metric_floating_pct(abs_delta_sum NUMERIC, poll_types BIGINT)
+RETURNS NUMERIC AS $fn$
+SELECT CASE WHEN poll_types = 2
+            THEN ROUND((abs_delta_sum / 2.0)::NUMERIC, 2) END
+$fn$ LANGUAGE sql IMMUTABLE;
+
+COMMENT ON FUNCTION metric_floating_pct(NUMERIC, BIGINT) IS
+    'The Pedersen index: half the sum of absolute share changes between '
+    'the parliamentary and assembly polls of the same year. The caller '
+    'supplies the summed absolute deltas because that sum is an '
+    'aggregate; this function owns the halving and the NULL rule, which '
+    'is where the bug was. NULL when only one poll type exists - audit '
+    'D4, and the most consequential NULL rule here. A Pedersen index '
+    'over a single poll is exactly 100 over 2, so every booth in the '
+    'constituency reported 50.00 percent, it appeared on the map and '
+    'inside the priority score, it looked like a finding, and because '
+    'it was uniform PERCENT_RANK flattened it to a constant and the '
+    'priority score silently lost that term altogether.';
+
+CREATE OR REPLACE FUNCTION metric_volatility(signed_margins NUMERIC[])
+RETURNS NUMERIC AS $fn$
+SELECT CASE WHEN cardinality(
+                 array_remove(signed_margins, NULL::NUMERIC)) >= 2
+            THEN ROUND(stddev_samp(v)::NUMERIC, 2) END
+  FROM unnest(array_remove(signed_margins, NULL::NUMERIC)) AS v
+$fn$ LANGUAGE sql IMMUTABLE;
+
+COMMENT ON FUNCTION metric_volatility(NUMERIC[]) IS
+    'Sample standard deviation of the signed margin across the '
+    'elections of one type in one booth. Sample, not population: these '
+    'are the elections that happened, treated as a sample of the booth '
+    'behaviour, and with two observations the population form '
+    'understates the spread by a factor of root two. NULL with fewer '
+    'than two elections, because a single election has no variability '
+    'and zero would rank that booth as the most stable in the '
+    'constituency (D6).';
+
+CREATE OR REPLACE FUNCTION metric_priority_weight(closeness DOUBLE PRECISION, new_voter DOUBLE PRECISION, floating DOUBLE PRECISION, volatility DOUBLE PRECISION)
+RETURNS NUMERIC AS $fn$
+SELECT (CASE WHEN closeness  IS NULL THEN 0 ELSE 0.35 END
+        + CASE WHEN new_voter  IS NULL THEN 0 ELSE 0.25 END
+        + CASE WHEN floating   IS NULL THEN 0 ELSE 0.20 END
+        + CASE WHEN volatility IS NULL THEN 0 ELSE 0.20 END)::NUMERIC
+$fn$ LANGUAGE sql IMMUTABLE;
+
+COMMENT ON FUNCTION metric_priority_weight(DOUBLE PRECISION, DOUBLE PRECISION, DOUBLE PRECISION, DOUBLE PRECISION) IS
+    'How much of the priority weight was actually available. Reported '
+    'beside the score so that a score renormalised over part of the '
+    'weight is identifiable, rather than looking like the full '
+    'four-factor ranking. Two of the four inputs were constant in the '
+    'audited system, so a number presented as a four-factor priority '
+    'was really a two-factor one with nothing on the page to say so.';
+
+CREATE OR REPLACE FUNCTION metric_priority_score(closeness DOUBLE PRECISION, new_voter DOUBLE PRECISION, floating DOUBLE PRECISION, volatility DOUBLE PRECISION)
+RETURNS NUMERIC AS $fn$
+SELECT CASE
+    WHEN metric_priority_weight(closeness, new_voter, floating,
+                                volatility) > 0
+    THEN ROUND(((COALESCE(0.35 * closeness, 0)
+                 + COALESCE(0.25 * new_voter, 0)
+                 + COALESCE(0.20 * floating, 0)
+                 + COALESCE(0.20 * volatility, 0))
+                / metric_priority_weight(closeness, new_voter,
+                                         floating, volatility)
+               )::NUMERIC, 4)
+END
+$fn$ LANGUAGE sql IMMUTABLE;
+
+COMMENT ON FUNCTION metric_priority_score(DOUBLE PRECISION, DOUBLE PRECISION, DOUBLE PRECISION, DOUBLE PRECISION) IS
+    'Weighted percentile ranks: 0.35 closeness, 0.25 new voters, 0.20 '
+    'floating vote, 0.20 volatility, each rank computed within one AC '
+    'so that constituencies of different competitiveness do not '
+    'dominate a shared ranking. Missing inputs are dropped and the '
+    'remaining weights renormalised by metric_priority_weight. NULL '
+    'when every input is missing, because averaging nothing is not a '
+    'priority of zero.';
+
+-- <<< END GENERATED BLOCK
+
 -- ---------------------------------------------------------------------------
 -- 1. One row per booth per candidate. The grain everything else derives from.
 -- ---------------------------------------------------------------------------
@@ -114,7 +385,7 @@ CREATE MATERIALIZED VIEW mv_booth_party_share AS
 SELECT p.ac_id, p.election_id, p.election_label, p.election_type, p.election_year,
        p.booth_uid, p.party_id, p.party, p.votes,
        t.valid_votes,
-       ROUND((100.0 * p.votes / NULLIF(t.valid_votes, 0))::NUMERIC, 2) AS share_pct
+       metric_share_pct(p.votes, t.valid_votes) AS share_pct
 FROM mv_result_booth_party p
 JOIN mv_booth_totals t
   ON t.ac_id = p.ac_id AND t.election_id = p.election_id AND t.booth_uid = p.booth_uid;
@@ -181,7 +452,7 @@ SELECT t.ac_id,
        m.electors,
        t.valid_votes,
        -- votes_polled = valid + rejected; tendered excluded by construction.
-       (t.valid_votes + COALESCE(m.rejected, 0))::INT AS votes_polled,
+       metric_votes_polled(t.valid_votes, m.rejected)::INT AS votes_polled,
        m.rejected,
        t.nota,
        -- Kept so an operator can see the printed total next to the computed one.
@@ -195,25 +466,24 @@ SELECT t.ac_id,
        ru.contestant AS runner_party,
        ru.votes      AS runner_votes,
        t.contestants,
-       -- margin: NULL with fewer than two contestants, never 0 (metrics.margin_votes)
-       CASE WHEN t.contestants >= 2 THEN (w.votes - ru.votes)::INT END AS margin_votes,
-       CASE WHEN t.contestants >= 2
-            THEN ROUND((100.0 * (w.votes - ru.votes) / NULLIF(t.valid_votes, 0))::NUMERIC, 2)
-       END AS margin_pct,
+       -- margin: NULL with fewer than two contestants, never 0. These three
+       -- columns used to spell the same quotient out four times between them,
+       -- which is how D1 survived - correcting the denominator in one CASE arm
+       -- and not the others is a one-character mistake that no test can tell
+       -- apart from correctness.
+       metric_margin_votes(w.votes, ru.votes, t.contestants)::INT AS margin_votes,
+       metric_margin_pct(w.votes, ru.votes, t.contestants,
+                         t.valid_votes) AS margin_pct,
        -- signed_margin_pct: + if the contest pair's first party won, - if the
        -- second, NULL if neither. Drives the map's diverging ramp (F1).
-       CASE
-           WHEN t.contestants < 2 THEN NULL
-           WHEN w.contestant = pa.abbr
-               THEN ROUND((100.0 * (w.votes - ru.votes) / NULLIF(t.valid_votes, 0))::NUMERIC, 2)
-           WHEN w.contestant = pb.abbr
-               THEN -ROUND((100.0 * (w.votes - ru.votes) / NULLIF(t.valid_votes, 0))::NUMERIC, 2)
-       END AS signed_margin_pct,
+       metric_signed_margin_pct(w.contestant, w.votes, ru.votes, t.contestants,
+                                t.valid_votes, pa.abbr,
+                                pb.abbr) AS signed_margin_pct,
        pa.abbr AS contest_party_a,
        pb.abbr AS contest_party_b,
        -- turnout: electors from the linked roll snapshot, never from Form 20.
-       ROUND((100.0 * (t.valid_votes + COALESCE(m.rejected, 0))
-              / NULLIF(m.electors, 0))::NUMERIC, 2) AS turnout_pct,
+       metric_turnout_pct(metric_votes_polled(t.valid_votes, m.rejected),
+                          m.electors) AS turnout_pct,
        lin.kind   AS lineage_kind,
        lin.weight AS lineage_weight,
        m.source_doc,
@@ -268,20 +538,20 @@ SELECT sh.ac_id, sh.booth_uid, sh.party_id, sh.party, sh.election_type,
        sh.share_pct, sh.prev_share_pct,
        -- NULL, not 0, when there is no prior election for this booth (D2), when
        -- the crosswalk is weak and unreviewed, or when the booth split or merged
-       -- and the lineage group has not been aggregated.
-       CASE
-           WHEN sh.prev_share_pct IS NULL THEN NULL
-           WHEN w.lineage_kind IN ('split', 'merge') THEN NULL
-           WHEN COALESCE(q.reviewed, false) = false
-                AND COALESCE(q.confidence, 0) < 0.85 THEN NULL
-           ELSE ROUND((sh.share_pct - sh.prev_share_pct)::NUMERIC, 2)
-       END AS swing_pct,
-       CASE
-           WHEN sh.prev_votes IS NULL THEN NULL
-           WHEN w.lineage_kind IN ('split', 'merge') THEN NULL
-           WHEN COALESCE(q.reviewed, false) = false
-                AND COALESCE(q.confidence, 0) < 0.85 THEN NULL
-           ELSE (sh.votes - sh.prev_votes)::INT
+       -- and the lineage group has not been aggregated. `false` is
+       -- lineage_aggregated: nothing in the schema aggregates lineage groups
+       -- yet, and the argument is passed explicitly rather than omitted so the
+       -- day something does, every call site is already findable.
+       metric_swing_pct(sh.share_pct, sh.prev_share_pct, q.confidence,
+                        q.reviewed, w.lineage_kind, false) AS swing_pct,
+       -- The same gate, from the same function, so swing votes and swing share
+       -- cannot come to different conclusions about whether this booth is
+       -- comparable at all. They previously restated the two-clause rule
+       -- verbatim, one after the other.
+       CASE WHEN sh.prev_votes IS NOT NULL
+                 AND metric_comparison_allowed(q.confidence, q.reviewed,
+                                               w.lineage_kind, false)
+            THEN (sh.votes - sh.prev_votes)::INT
        END AS swing_votes,
        q.confidence AS crosswalk_confidence,
        q.reviewed   AS crosswalk_reviewed,
@@ -316,11 +586,33 @@ SELECT p.ac_id, prev.booth_uid, prev.party_id, prev.party, p.election_type,
        p.prev_election_id, p.prev_election_label,
        0.0::NUMERIC       AS share_pct,
        prev.share_pct     AS prev_share_pct,
-       ROUND((0 - prev.share_pct)::NUMERIC, 2) AS swing_pct,
-       (0 - prev.votes)::INT AS swing_votes
+       -- Routed through the same function, with the same gate, as mv_swing.
+       -- This subtracted directly before, so a vanished party's collapse was
+       -- reported even at a booth whose crosswalk was too weak to carry the
+       -- surviving parties' swings: the two halves of one swing table
+       -- disagreeing about whether the comparison was admissible, with the
+       -- half that lacked the gate being the half that reports a party
+       -- dropping to zero.
+       metric_swing_pct(0.0::NUMERIC, prev.share_pct, q.confidence, q.reviewed,
+                        w.lineage_kind, false) AS swing_pct,
+       CASE WHEN metric_comparison_allowed(q.confidence, q.reviewed,
+                                           w.lineage_kind, false)
+            THEN (0 - prev.votes)::INT
+       END AS swing_votes
 FROM pairs p
 JOIN mv_booth_party_share prev
   ON prev.ac_id = p.ac_id AND prev.election_id = p.prev_election_id
+LEFT JOIN (
+    SELECT ac_id, election_id, booth_uid,
+           MIN(crosswalk_confidence)    AS confidence,
+           BOOL_AND(crosswalk_reviewed) AS reviewed
+    FROM mv_result_booth_candidate
+    GROUP BY ac_id, election_id, booth_uid
+) q ON q.ac_id = p.ac_id AND q.election_id = p.election_id
+   AND q.booth_uid = prev.booth_uid
+LEFT JOIN mv_result_booth_wide w ON w.ac_id = p.ac_id
+                                AND w.election_id = p.election_id
+                                AND w.booth_uid = prev.booth_uid
 WHERE prev.party IS DISTINCT FROM 'NOTA'
   AND NOT EXISTS (
       SELECT 1 FROM mv_booth_party_share now
@@ -356,9 +648,7 @@ SELECT COALESCE(ls.ac_id, vs.ac_id)         AS ac_id,
        (vs.votes - ls.votes)::INT AS delta_votes,
        -- transfer_delta: NULL when either leg is missing, never a full share
        -- masquerading as a swing.
-       CASE WHEN ls.share_pct IS NOT NULL AND vs.share_pct IS NOT NULL
-            THEN ROUND((vs.share_pct - ls.share_pct)::NUMERIC, 2)
-       END AS delta_share_pct
+       metric_transfer_delta(vs.share_pct, ls.share_pct) AS delta_share_pct
 FROM (SELECT * FROM mv_booth_party_share WHERE election_type = 'LS') ls
 FULL OUTER JOIN (SELECT * FROM mv_booth_party_share WHERE election_type = 'VS') vs
   ON vs.ac_id = ls.ac_id AND vs.booth_uid = ls.booth_uid
@@ -384,10 +674,11 @@ WITH legs AS (
     GROUP BY ac_id, election_year, booth_uid
 )
 SELECT t.ac_id, t.year, t.booth_uid,
-       CASE WHEN l.poll_types = 2
-            THEN ROUND((SUM(ABS(COALESCE(t.vs_share_pct, 0) - COALESCE(t.ls_share_pct, 0)))
-                        / 2.0)::NUMERIC, 2)
-       END AS floating_pct,
+       -- The sum is an aggregate and stays here; the halving and the
+       -- one-poll-type NULL rule live in the function.
+       metric_floating_pct(
+           SUM(ABS(COALESCE(t.vs_share_pct, 0) - COALESCE(t.ls_share_pct, 0))),
+           l.poll_types) AS floating_pct,
        l.poll_types
 FROM mv_transfer_ls_vs t
 JOIN legs l ON l.ac_id = t.ac_id AND l.year = t.year AND l.booth_uid = t.booth_uid
@@ -402,11 +693,11 @@ CREATE UNIQUE INDEX mv_floating_key ON mv_floating_vote (ac_id, year, booth_uid)
 CREATE MATERIALIZED VIEW mv_volatility AS
 SELECT ac_id, booth_uid,
        COUNT(signed_margin_pct)        AS years_available,
-       -- NULL with fewer than two years: stddev_samp returns NULL there anyway,
-       -- and the explicit guard documents the rule.
-       CASE WHEN COUNT(signed_margin_pct) >= 2
-            THEN ROUND(stddev_samp(signed_margin_pct)::NUMERIC, 2)
-       END AS margin_stddev,
+       -- NULL with fewer than two years, enforced inside metric_volatility so
+       -- the rule is stated once instead of beside each use of it. ARRAY_AGG
+       -- rather than a direct stddev_samp because the function is what
+       -- analytics.metrics.volatility is checked against.
+       metric_volatility(ARRAY_AGG(signed_margin_pct)) AS margin_stddev,
        ROUND(AVG(signed_margin_pct)::NUMERIC, 2) AS margin_mean
 FROM mv_result_booth_wide
 WHERE election_type = 'VS'
@@ -464,14 +755,10 @@ SELECT w.ac_id, w.election_id, b.booth_uid,
        es.electors_start,
        -- new_voter_pct: additions / electors at window end. NULL when either
        -- roll is missing.
-       CASE WHEN c.additions IS NOT NULL AND ee.electors_end > 0
-            THEN ROUND((100.0 * c.additions / ee.electors_end)::NUMERIC, 2)
-       END AS new_voter_pct,
+       metric_new_voter_pct(c.additions, ee.electors_end) AS new_voter_pct,
        -- net_roll_change_pct: (additions - deletions) / electors at window start.
-       CASE WHEN c.additions IS NOT NULL AND c.deletions IS NOT NULL
-                 AND es.electors_start > 0
-            THEN ROUND((100.0 * (c.additions - c.deletions) / es.electors_start)::NUMERIC, 2)
-       END AS net_roll_change_pct
+       metric_net_roll_change_pct(c.additions, c.deletions,
+                                  es.electors_start) AS net_roll_change_pct
 FROM windows w
 JOIN booth b ON b.ac_id = w.ac_id
 LEFT JOIN changes c        ON c.ac_id = w.ac_id AND c.election_id = w.election_id
@@ -527,15 +814,14 @@ WITH baseline AS (
     FROM inputs i
 ), weighted AS (
     SELECT r.*,
-           -- Missing inputs are dropped and the remaining weights renormalised.
-           (COALESCE(0.35 * r.closeness_rank, 0)
-            + COALESCE(0.25 * r.new_voter_rank, 0)
-            + COALESCE(0.20 * r.floating_rank, 0)
-            + COALESCE(0.20 * r.volatility_rank, 0)) AS weighted_sum,
-           (CASE WHEN r.closeness_rank  IS NULL THEN 0 ELSE 0.35 END
-            + CASE WHEN r.new_voter_rank IS NULL THEN 0 ELSE 0.25 END
-            + CASE WHEN r.floating_rank  IS NULL THEN 0 ELSE 0.20 END
-            + CASE WHEN r.volatility_rank IS NULL THEN 0 ELSE 0.20 END) AS weight_used,
+           -- Missing inputs are dropped and the remaining weights
+           -- renormalised, both inside the generated functions, so the four
+           -- weights are written down in exactly one place in the codebase.
+           metric_priority_score(r.closeness_rank, r.new_voter_rank,
+                                 r.floating_rank, r.volatility_rank) AS score,
+           metric_priority_weight(r.closeness_rank, r.new_voter_rank,
+                                  r.floating_rank,
+                                  r.volatility_rank) AS weight_used,
            -- Which inputs actually contributed. Two of the four were constant
            -- in the audited system - new voters 0 everywhere and floating 50.00
            -- everywhere - so a score that looked like a four-factor ranking was
@@ -552,12 +838,11 @@ SELECT ac_id, booth_uid, election_id, election_label, area_id,
        electors, turnout_pct, margin_pct, margin_votes, signed_margin_pct,
        winner_party, runner_party, new_voter_pct, additions, floating_pct,
        margin_stddev, years_available, inputs_used, weight_used,
-       CASE WHEN weight_used > 0
-            THEN ROUND((weighted_sum / weight_used)::NUMERIC, 4)
-       END AS priority_score,
-       CASE WHEN weight_used > 0
-            THEN NTILE(4) OVER (PARTITION BY ac_id
-                                ORDER BY weighted_sum / NULLIF(weight_used, 0) DESC)
+       score AS priority_score,
+       -- Quartile over the score itself, so the ranking and the number shown
+       -- beside it cannot be computed from different expressions.
+       CASE WHEN score IS NOT NULL
+            THEN NTILE(4) OVER (PARTITION BY ac_id ORDER BY score DESC)
        END AS priority_quartile
 FROM weighted;
 
@@ -580,13 +865,14 @@ SELECT w.ac_id, w.election_id, w.election_label, w.election_type, w.election_yea
        SUM(w.jmm)::INT AS jmm, SUM(w.bjp)::INT AS bjp, SUM(w.ajsu)::INT AS ajsu,
        SUM(w.jlkm)::INT AS jlkm, SUM(w.inc)::INT AS inc, SUM(w.rjd)::INT AS rjd,
        SUM(w.jvm)::INT AS jvm, SUM(w.others)::INT AS others,
-       ROUND((100.0 * SUM(w.jmm) / NULLIF(SUM(w.valid_votes), 0))::NUMERIC, 2) AS jmm_pct,
-       ROUND((100.0 * SUM(w.bjp) / NULLIF(SUM(w.valid_votes), 0))::NUMERIC, 2) AS bjp_pct,
+       metric_share_pct(SUM(w.jmm)::INT, SUM(w.valid_votes)::INT) AS jmm_pct,
+       metric_share_pct(SUM(w.bjp)::INT, SUM(w.valid_votes)::INT) AS bjp_pct,
        -- Turnout only where every booth in the area knows its electors;
        -- otherwise the denominator is a partial sum and the percentage is
        -- quietly wrong rather than absent.
        CASE WHEN COUNT(*) = COUNT(w.electors)
-            THEN ROUND((100.0 * SUM(w.votes_polled) / NULLIF(SUM(w.electors), 0))::NUMERIC, 2)
+            THEN metric_turnout_pct(SUM(w.votes_polled)::INT,
+                                    SUM(w.electors)::INT)
        END AS turnout_pct,
        COUNT(w.electors) AS booths_with_electors
 FROM mv_result_booth_wide w
@@ -636,12 +922,26 @@ WITH totals AS (
     LEFT JOIN booth_crosswalk x
            ON x.election_id = p.election_id AND x.ps_number = p.ps_number
     GROUP BY p.ac_id, p.election_id
+), contestants AS (
+    -- How many contestants the AC had, so that metric_margin_votes applies the
+    -- same fewer-than-two rule here as it does at booth grain. The expressions
+    -- below used to gate on `r.votes IS NOT NULL` instead - a different rule
+    -- for the same metric at a different grain, which is exactly the drift
+    -- these functions exist to prevent.
+    --
+    -- Counted over party_totals, so independents sharing a NULL party_id count
+    -- as one contestant rather than several. At booth grain D3 fixed that by
+    -- ranking per candidate; this view still ranks per party, so the AC
+    -- headline can name a winner that the booth table does not. Recorded in
+    -- PROGRESS.md; changing it belongs with the full candidate lists, not here.
+    SELECT ac_id, election_id, COUNT(*)::INT AS contestants
+    FROM party_totals
+    GROUP BY ac_id, election_id
 ), new_voters AS (
     SELECT ac_id, election_id,
            SUM(additions)::INT AS additions,
-           CASE WHEN SUM(electors) > 0
-                THEN ROUND((100.0 * SUM(additions) / SUM(electors))::NUMERIC, 2)
-           END AS new_voter_pct
+           metric_new_voter_pct(SUM(additions)::INT,
+                                SUM(electors)::INT) AS new_voter_pct
     FROM mv_new_voter_share
     GROUP BY ac_id, election_id
 )
@@ -652,22 +952,19 @@ SELECT t.ac_id, t.election_id, t.election_label, t.election_type, t.election_yea
        w.votes  AS winner_votes,
        r.party  AS runner_party,
        r.votes  AS runner_votes,
-       CASE WHEN r.votes IS NOT NULL THEN (w.votes - r.votes)::INT END AS margin_votes,
-       CASE WHEN r.votes IS NOT NULL
-            THEN ROUND((100.0 * (w.votes - r.votes) / NULLIF(t.valid_votes, 0))::NUMERIC, 2)
-       END AS margin_pct,
-       CASE
-           WHEN r.votes IS NULL THEN NULL
-           WHEN w.party = pa.abbr
-               THEN ROUND((100.0 * (w.votes - r.votes) / NULLIF(t.valid_votes, 0))::NUMERIC, 2)
-           WHEN w.party = pb.abbr
-               THEN -ROUND((100.0 * (w.votes - r.votes) / NULLIF(t.valid_votes, 0))::NUMERIC, 2)
-       END AS signed_margin_pct,
+       metric_margin_votes(w.votes, r.votes, cn.contestants)::INT AS margin_votes,
+       metric_margin_pct(w.votes, r.votes, cn.contestants,
+                         t.valid_votes) AS margin_pct,
+       metric_signed_margin_pct(w.party, w.votes, r.votes, cn.contestants,
+                                t.valid_votes, pa.abbr,
+                                pb.abbr) AS signed_margin_pct,
+       -- Turnout only where every booth in the AC knows its electors;
+       -- otherwise the denominator is a partial sum and the percentage is
+       -- quietly wrong rather than absent.
        CASE WHEN t.booths = t.booths_with_electors
-            THEN ROUND((100.0 * t.votes_polled / NULLIF(t.electors, 0))::NUMERIC, 2)
+            THEN metric_turnout_pct(t.votes_polled, t.electors)
        END AS turnout_pct,
-       ROUND((100.0 * COALESCE(jl.votes, 0) / NULLIF(t.valid_votes, 0))::NUMERIC, 2)
-           AS jlkm_share_pct,
+       metric_share_pct(COALESCE(jl.votes, 0), t.valid_votes) AS jlkm_share_pct,
        nv.additions,
        nv.new_voter_pct,
        cw.coverage_pct AS crosswalk_coverage_pct,
@@ -682,7 +979,8 @@ LEFT JOIN ac_contest ct ON ct.ac_id = t.ac_id AND ct.event_id = e.event_id
 LEFT JOIN party pa ON pa.party_id = ct.party_a
 LEFT JOIN party pb ON pb.party_id = ct.party_b
 LEFT JOIN crosswalk cw ON cw.ac_id = t.ac_id AND cw.election_id = t.election_id
-LEFT JOIN new_voters nv ON nv.ac_id = t.ac_id AND nv.election_id = t.election_id;
+LEFT JOIN new_voters nv ON nv.ac_id = t.ac_id AND nv.election_id = t.election_id
+LEFT JOIN contestants cn ON cn.ac_id = t.ac_id AND cn.election_id = t.election_id;
 
 CREATE UNIQUE INDEX mv_ac_summary_key ON mv_ac_summary (ac_id, election_id);
 CREATE INDEX mv_ac_summary_baseline ON mv_ac_summary (ac_id) WHERE is_baseline;

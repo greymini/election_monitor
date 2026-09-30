@@ -211,8 +211,8 @@ blocked on obtaining a document.
 
 **Of the 70 lettered findings: 32 fixed · 9 partial · 29 open.** Of the 29 open, 5 are deployment items the
 operator has scoped out, 8 are ops work not yet started, and 4 are proposed deferrals —
-leaving 12 that this batch closes. Section H adds 8 testing items: 3 fixed, 1 partial,
-4 open.
+leaving 12 that this batch closes. Section H adds 9 testing items: 3 fixed, 2 partial,
+4 open. Three findings from this batch that are not audit IDs are listed as N1–N3 below.
 
 ### A · Structure and build (12)
 
@@ -331,8 +331,19 @@ leaving 12 that this batch closes. Section H adds 8 testing items: 3 fixed, 1 pa
 | H.6 | Roll composition invariants | **open** — **item 5 of this batch** |
 | H.7 | API contract tests for block-role scoping | **open** — **item 7 of this batch** |
 | H.8 | `jellyfish` vs fallback agreement | **fixed** `760a244` |
+| H.9 | Metric parity: `metrics.py` against `0015_metrics.sql` on the same fixtures | **partial** — the Python half and the drift checks run now (82 cases); the SQL half needs Postgres, which is item 2 |
 
-### What the 24 open items are, grouped
+### New findings from this batch
+
+Not audit IDs — found while doing the work, recorded so they are not lost.
+
+| ID | What | Status |
+|---|---|---|
+| N1 | An absent crosswalk means opposite things in the two implementations: SQL treats NULL confidence as "cannot compare", Python's `link=None` default means "nothing to gate on". A caller who forgets the link gets ungated swings — the shape of D2. `swing_pct` has no production callers yet. | **open** — documented in `docs/METRICS.md` and asserted in `test_metric_parity.py`; must be closed before the Form 20 loader computes swings |
+| N2 | D3 recurs at AC grain: `mv_ac_summary` ranks over `party_totals`, where every independent shares a NULL `party_id` and collapses into one row, so the AC headline can name a winner the booth table does not. Does not affect Giridih 2024 (top two are both major parties). | **open** — belongs with item 9, the full per-AC candidate lists |
+| N3 | `mv_swing_vanished` applied no crosswalk or lineage gate at all, so a vanished party's collapse was reported even at booths too weakly matched to carry the surviving parties' swings — the two halves of one swing table disagreeing about whether the comparison was admissible. | **fixed** — both halves now call `metric_comparison_allowed` |
+
+### What the 29 open lettered items are, grouped
 
 - **This batch will close:** A1, B1, B4, B5, C4, C5, C6, C7, C8, C9, C12, C15, C17, E4, H.3, H.4, H.6, H.7 — plus the parity test and mock generator, which are new work rather than audit IDs.
 - **Deployment, scoped out by the operator:** A2, A3, A4, A10, G1.
@@ -385,3 +396,5 @@ leaving 12 that this batch closes. Section H adds 8 testing items: 3 fixed, 1 pa
 | 30 Sep 2026 | `0db8578` | **Logic fix:** party resolution requires a 0.05 margin over second place and a first-name-part match; a bracketed party resolves first. The specified rules alone did not reject `Sudhir Kumat`; the added first-part floor does. 499 to 510 tests. |
 | 30 Sep 2026 | `c3e55c9` | **Item 4: dashboard.** Every page against fixtures that reconcile to 1.85%, provenance on every figure, NULL as an em dash with a reason. Overview + health strip, booth table, map fixes (F1/F2/F3), booth card tabs, caste scatter (F4), candidates, local politics. 510 to 571 tests. |
 | 30 Sep 2026 | `934e629` | **C3 closed.** Roll page text never reaches disk; `--privacy` scans disk and every text/jsonb column; purge script; roll load refuses on a dirty disk. E5 closed alongside. 571 to 587 tests. |
+| 30 Sep 2026 | `5314668` | **Audit ledger completed** — all 70 findings with a verified status. G2 was found open, not fixed: it was planned in detail and never implemented, which is the kind of item that gets remembered as done. |
+| 30 Sep 2026 | `9950724` | **Item 1: metric parity.** The §3.2 formulas now exist once, in `analytics/metric_sql.py`, and the ten views call generated functions instead of restating them — the margin quotient alone had been written out seven times, which is how D1 survived. Parity is three-way: hand-computed == Python == SQL. N3 fixed (`mv_swing_vanished` had no gate at all); N1 and N2 recorded. 587 to 669 tests. |

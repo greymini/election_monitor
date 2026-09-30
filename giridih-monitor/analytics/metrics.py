@@ -227,6 +227,28 @@ class CrosswalkLink:
         return self.reviewed or self.confidence >= CROSSWALK_MIN_CONFIDENCE
 
 
+def comparison_allowed(
+    link: CrosswalkLink | None = None,
+    lineage_kind: str | None = None,
+    lineage_aggregated: bool = False,
+) -> bool:
+    """Whether this booth may be compared against its own past at all.
+
+    The gate `swing_pct` applies, extracted so that swing share, swing votes and
+    the vanished-party rows cannot end up with three slightly different versions
+    of it. Its SQL counterpart is `metric_comparison_allowed`, and the parity
+    test drives both over the same truth table.
+
+    A link of `None` means the booth is the same station it was - an anchor, not
+    an unverified guess - so there is nothing to gate on.
+    """
+    if link is not None and not link.usable_for_comparison:
+        return False
+    if lineage_kind in {"split", "merge"} and not lineage_aggregated:
+        return False
+    return True
+
+
 def swing_pct(
     share_now: float | None,
     share_prev: float | None,
@@ -251,9 +273,7 @@ def swing_pct(
     """
     if share_now is None or share_prev is None:
         return None
-    if link is not None and not link.usable_for_comparison:
-        return None
-    if lineage_kind in {"split", "merge"} and not lineage_aggregated:
+    if not comparison_allowed(link, lineage_kind, lineage_aggregated):
         return None
     return _round(share_now - share_prev)
 
