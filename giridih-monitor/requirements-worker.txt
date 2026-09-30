@@ -19,6 +19,11 @@ jellyfish==1.2.1
 indic-transliteration==2.3.82
 rapidfuzz==3.14.6
 
+# Object storage (common/storage.py). S3-compatible via endpoint_url, so the
+# same client serves AWS S3, Backblaze B2, MinIO and Wasabi. Not in
+# requirements-api.txt: the API never reads a source document.
+boto3==1.42.7
+
 # News (LLD 6)
 feedparser==6.0.14
 beautifulsoup4==4.15.0

@@ -44,6 +44,36 @@ def _env_list(key: str, default: str = "") -> list[str]:
     return [p.strip() for p in raw.split(",") if p.strip()]
 
 
+# source_doc.kind values, mirroring the CHECK constraint in
+# db/migrations/0008_ops.sql. Each may have its own storage backend.
+DOC_KINDS = (
+    "form20",
+    "roll_mother",
+    "roll_supplement",
+    "ps_list",
+    "sec_result",
+    "census",
+    "other",
+)
+
+
+def _env_storage_by_kind() -> dict[str, str]:
+    """STORAGE_BACKEND_FORM20=s3, STORAGE_BACKEND_ROLL_MOTHER=local, and so on.
+
+    One variable per kind rather than a parsed mapping string: a typo in
+    'form20:s3,roll_mother:local' is easy to make and silently drops a rule,
+    whereas a misspelt variable name simply does not apply and the default
+    stands. Only non-empty values are returned so an unset variable does not
+    mask STORAGE_BACKEND.
+    """
+    resolved: dict[str, str] = {}
+    for kind in DOC_KINDS:
+        value = _env(f"STORAGE_BACKEND_{kind.upper()}").lower()
+        if value:
+            resolved[kind] = value
+    return resolved
+
+
 @dataclass(frozen=True)
 class Prices:
     """USD per million tokens. Re-check platform.claude.com/docs before budgeting."""
@@ -95,8 +125,25 @@ class Settings:
     ocr_dir: Path = Path("ocr")
     backup_dir: Path = Path("backups")
 
+    # Document storage (common/storage.py). `storage_backend` is the default;
+    # `storage_backend_by_kind` overrides it per source_doc.kind, which is how
+    # Form 20 goes to object storage while electoral rolls stay on this host.
+    # Roll kinds are refused a remote backend regardless of what is set here -
+    # the invariant lives in storage.assert_local_only, not in configuration.
+    storage_backend: str = "local"
+    storage_backend_by_kind: dict[str, str] = field(default_factory=dict)
+    s3_endpoint: str = ""
+    s3_bucket: str = ""
+    s3_access_key: str = ""
+    s3_secret_key: str = ""
+    s3_region: str = ""
+    s3_prefix: str = ""
+
     # Ingestion
-    retain_raw_rolls: bool = False
+    # C13: keep the auditable original. The old default deleted the source
+    # roll PDF while extract_pdf's page cache kept its full text on disk, so
+    # the system destroyed the evidence and retained the personal data.
+    retain_raw_rolls: bool = True
     ocr_min_confidence: int = 70
     pdf_text_min_chars: int = 40
     tesseract_langs: str = "hin+eng"
@@ -151,7 +198,15 @@ def get_settings() -> Settings:
         raw_dir=Path(_env("RAW_DIR", "raw")),
         ocr_dir=Path(_env("OCR_DIR", "ocr")),
         backup_dir=Path(_env("BACKUP_DIR", "backups")),
-        retain_raw_rolls=_env_bool("RETAIN_RAW_ROLLS", False),
+        storage_backend=_env("STORAGE_BACKEND", "local").lower(),
+        storage_backend_by_kind=_env_storage_by_kind(),
+        s3_endpoint=_env("S3_ENDPOINT"),
+        s3_bucket=_env("S3_BUCKET"),
+        s3_access_key=_env("S3_ACCESS_KEY"),
+        s3_secret_key=_env("S3_SECRET_KEY"),
+        s3_region=_env("S3_REGION"),
+        s3_prefix=_env("S3_PREFIX"),
+        retain_raw_rolls=_env_bool("RETAIN_RAW_ROLLS", True),
         ocr_min_confidence=_env_int("OCR_MIN_CONFIDENCE", 70),
         pdf_text_min_chars=_env_int("PDF_TEXT_MIN_CHARS", 40),
         tesseract_langs=_env("TESSERACT_LANGS", "hin+eng"),
