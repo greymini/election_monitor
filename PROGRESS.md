@@ -218,7 +218,7 @@ leaving 12 that this batch closes. Section H adds 9 testing items: 3 fixed, 2 pa
 
 | ID | Severity | What | Status |
 |---|---|---|---|
-| A1 | Critical | Compose pins `pgvector/pgvector:pg16`, which has no PostGIS, so migration 0001 fails and a clean checkout cannot start | **fixed** `PENDING` — two ways. N4 removed the PostGIS requirement, so 0001 no longer fails on a plain pgvector image, **proven** by applying all 17 migrations. And `docker/Dockerfile.db` still provides PostGIS for future spatial work, failing its own build if pgvector is absent — written and reviewed, never built, no Docker here. |
+| A1 | Critical | Compose pins `pgvector/pgvector:pg16`, which has no PostGIS, so migration 0001 fails and a clean checkout cannot start | **fixed** `6d40566` — two ways. N4 removed the PostGIS requirement, so 0001 no longer fails on a plain pgvector image, **proven** by applying all 17 migrations. And `docker/Dockerfile.db` still provides PostGIS for future spatial work, failing its own build if pgvector is absent — written and reviewed, never built, no Docker here. |
 | A2 | High | Port 443 published and a certs volume mounted, but nginx has one `listen 80` block and no certbot exists | **open** — deployment, scoped out |
 | A3 | High | Worker mounts volumes at paths absent from the image, so Docker creates them root-owned and every write fails | **open** — needs a live host to verify; deployment |
 | A4 | Medium | No `web/.dockerignore`, so the host's `node_modules` enters the build context | **open** — deployment |
@@ -323,7 +323,7 @@ leaving 12 that this batch closes. Section H adds 9 testing items: 3 fixed, 2 pa
 
 | Item | What | Status |
 |---|---|---|
-| H.1 | Materialized views against a hand-built fixture — the audit's top-ranked missing test | **fixed** `PENDING` — 14 tests **RUN and passing** against a real PostgreSQL. Running them exposed that `0015` could not be applied at all (`l.ac_id` on a table without it) and that 13 of the 14 shared a fixture that collided with itself. |
+| H.1 | Materialized views against a hand-built fixture — the audit's top-ranked missing test | **fixed** `6d40566` — 14 tests **RUN and passing** against a real PostgreSQL. Running them exposed that `0015` could not be applied at all (`l.ac_id` on a table without it) and that 13 of the 14 shared a fixture that collided with itself. |
 | H.2 | Crosswalk write path, not just scoring | **fixed** `8ffb603` |
 | H.3 | Form 20 end to end against a known booth | **open** — **item 8 of this batch** (mocked, per instruction) |
 | H.4 | Re-run idempotency per loader | **open** — **item 4 of this batch** |
@@ -331,7 +331,7 @@ leaving 12 that this batch closes. Section H adds 9 testing items: 3 fixed, 2 pa
 | H.6 | Roll composition invariants | **open** — **item 5 of this batch** |
 | H.7 | API contract tests for block-role scoping | **open** — **item 7 of this batch** |
 | H.8 | `jellyfish` vs fallback agreement | **fixed** `760a244` |
-| H.9 | Metric parity: `metrics.py` against `0015_metrics.sql` on the same fixtures | **fixed** `PENDING` — all three layers RUN: 87 drift/Python checks, 82 functions in a real PostgreSQL, 76 against the full schema including the views. 3 remaining skips need booth results the seed does not load (items 8, 9). |
+| H.9 | Metric parity: `metrics.py` against `0015_metrics.sql` on the same fixtures | **fixed** `6d40566` — all three layers RUN: 87 drift/Python checks, 82 functions in a real PostgreSQL, 76 against the full schema including the views. 3 remaining skips need booth results the seed does not load (items 8, 9). |
 
 ### New findings from this batch
 
@@ -341,7 +341,7 @@ Not audit IDs — found while doing the work, recorded so they are not lost.
 |---|---|---|
 | N1 | An absent crosswalk meant opposite things in the two implementations: SQL treated NULL confidence as "cannot compare", Python's `link=None` default meant "nothing to gate on", so a caller who forgot the link got ungated swings — the shape of D2. | **fixed** `32a96f0` — `link` is required and positional on `comparison_allowed`, `swing_pct` and `alliance_swing_pct`; omitting it raises `TypeError`; anchors pass the new `metrics.ANCHOR`. Both sides now refuse on absence, pinned by parity cases. |
 | N2 | D3 recurred at AC grain: `mv_ac_summary` ranked over `party_totals`, where every independent shares a NULL `party_id` and collapses into one row, so the constituency headline could name a winner no booth had elected. | **fixed** `32a96f0` — ranks over a new `candidate_totals` CTE on the booth view's `contestant` key, reports `winner_candidate`/`runner_candidate`, counts contestants over candidates. Held by a structural test and an e2e test that sums the booth table. |
-| N4 | The schema could not be applied without PostGIS, `pg_trgm` and `unaccent`, so no SQL test had ever been executed. `pg_trgm` and `unaccent` were created and never used; PostGIS was doing a round trip to recover the longitude and latitude written into a geometry column. | **fixed** `PENDING` — `0002` stores `lon`/`lat` doubles and GeoJSON in `jsonb`; `0001` creates only `vector`. All 17 migrations now apply on a stock PostgreSQL 16 (50 tables, 14 matviews, 15 functions). Conflicts with LLD §6.4, recorded in D-006 rather than resolved unilaterally. |
+| N4 | The schema could not be applied without PostGIS, `pg_trgm` and `unaccent`, so no SQL test had ever been executed. `pg_trgm` and `unaccent` were created and never used; PostGIS was doing a round trip to recover the longitude and latitude written into a geometry column. | **fixed** `6d40566` — `0002` stores `lon`/`lat` doubles and GeoJSON in `jsonb`; `0001` creates only `vector`. All 17 migrations now apply on a stock PostgreSQL 16 (50 tables, 14 matviews, 15 functions). Conflicts with LLD §6.4, recorded in D-006 rather than resolved unilaterally. |
 | N3 | `mv_swing_vanished` applied no crosswalk or lineage gate at all, so a vanished party's collapse was reported even at booths too weakly matched to carry the surviving parties' swings — the two halves of one swing table disagreeing about whether the comparison was admissible. | **fixed** — both halves now call `metric_comparison_allowed` |
 
 ### What the 29 open lettered items are, grouped
@@ -402,3 +402,4 @@ Not audit IDs — found while doing the work, recorded so they are not lost.
 | 30 Sep 2026 | `7454a91` | **Repo re-rooted** at `C:\dev\giridih-monitor`; the app subtree moves to the root as 208 pure renames. D-005 supersedes D-001. |
 | 30 Sep 2026 | `32a96f0` | **N1 and N2 closed.** A missing crosswalk link now means "cannot compare" in Python too and cannot be omitted (`TypeError`); `mv_ac_summary` ranks candidates on the booth view's `contestant` key instead of bucketing independents into one party row. 669 to 677 tests. |
 | 30 Sep 2026 | `1430f7c` | **Item 2: A1 and the first real SQL run.** `docker/Dockerfile.db` gives PostGIS + pgvector and fails the build if any of 0001's four extensions is missing (written, **never built** - no Docker). `pgserver` made the generated metric functions executable without Docker: **82 tests RUN and passing** against a real PostgreSQL 16 - the item 1 SQL had never run before this. The 93 e2e view tests and the DB privacy scan stay NOT RUN; they need the full schema, so PostGIS. N4 recorded. 677 to 759 tests. |
+| 30 Sep 2026 | `6d40566` | **N4 closed, and the schema applied for the first time.** PostGIS, pg_trgm and unaccent dropped as requirements (the latter two were never used); `lon`/`lat` doubles and GeoJSON `jsonb` replace the geometry columns. All 17 migrations apply on a stock PostgreSQL 16. Two defects surfaced at once: `0015` could not be applied at all, and 13 of 14 view tests shared a self-colliding fixture. A1 and H.1 closed. 759/94 to **849 passed / 4 skipped**. Conflicts with LLD 6.4 - see D-006. |
