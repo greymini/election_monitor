@@ -316,9 +316,17 @@ def test_no_card_scrolls_sideways_to_show_a_command():
     cell - the least reachable place to put one."""
     text = code_of(WEB / "components" / "Provenance.tsx")
     assert "overflow-x-auto" not in text, (
-        "a horizontal scrollbar remains inside a card; the command should wrap"
+        "a horizontal scrollbar remains inside a card"
     )
-    assert "whitespace-pre-wrap" in text and "break-all" in text
+    # Truncate, not wrap. Wrapping obeyed the no-scrollbar rule but broke
+    # commands mid-token, and a path split across two lines reads as two
+    # different paths - worse than a visible ellipsis. The full text is in the
+    # tooltip and one click from the clipboard.
+    assert "truncate" in text, "the command neither wraps nor truncates"
+    assert "whitespace-pre-wrap" not in text, (
+        "the command wraps again; it should be one line with an ellipsis"
+    )
+    assert "title={command}" in text, "the full command is not in a tooltip"
     assert "CopyButton" in text, "a command shown to be run should be copyable"
 
 

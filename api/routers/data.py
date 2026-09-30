@@ -76,25 +76,41 @@ def summary(user: CurrentUser, ac: CurrentAC) -> dict:
         "         SUM(w.jvm) AS jvm, SUM(w.others) AS others"
         "  FROM election e"
         "  LEFT JOIN mv_result_booth_wide w ON w.election_id = e.election_id"
-        "  WHERE e.ac_id = %s"
+        "  WHERE e.ac_id = %(ac)s"
         "  GROUP BY e.election_id, e.label, e.type, e.year, e.is_baseline"
-        "), ranked AS ("
-        "  SELECT t.*, r.abbr, r.votes,"
-        "         ROW_NUMBER() OVER (PARTITION BY t.election_id ORDER BY r.votes DESC) AS rn,"
-        "         COUNT(*) OVER (PARTITION BY t.election_id) AS contestants"
-        "  FROM totals t"
-        # NOTA is excluded: it is not a candidate and can never win or be
+        # N5. This ranked over a hardcoded eight-party VALUES pivot built from
+        # the wide view's party columns, which had two consequences. A party
+        # outside that list was summed into `others` and could be returned as
+        # the winning "party" OTHERS - a winner no ballot named. And every
+        # independent shared that same bucket, which is D3 and N2 for a third
+        # time at a third grain.
+        #
+        # Ranked per candidate now, from mv_result_booth_candidate, on the same
+        # `contestant` key mv_result_booth_wide and mv_ac_summary use. NOTA is
+        # excluded because it is not a candidate and can never win or be
         # runner-up (METRICS.md, margin_votes).
-        "  CROSS JOIN LATERAL (VALUES ('JMM', t.jmm), ('BJP', t.bjp), ('AJSU', t.ajsu),"
-        "                             ('JLKM', t.jlkm), ('INC', t.inc), ('RJD', t.rjd),"
-        "                             ('JVM', t.jvm), ('OTHERS', t.others)"
-        "                     ) AS r(abbr, votes)"
-        "  WHERE t.booths > 0 AND r.votes > 0"
+        "), candidate_totals AS ("
+        "  SELECT c.election_id, c.contestant AS abbr, c.candidate_name,"
+        "         SUM(c.votes)::INT AS votes"
+        "  FROM mv_result_booth_candidate c"
+        "  JOIN election e2 ON e2.election_id = c.election_id"
+        "  WHERE e2.ac_id = %(ac)s AND c.party IS DISTINCT FROM 'NOTA'"
+        "  GROUP BY c.election_id, c.contestant, c.candidate_name"
+        "), ranked AS ("
+        "  SELECT t.election_id AS t_election_id, ct.abbr, ct.candidate_name, ct.votes,"
+        "         ROW_NUMBER() OVER (PARTITION BY ct.election_id"
+        "                            ORDER BY ct.votes DESC, ct.candidate_name) AS rn,"
+        "         COUNT(*) OVER (PARTITION BY ct.election_id) AS contestants"
+        "  FROM totals t"
+        "  JOIN candidate_totals ct ON ct.election_id = t.election_id"
+        "  WHERE t.booths > 0 AND ct.votes > 0"
         ")"
         "SELECT t.label, t.type, t.year, t.is_baseline, t.booths, t.votes, t.electors,"
         "       t.total_valid, t.nota,"
-        "       win.abbr AS winner_party, win.votes AS winner_votes,"
-        "       run.abbr AS runner_party, run.votes AS runner_votes,"
+        "       win.abbr AS winner_party, win.candidate_name AS winner_candidate,"
+        "       win.votes AS winner_votes,"
+        "       run.abbr AS runner_party, run.candidate_name AS runner_candidate,"
+        "       run.votes AS runner_votes,"
         # Through the generated functions, not a hand-written subtraction:
         # the fewer-than-two rule and the NOTA-inclusive denominator are
         # defined once, in analytics/metric_sql.py. Writing the quotient
@@ -105,10 +121,10 @@ def summary(user: CurrentUser, ac: CurrentAC) -> dict:
         "                         t.total_valid) AS margin_pct,"
         "       metric_turnout_pct(t.votes, t.electors) AS turnout_pct "
         "FROM totals t "
-        "LEFT JOIN ranked win ON win.election_id = t.election_id AND win.rn = 1 "
-        "LEFT JOIN ranked run ON run.election_id = t.election_id AND run.rn = 2 "
+        "LEFT JOIN ranked win ON win.t_election_id = t.election_id AND win.rn = 1 "
+        "LEFT JOIN ranked run ON run.t_election_id = t.election_id AND run.rn = 2 "
         "ORDER BY t.year DESC, t.type",
-        (ac.ac_id,),
+        {"ac": ac.ac_id},
     )
     baseline = query_one(
         "SELECT e.label, SUM(w.jmm) AS jmm, SUM(w.bjp) AS bjp, SUM(w.jlkm) AS jlkm, "
@@ -464,8 +480,15 @@ def caste(user: StrategistUser, ac: CurrentAC, area_id: int | None = None,
         f"""
         SELECT ce.booth_uid, b.area_id, a.name_hi AS area_hi, a.name_en AS area_en,
                c.name_en AS community_en, c.name_hi AS community_hi, c.category,
-               ce.est_count, ce.est_pct, ce.matched_pct, ce.confidence, ce.source,
-               ce.method_version
+               -- `ce.matched_pct` and `ce.method_version` were selected here
+               -- and exist on neither the table nor any writer, so GET /caste
+               -- was a 500 - the same defect as N7 on /summary, found the same
+               -- way, by running the query. Removed rather than added to the
+               -- schema: a nullable column nothing populates is audit B4, where
+               -- `electors` had no writer and the map offered turnout anyway.
+               -- Recorded as N10; they belong with the estimator that should
+               -- record them.
+               ce.est_count, ce.est_pct, ce.confidence, ce.source
         FROM caste_estimate ce
         JOIN community c ON c.community_id = ce.community_id
         JOIN booth b ON b.booth_uid = ce.booth_uid

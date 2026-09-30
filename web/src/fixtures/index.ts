@@ -32,6 +32,16 @@
  * `fixture` field that the UI surfaces as a banner.
  */
 
+import {
+  AC_TOTALS,
+  AC_TOTALS_2019,
+  AREAS,
+  BOOTH_COUNT,
+  GENERATED_BOOTHS,
+  GENERATED_BOOTHS_2019,
+} from './generated'
+import type { GeneratedBooth } from './generated'
+
 export const FIXTURE_BANNER =
   'Fixture data. Booth-level figures are synthetic, built to reconcile to the ' +
   'published AC totals so the pages can be reviewed before a Form 20 is loaded. ' +
@@ -138,32 +148,6 @@ export const CONFIG = {
 // AC-32 booths. Eight of them, summing to the published 2024 AC totals.
 // --------------------------------------------------------------------------
 
-interface BoothFixture {
-  booth_uid: string
-  ps_numbers: string
-  area_en: string
-  area_hi: string
-  block_en: string
-  building: string
-  lat: number | null
-  lon: number | null
-  electors: number | null
-  jmm: number
-  bjp: number
-  jlkm: number
-  others: number
-  nota: number
-  rejected: number
-  source_page: number
-  crosswalk_confidence: number | null
-  crosswalk_reviewed: boolean
-  lineage_kind: string | null
-  /** Additions since the 2019 roll, or null where no roll is linked. */
-  additions: number | null
-  /** Pedersen index, or null where only one poll type is loaded. */
-  floating_pct: number | null
-  margin_stddev: number | null
-}
 
 /**
  * The eight booths. Deliberately varied so each rendering rule has a case:
@@ -178,88 +162,32 @@ interface BoothFixture {
  *   - Only 32-B0001 and 32-B0002 have an LS leg, so floating_pct is NULL for
  *     the other six rather than 50.00.
  */
-export const BOOTHS: BoothFixture[] = [
-  {
-    booth_uid: '32-B0001', ps_numbers: '1', area_en: 'Ward 4', area_hi: 'वार्ड 4',
-    block_en: 'Giridih Municipal Corporation', building: 'Primary School Pachamba',
-    lat: 24.1912, lon: 86.3051, electors: 41200,
-    jmm: 12105, bjp: 13980, jlkm: 1420, others: 1380, nota: 268, rejected: 14,
-    source_page: 3, crosswalk_confidence: 1.0, crosswalk_reviewed: true,
-    lineage_kind: null, additions: 5210, floating_pct: 59.45, margin_stddev: 8.05,
-  },
-  {
-    booth_uid: '32-B0002', ps_numbers: '2', area_en: 'Ward 7', area_hi: 'वार्ड 7',
-    block_en: 'Giridih Municipal Corporation', building: 'Middle School Barganda',
-    lat: 24.1854, lon: 86.3094, electors: 38900,
-    jmm: 11480, bjp: 12760, jlkm: 1310, others: 1290, nota: 251, rejected: 9,
-    source_page: 3, crosswalk_confidence: 0.97, crosswalk_reviewed: true,
-    lineage_kind: null, additions: 4880, floating_pct: 51.20, margin_stddev: 6.42,
-  },
-  {
-    booth_uid: '32-B0003', ps_numbers: '3', area_en: 'Chatro', area_hi: 'चतरो',
-    block_en: 'Giridih Block', building: 'Primary School Chatro',
-    // No geocode: the map must report it as unplaced, not omit it.
-    lat: null, lon: null, electors: 36400,
-    jmm: 12890, bjp: 10240, jlkm: 1080, others: 1420, nota: 243, rejected: 11,
-    source_page: 4, crosswalk_confidence: 0.94, crosswalk_reviewed: true,
-    lineage_kind: null, additions: 4610, floating_pct: null, margin_stddev: 9.11,
-  },
-  {
-    booth_uid: '32-B0004', ps_numbers: '4', area_en: 'Chatro', area_hi: 'चतरो',
-    block_en: 'Giridih Block', building: 'Panchayat Bhawan Chatro',
-    lat: 24.2011, lon: 86.2887, electors: 39750,
-    jmm: 13240, bjp: 11020, jlkm: 1490, others: 1350, nota: 260, rejected: 7,
-    source_page: 4, crosswalk_confidence: 0.91, crosswalk_reviewed: true,
-    lineage_kind: null, additions: 5020, floating_pct: null, margin_stddev: 7.80,
-  },
-  {
-    booth_uid: '32-B0005', ps_numbers: '5', area_en: 'Madhuban', area_hi: 'मधुबन',
-    block_en: 'Pirtand Block', building: 'Primary School Madhuban',
-    lat: 24.0455, lon: 86.1402,
-    // No linked roll snapshot: electors, turnout and new-voter share are all
-    // NULL. This is the B4 and B1 shape, and the page must say why.
-    electors: null,
-    jmm: 12610, bjp: 10880, jlkm: 1610, others: 1390, nota: 249, rejected: 12,
-    source_page: 5, crosswalk_confidence: 0.96, crosswalk_reviewed: true,
-    lineage_kind: null, additions: null, floating_pct: null, margin_stddev: 5.90,
-  },
-  {
-    booth_uid: '32-B0006', ps_numbers: '6', area_en: 'Harladih', area_hi: 'हरलाडीह',
-    block_en: 'Pirtand Block', building: 'Middle School Harladih',
-    lat: 24.0612, lon: 86.1755, electors: 37100,
-    jmm: 11920, bjp: 10410, jlkm: 1450, others: 1330, nota: 241, rejected: 8,
-    source_page: 5,
-    // 0.71 and unreviewed: the booth appears, its swing is withheld (B2).
-    crosswalk_confidence: 0.71, crosswalk_reviewed: false,
-    lineage_kind: null, additions: 4490, floating_pct: null, margin_stddev: null,
-  },
-  {
-    booth_uid: '32-B0007', ps_numbers: '7,8', area_en: 'Parasnath', area_hi: 'पारसनाथ',
-    block_en: 'Pirtand Block', building: 'Primary School Parasnath',
-    lat: 23.9640, lon: 86.1330, electors: 42300,
-    jmm: 10990, bjp: 11480, jlkm: 1360, others: 1310, nota: 246, rejected: 10,
-    source_page: 6, crosswalk_confidence: 0.88, crosswalk_reviewed: true,
-    // A split: the swing is withheld until the lineage group is aggregated.
-    lineage_kind: 'split', additions: 5350, floating_pct: null, margin_stddev: null,
-  },
-  {
-    booth_uid: '32-B0008', ps_numbers: '9', area_en: 'Khukhra', area_hi: 'खुखरा',
-    block_en: 'Giridih Block', building: 'Anganwadi Khukhra',
-    lat: 24.2244, lon: 86.2501, electors: 29248,
-    jmm: 8807, bjp: 9434, jlkm: 1067, others: 1091, nota: 246, rejected: 6,
-    source_page: 6, crosswalk_confidence: 1.0, crosswalk_reviewed: true,
-    // No 2019 comparator at all: swing NULL for a third reason (D2).
-    lineage_kind: null, additions: 4374, floating_pct: null, margin_stddev: null,
-  },
-]
+/**
+ * Booths, from the generated fixture.
+ *
+ * These were eight hand-written booths averaging 38,000 electors each - an
+ * entire assembly segment per polling station. Every per-booth figure on every
+ * screen was therefore implausible by a factor of forty, and the map's
+ * electorate-scaled marker sizes meant nothing at all.
+ *
+ * Now 305 booths of 800-1,500 electors across the real 36 municipal wards and
+ * 24 synthetic rural areas, reconciling exactly to the published constituency
+ * totals. Generated from `fixtures/giridih.py`, which `tests/metric_cases.py`
+ * also imports - so the frontend fixture and the metric tests cannot disagree
+ * about the same constituency, which is what finding N8 was.
+ */
+// Typed as the generated shape, not the old hand-written `BoothFixture`.
+// The generated rows carry the derived metrics too - valid_votes,
+// margin_pct, turnout_pct and the rest - and casting to the narrower
+// interface hid them, so every consumer recomputed what was already there.
+export const BOOTHS: GeneratedBooth[] = GENERATED_BOOTHS
 
-/** 2019, for the booths that have a comparator. Keyed by booth_uid. */
-export const BOOTHS_2019: Record<string, { jmm: number; bjp: number; jvm: number; nota: number }> = {
-  '32-B0001': { jmm: 10980, bjp: 9920, jvm: 1180, nota: 210 },
-  '32-B0002': { jmm: 10240, bjp: 9110, jvm: 1090, nota: 198 },
-  '32-B0003': { jmm: 11310, bjp: 7480, jvm: 1240, nota: 205 },
-  '32-B0004': { jmm: 11720, bjp: 8010, jvm: 1300, nota: 214 },
-  '32-B0005': { jmm: 11040, bjp: 7920, jvm: 1210, nota: 201 },
-  '32-B0006': { jmm: 10410, bjp: 7610, jvm: 1150, nota: 193 },
-  '32-B0007': { jmm: 9680, bjp: 8240, jvm: 1080, nota: 188 },
-}
+export const BOOTHS_2019: Record<string, { jmm: number; bjp: number; jvm: number; nota: number }> =
+  GENERATED_BOOTHS_2019
+
+/** Areas and blocks, for the /areas endpoint's filter lists. */
+export const AREAS_FIXTURE = AREAS
+
+export { AC_TOTALS, AC_TOTALS_2019, BOOTH_COUNT }
+export type { GeneratedBooth }
+

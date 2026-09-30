@@ -17,43 +17,44 @@ import {
 
 const SOURCE_DOC = 'form20-vs2024-ac32.pdf'
 
-const valid = (b: (typeof BOOTHS)[number]) =>
-  b.jmm + b.bjp + b.jlkm + b.others + b.nota
+/**
+ * Every derived figure comes from the generated fixture, not from arithmetic
+ * here.
+ *
+ * This file used to recompute valid votes, the ranking, the margin, the signed
+ * margin and the swing for each endpoint. Two consequences, both of which were
+ * reported from the screens:
+ *
+ *   * the map tooltip and the booth card could show different numbers for one
+ *     booth, because each derived them separately; and
+ *   * the arithmetic was a second implementation of formulas that
+ *     `analytics/metrics.py` and `metric_sql.py` already define once, rounding
+ *     with `Math.round(x * 1000) / 10` where the product rounds to two places.
+ *
+ * `fixtures/giridih.py` now computes them with `analytics.metrics` itself, at
+ * generation time, and everything below reads the stored field.
+ */
 
-/** Winner and runner-up among real candidates. NOTA never ranks. */
-function ranked(b: (typeof BOOTHS)[number]) {
-  const contenders: Array<[string, number]> = [
-    ['JMM', b.jmm], ['BJP', b.bjp], ['JLKM', b.jlkm], ['OTH', b.others],
-  ]
-  contenders.sort((x, y) => y[1] - x[1] || x[0].localeCompare(y[0]))
-  return { winner: contenders[0], runner: contenders[1] }
+/** Why this booth carries no swing, for the card's caveat list. The value is
+ *  already NULL in the fixture; this is only the explanation. */
+function swingWithheldReason(b: (typeof BOOTHS)[number]): string | null {
+  if (b.jmm_swing_pct !== null) return null
+  if (!BOOTHS_2019[b.booth_uid]) return 'no prior election loaded for this booth'
+  if (b.lineage_kind) {
+    return `booth was ${b.lineage_kind} and the lineage group is not aggregated`
+  }
+  if (!b.crosswalk_reviewed && (b.crosswalk_confidence ?? 0) < 0.85) {
+    return `crosswalk confidence ${b.crosswalk_confidence} is unreviewed and below 0.85`
+  }
+  return 'not comparable'
 }
 
 function boothRow(b: (typeof BOOTHS)[number]) {
-  const v = valid(b)
-  const { winner, runner } = ranked(b)
-  const marginVotes = winner[1] - runner[1]
-  const marginPct = Math.round((1000 * marginVotes) / v) / 10
-  // Signed by Giridih's contest pair, JMM/BJP. NULL if neither won - which is
-  // different from zero, and is why a third-party win greys on the map.
-  const signed =
-    winner[0] === 'JMM' ? marginPct : winner[0] === 'BJP' ? -marginPct : null
-
-  const prev = BOOTHS_2019[b.booth_uid]
-  // Swing is withheld for three separate reasons, each present in the fixtures.
-  const swingWithheld =
-    !prev ? 'no prior election loaded for this booth'
-      : b.lineage_kind ? `booth was ${b.lineage_kind} and the lineage group is not aggregated`
-        : (!b.crosswalk_reviewed && (b.crosswalk_confidence ?? 0) < 0.85)
-          ? `crosswalk confidence ${b.crosswalk_confidence} is unreviewed and below 0.85`
-          : null
-  const prevValid = prev ? prev.jmm + prev.bjp + prev.jvm + prev.nota : null
-  const jmmSwing =
-    swingWithheld || !prev || !prevValid
-      ? null
-      : Math.round(
-        (1000 * b.jmm) / v - (1000 * prev.jmm) / prevValid,
-      ) / 10
+  const v = b.valid_votes
+  const marginPct = b.margin_pct
+  const signed = b.signed_margin_pct
+  const swingWithheld = swingWithheldReason(b)
+  const jmmSwing = b.jmm_swing_pct
 
   return {
     booth_uid: b.booth_uid,
@@ -66,31 +67,27 @@ function boothRow(b: (typeof BOOTHS)[number]) {
     lon: b.lon,
     electors: b.electors,
     valid_votes: v,
-    votes_polled: v + b.rejected,
+    votes_polled: b.votes_polled,
     rejected: b.rejected,
     nota: b.nota,
     jmm: b.jmm, bjp: b.bjp, jlkm: b.jlkm, others: b.others,
     ajsu: null, inc: null, rjd: null, jvm: null,
-    winner_party: winner[0],
-    runner_party: runner[0],
-    margin_votes: marginVotes,
+    winner_party: b.winner_party,
+    runner_party: b.runner_party,
+    margin_votes: b.margin_votes,
     margin_pct: marginPct,
     signed_margin_pct: signed,
     // NULL when electors are unknown (B4), with the reason carried alongside.
-    turnout_pct: b.electors
-      ? Math.round((1000 * (v + b.rejected)) / b.electors) / 10
+    turnout_pct: b.turnout_pct,
+    turnout_null_reason: b.turnout_pct === null
+      ? 'no roll snapshot is linked to this election, so the electorate is unknown'
       : null,
-    turnout_null_reason: b.electors
-      ? null
-      : 'no roll snapshot is linked to this election, so the electorate is unknown',
     jmm_swing_pct: jmmSwing,
     swing_null_reason: swingWithheld,
-    new_voter_pct: b.additions && b.electors
-      ? Math.round((1000 * b.additions) / b.electors) / 10
+    new_voter_pct: b.new_voter_pct,
+    new_voter_null_reason: b.new_voter_pct === null
+      ? 'no roll revision is linked to both ends of the window'
       : null,
-    new_voter_null_reason: b.additions && b.electors
-      ? null
-      : 'no roll revision is linked to both ends of the window',
     additions: b.additions,
     floating_pct: b.floating_pct,
     floating_null_reason: b.floating_pct === null
@@ -246,11 +243,9 @@ function casteRows(acNumber: number) {
       est_count: b.electors
         ? Math.round((b.electors * (c.share + ((i % 4) - 1.5) * 2.1)) / 100)
         : null,
-      matched_pct: 71.1,
       // Booth 6 is deliberately below the 0.4 floor, so the greying can be seen.
       confidence: i === 5 ? 0.31 : Math.round((0.52 + (i % 3) * 0.07) * 100) / 100,
       source: 'blend',
-      method_version: 'surname+census v2',
     })),
   )
 }
@@ -260,7 +255,10 @@ function partyShare(uid: string, party: 'JMM' | 'BJP' | 'JLKM') {
   const row = ROWS.find((r) => r.booth_uid === uid)
   if (!row) return null
   const votes = party === 'JMM' ? row.jmm : party === 'BJP' ? row.bjp : row.jlkm
-  return Math.round((1000 * votes) / row.valid_votes) / 10
+  // Two decimal places, matching metrics.share_pct. This rounded to one,
+  // so a fixture share differed from the same figure computed anywhere else
+  // in the system by up to 0.05 points.
+  return Math.round((10000 * votes) / row.valid_votes) / 100
 }
 
 export const FIXTURES: Record<string, unknown> = {
@@ -471,9 +469,9 @@ export function fixtureFor(path: string): unknown | undefined {
           // NULL unless every booth in the area knows its electorate.
           turnout_pct: rs.every((r) => r.electors !== null)
             ? Math.round(
-              (1000 * rs.reduce((s, r) => s + r.votes_polled, 0))
+              (10000 * rs.reduce((s, r) => s + r.votes_polled, 0))
               / rs.reduce((s, r) => s + (r.electors ?? 0), 0),
-            ) / 10
+            ) / 100
             : null,
           booths_with_electors: rs.filter((r) => r.electors !== null).length,
         })),
@@ -502,7 +500,7 @@ export function fixtureFor(path: string): unknown | undefined {
           electors: r.electors,
           additions_pct: r.new_voter_pct,
           deletions_pct: r.electors
-            ? Math.round((1000 * (r.additions ?? 0) * 0.18) / r.electors) / 10
+            ? Math.round((10000 * (r.additions ?? 0) * 0.18) / r.electors) / 100
             : null,
           source_doc: 'roll-2026-07-ac32.pdf', source_page: 1,
         })),

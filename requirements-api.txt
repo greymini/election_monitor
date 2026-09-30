@@ -9,7 +9,12 @@ pydantic==2.13.5
 psycopg[binary,pool]==3.3.6
 sqlglot==30.18.0
 python-jose[cryptography]==3.5.0
-passlib[bcrypt]==1.7.4
+# bcrypt directly. `passlib[bcrypt]==1.7.4` was here with bcrypt itself
+# unpinned, so pip resolved bcrypt 5.0.0 and passlib - which reads an
+# attribute removed in bcrypt 4.1 - failed on every password hash at any
+# length. See api/deps.py. Pinned exactly, because that is the mistake
+# that caused it.
+bcrypt==5.0.0
 python-multipart==0.0.32
 httpx==0.28.1
 anthropic==1.7.0

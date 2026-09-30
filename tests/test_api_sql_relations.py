@@ -43,6 +43,10 @@ KNOWN_NON_RELATIONS = {
     "pg_extension", "pg_roles", "pg_class", "pg_indexes", "pg_matviews",
     "pg_tables", "pg_stat_activity", "pg_available_extensions", "pg_namespace",
     "information_schema", "columns", "tables",
+    # Added for the N6 privacy scan, which reads the catalogue directly:
+    # information_schema.columns does not list materialized views, so the 14
+    # matviews were never scanned for personal data.
+    "pg_attribute", "pg_type", "pg_proc",
     # PostGIS.
     "spatial_ref_sys", "geometry_columns",
     # Set-returning functions and syntax the pattern mistakes for a table.
@@ -56,6 +60,9 @@ KNOWN_NON_RELATIONS = {
     "new_voters", "party_totals", "electors_at", "electors_start",
     "booth_uid_map", "prev", "now", "ls", "vs", "cw", "nv", "jl", "sh", "t",
     "keep", "rq", "by_party", "contenders", "sub", "revs",
+    # From the N5 fix: /summary ranks candidates now rather than a hardcoded
+    # eight-party pivot, and the ranking reads this CTE.
+    "candidate_totals",
     # `INSERT ... ON CONFLICT DO UPDATE SET` puts SET where a table name
     # would otherwise be.
     "set",

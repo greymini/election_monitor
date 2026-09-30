@@ -57,10 +57,14 @@ export default function DivergingLegend({
                 style={{ background: partyColor(rightParty) }} />
         </span>
       </div>
-      <div className="tnum mt-0.5 flex justify-between text-2xs" style={{ color: 'var(--text-muted)' }}>
-        <span>+{saturateAt}</span>
+      {/* Both ends read "+30%" with no party, so the scale said the margin
+          could be +30 at either end and nothing said which party that favoured.
+          Each end now carries its party and its sign. */}
+      <div className="tnum mt-0.5 flex justify-between gap-2 text-2xs"
+           style={{ color: 'var(--text-muted)' }}>
+        <span>{leftParty} +{saturateAt}%</span>
         <span>0</span>
-        <span>+{saturateAt}</span>
+        <span>{rightParty} +{saturateAt}%</span>
       </div>
     </div>
   )

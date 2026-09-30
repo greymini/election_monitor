@@ -215,12 +215,29 @@ def check_privacy_database() -> list[Check]:
     """
     from common.pii import PATTERNS
 
+    # N6. This read information_schema.columns, which in PostgreSQL does not
+    # list materialized views at all - they are absent from
+    # information_schema.tables too. So the 14 matviews, which are denormalised
+    # copies of very nearly everything this system holds, were never scanned.
+    # A leak into a matview would have passed the compliance check silently,
+    # which is the same shape of failure as the structural check that could not
+    # see the filesystem.
+    #
+    # pg_class.relkind: 'r' ordinary table, 'p' partitioned, 'm' materialized
+    # view, 'v' view. Views are included because a view over a text column can
+    # expose it under a different name, and the scan costs a query either way.
     columns = query(
-        "SELECT table_name, column_name FROM information_schema.columns "
-        "WHERE table_schema = 'public' "
-        "AND data_type IN ('text', 'character varying', 'jsonb', 'json') "
-        "AND table_name NOT LIKE 'pg_%%' "
-        "ORDER BY table_name, column_name"
+        "SELECT rel.relname AS table_name, att.attname AS column_name, "
+        "       rel.relkind "
+        "FROM pg_attribute att "
+        "JOIN pg_class rel ON rel.oid = att.attrelid "
+        "JOIN pg_namespace ns ON ns.oid = rel.relnamespace "
+        "JOIN pg_type typ ON typ.oid = att.atttypid "
+        "WHERE ns.nspname = 'public' "
+        "  AND rel.relkind IN ('r', 'p', 'm', 'v') "
+        "  AND att.attnum > 0 AND NOT att.attisdropped "
+        "  AND typ.typname IN ('text', 'varchar', 'bpchar', 'jsonb', 'json') "
+        "ORDER BY rel.relname, att.attname"
     )
 
     hits = []

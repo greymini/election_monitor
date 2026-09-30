@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 
@@ -102,6 +103,36 @@ export default function BoothDrawer(
   })
   const card = query.data
 
+  // While the drawer is open the page behind it must not scroll - on either
+  // axis. Locking overflow on <html> is what removes the horizontal page
+  // scrollbar that appeared when the drawer opened and left the sticky header
+  // looking clipped once the page was scrolled right.
+  //
+  // The scrollbar's width is handed back as padding, or the whole page jumps
+  // sideways by its width the moment the drawer opens, and back again when it
+  // closes.
+  useEffect(() => {
+    const root = document.documentElement
+    const previousOverflow = root.style.overflow
+    const previousPadding = root.style.paddingRight
+    const gutter = window.innerWidth - root.clientWidth
+    root.style.overflow = 'hidden'
+    if (gutter > 0) root.style.paddingRight = `${gutter}px`
+    return () => {
+      root.style.overflow = previousOverflow
+      root.style.paddingRight = previousPadding
+    }
+  }, [])
+
+  // Escape closes it. A dialog is expected to, and this one did not.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [onClose])
+
   const TABS: Array<{ key: Tab; label: string }> = [
     { key: 'results', label: t('card.results') },
     { key: 'voters', label: t('card.voters') },
@@ -111,10 +142,33 @@ export default function BoothDrawer(
     { key: 'sources', label: t('card.sources') },
   ]
 
-  return (
-    <div className="fixed inset-0 z-40 flex justify-end" role="dialog" aria-modal="true">
+  return createPortal(
+    // Portalled to <body>, deliberately. `position: fixed` is positioned
+    // against the viewport only while no ancestor establishes a containing
+    // block - any ancestor with a transform, filter or `will-change` silently
+    // turns it into an absolutely positioned child of that ancestor, at which
+    // point `inset-0` means "however big that happens to be" and the panel can
+    // extend the document's scrollable width. Nothing in the tree does that
+    // today; portalling means nothing can start.
+    //
+    // z-index above Leaflet. Leaflet assigns its own z-indexes up to 1000
+    // (panes 200-700, control corners 1000), and those were siblings of this
+    // drawer in the page's root stacking context - so a drawer at z-40 rendered
+    // *underneath* the map it was opened from. `.map-isolate` now contains
+    // them, and this sits above them either way.
+    <div
+      className="fixed inset-0 z-[1200] flex justify-end overflow-hidden"
+      role="dialog"
+      aria-modal="true"
+      aria-label={t('card.heading', { booth: boothUid })}
+      data-testid="booth-drawer"
+    >
       <button className="flex-1 bg-black/25" aria-label={t('common.close')} onClick={onClose} />
-      <div className="w-full max-w-md overflow-auto p-3" style={{ background: 'var(--plane)' }}>
+      <div
+        className="flex w-full min-w-0 max-w-md flex-col overflow-y-auto overflow-x-hidden p-3"
+        style={{ background: 'var(--plane)' }}
+        data-testid="booth-drawer-panel"
+      >
         <div className="mb-2 flex items-start justify-between gap-2">
           <div>
             <h2 className="text-base font-semibold">{boothUid}</h2>
@@ -399,6 +453,7 @@ export default function BoothDrawer(
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }

@@ -325,11 +325,16 @@ export function HealthCell({
         // now, on whitespace and as a last resort mid-token, and there is a
         // copy button because the reason it is on screen at all is for someone
         // to run it.
-        <div className="mt-0.5 flex items-start gap-1">
+        // One line with an ellipsis, not wrapping. Wrapping obeyed the "no
+        // horizontal scrollbar" rule but broke commands mid-token - a path or a
+        // flag split across two lines reads as two different things, and is
+        // worse than a visible truncation. The full command is in the tooltip
+        // and one click from the clipboard.
+        <div className="mt-0.5 flex items-center gap-1">
           <code
-            className="min-w-0 flex-1 whitespace-pre-wrap break-all text-3xs"
+            className="min-w-0 flex-1 truncate text-3xs"
             style={{ color: 'var(--text-muted)' }}
-            title={t('health.runThis')}
+            title={command}
           >
             {command}
           </code>

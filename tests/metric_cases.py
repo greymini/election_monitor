@@ -30,17 +30,33 @@ from typing import Any
 
 from analytics import metrics
 from analytics.metrics import CrosswalkLink, PriorityInputs, Ranking
+from fixtures import giridih
 
-# The Giridih 2024 assembly result, as published. Used where a case should
-# reconcile against a real number rather than round arithmetic.
+# The Giridih 2024 assembly result, from the one fixture source.
+#
+# Imported rather than restated. These constants used to live here as their own
+# copy, and said a different valid-vote total from the one the frontend
+# two fixtures for one constituency, disagreeing, with no test able to notice
+# because both round the margin to the published 1.85%. That was finding N8, and
+# the fix is that there is now one of them: `fixtures/giridih.py`, which
+# `scripts/generate_fixtures.py` also emits the frontend's copy from.
+#
+# `valid_votes` is 207,598, the frontend's figure. Neither value is verified
+# against a document; this is a choice of which unverified number to use
+# consistently, not a determination of which is right, and it must be checked
+# when a Form 20 exists.
 GIRIDIH_2024 = {
-    "jmm": 94_042,
-    "bjp": 90_204,
-    "jlkm": 10_787,
-    "nota": 2_004,
-    "valid_votes": 207_459,
-    "margin_votes": 3_838,
-    "margin_pct": 1.85,
+    "jmm": giridih.PARTY_TOTALS["jmm"],
+    "bjp": giridih.PARTY_TOTALS["bjp"],
+    "jlkm": giridih.PARTY_TOTALS["jlkm"],
+    "nota": giridih.PARTY_TOTALS["nota"],
+    "valid_votes": giridih.VALID_VOTES,
+    "margin_votes": giridih.MARGIN_VOTES,
+    "margin_pct": giridih.ac_totals()["margin_pct"],
+    "electors": giridih.ELECTORS,
+    "turnout_pct": giridih.ac_totals()["turnout_pct"],
+    "jmm_share_pct": giridih.ac_totals()["jmm_share_pct"],
+    "nota_share_pct": giridih.ac_totals()["nota_share_pct"],
 }
 
 
@@ -79,8 +95,11 @@ VOTES_POLLED = [
 TURNOUT_PCT = [
     Case("round arithmetic", (1_000, 2_000), 50.0,
          lambda: metrics.turnout_pct(1_000, 2_000)),
-    Case("Giridih 2024 polled against electors", (207_598, 304_898), 68.09,
-         lambda: metrics.turnout_pct(207_598, 304_898)),
+    Case("Giridih 2024 polled against electors",
+         (giridih.VALID_VOTES + giridih.REJECTED, GIRIDIH_2024["electors"]),
+         GIRIDIH_2024["turnout_pct"],
+         lambda: metrics.turnout_pct(
+             giridih.VALID_VOTES + giridih.REJECTED, GIRIDIH_2024["electors"])),
     # B4: the electors column had no writer, so this was the real case for
     # every booth in the system while the map still offered turnout as a metric.
     Case("unknown electors is NULL, not zero", (1_000, None), None,
@@ -95,14 +114,16 @@ TURNOUT_PCT = [
 # share_pct
 # ---------------------------------------------------------------------------
 
-# 94042 / 207459 = 0.4533043... -> 45.33
-# 2004  / 207459 = 0.0096598... -> 0.97
+# Computed from the shared totals rather than written out, so a change to the
+# fixture cannot leave a stale expectation here. 94,042 / 207,598 = 45.30%.
 SHARE_PCT = [
     Case("JMM share of valid votes including NOTA",
-         (GIRIDIH_2024["jmm"], GIRIDIH_2024["valid_votes"]), 45.33,
+         (GIRIDIH_2024["jmm"], GIRIDIH_2024["valid_votes"]),
+         GIRIDIH_2024["jmm_share_pct"],
          lambda: metrics.share_pct(GIRIDIH_2024["jmm"], GIRIDIH_2024["valid_votes"])),
     Case("NOTA has a share like any other line on the form",
-         (GIRIDIH_2024["nota"], GIRIDIH_2024["valid_votes"]), 0.97,
+         (GIRIDIH_2024["nota"], GIRIDIH_2024["valid_votes"]),
+         GIRIDIH_2024["nota_share_pct"],
          lambda: metrics.share_pct(GIRIDIH_2024["nota"], GIRIDIH_2024["valid_votes"])),
     Case("round arithmetic", (250, 1_000), 25.0,
          lambda: metrics.share_pct(250, 1_000)),
@@ -138,7 +159,7 @@ MARGIN_VOTES = [
              Ranking(None, None, "BJP", 90_204, 3))),
 ]
 
-# 3838 / 207459 = 0.018500... -> 1.85, which is the published figure.
+# 3838 / 207598 = 0.018488... -> 1.85, which is the published figure.
 MARGIN_PCT = [
     Case("Giridih 2024 reconciles to the published 1.85 percent",
          (GIRIDIH_2024["jmm"], GIRIDIH_2024["bjp"], 3, GIRIDIH_2024["valid_votes"]),
@@ -156,11 +177,14 @@ MARGIN_PCT = [
 ]
 
 # D1 in one line. The old views divided by a NOTA-excluding total while showing
-# the NOTA-including one in the same row: 207459 - 2004 = 205455, and
-# 3838 / 205455 = 0.018681 -> 1.87 against the published 1.85. The number was
+# the NOTA-including one in the same row: 207598 - 2004 = 205594, and
+# 3838 / 205594 = 0.018668 -> 1.87 against the published 1.85. The number was
 # wrong by two hundredths of a point, which is small enough to look like
 # rounding and large enough that no row reconciled against itself.
-MARGIN_PCT_WITH_D1_DENOMINATOR = 1.87
+MARGIN_PCT_WITH_D1_DENOMINATOR = round(
+    100.0 * GIRIDIH_2024["margin_votes"]
+    / (GIRIDIH_2024["valid_votes"] - GIRIDIH_2024["nota"]), 2
+)
 
 # ---------------------------------------------------------------------------
 # signed_margin_pct
@@ -189,13 +213,17 @@ SIGNED_MARGIN_PCT = [
     # F1: not zero. Zero is the ramp's neutral midpoint, so a third-party win
     # would render identically to a knife-edge contest between the pair.
     Case("a third party won, so NULL rather than the ramp midpoint",
-         ("JLKM", 80_000, 79_000, 3, 207_459, "JMM", "BJP"), None,
+         ("JLKM", 80_000, 79_000, 3, GIRIDIH_2024["valid_votes"], "JMM", "BJP"),
+         None,
          lambda: metrics.signed_margin_pct(
-             Ranking("JLKM", 80_000, "BJP", 79_000, 3), 207_459, "JMM", "BJP")),
+             Ranking("JLKM", 80_000, "BJP", 79_000, 3),
+             GIRIDIH_2024["valid_votes"], "JMM", "BJP")),
     Case("no winner is NULL",
-         (None, None, 90_204, 3, 207_459, "JMM", "BJP"), None,
+         (None, None, 90_204, 3, GIRIDIH_2024["valid_votes"], "JMM", "BJP"),
+         None,
          lambda: metrics.signed_margin_pct(
-             Ranking(None, None, "BJP", 90_204, 3), 207_459, "JMM", "BJP")),
+             Ranking(None, None, "BJP", 90_204, 3),
+             GIRIDIH_2024["valid_votes"], "JMM", "BJP")),
 ]
 
 # ---------------------------------------------------------------------------

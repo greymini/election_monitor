@@ -247,7 +247,7 @@ export default function MapExplorer({ ac }: Props) {
         </div>
       )}
 
-      <div className="card overflow-hidden px-0 py-0">
+      <div className="card map-isolate overflow-hidden px-0 py-0">
         <div style={{ height: '62vh' }}>
           <MapContainer
             center={CENTRES[ac.acNumber] ?? CENTRES[32]}
@@ -315,14 +315,23 @@ export default function MapExplorer({ ac }: Props) {
             <SequentialLegend max={spec.max} title={t(spec.label)} />
           )}
           {/* The grey entry the audited legend lacked. */}
-          <div className="mt-1 flex items-center gap-1.5 text-3xs"
+          {/* The explanation lines were laid out on one flex row, so on a
+              narrow card they ran past its edge and the second one was cut
+              off entirely. A column of two rows, each wrapping. */}
+          <div className="mt-1 flex flex-col gap-1 text-3xs"
                style={{ color: 'var(--text-muted)' }}>
-            <span className="inline-block h-2.5 w-2.5 rounded-full"
-                  style={{ background: 'var(--text-muted)' }} />
-            {t('map.greyMeans')}
-            <span className="ml-3 inline-block h-2.5 w-2.5 rounded-full border-2 border-dashed"
-                  style={{ borderColor: 'var(--text-muted)' }} />
-            {t('map.hollowMeans')}
+            <span className="flex items-start gap-1.5">
+              <span aria-hidden
+                    className="mt-[0.2rem] inline-block h-2.5 w-2.5 shrink-0 rounded-full"
+                    style={{ background: 'var(--text-muted)' }} />
+              <span className="min-w-0">{t('map.greyMeans')}</span>
+            </span>
+            <span className="flex items-start gap-1.5">
+              <span aria-hidden
+                    className="mt-[0.2rem] inline-block h-2.5 w-2.5 shrink-0 rounded-full border-2 border-dashed"
+                    style={{ borderColor: 'var(--text-muted)' }} />
+              <span className="min-w-0">{t('map.hollowMeans')}</span>
+            </span>
           </div>
         </div>
 

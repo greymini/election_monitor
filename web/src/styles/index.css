@@ -71,6 +71,18 @@
   }
 }
 
+/* Leaflet assigns z-index values of its own - panes from 200 to 700, the four
+   control corners at 1000 - on elements that are its descendants but, without
+   this, participate in the *page's* root stacking context. So the booth drawer
+   at z-40 rendered underneath the map it had just been opened from.
+   `isolation: isolate` gives the map wrapper its own stacking context, so those
+   numbers stay inside it and mean only "above the tiles, below the controls".
+   The drawer also sits above 1000 in its own right; either fix alone would do,
+   and having both means neither has to be remembered. */
+.map-isolate {
+  isolation: isolate;
+}
+
 /* Leaflet needs a concrete height and should not fight the theme. */
 .leaflet-container {
   height: 100%;
