@@ -44,6 +44,22 @@ def _env_list(key: str, default: str = "") -> list[str]:
     return [p.strip() for p in raw.split(",") if p.strip()]
 
 
+# Values .env.example ships as placeholders. A secret equal to any of these is
+# treated as unset - an operator who copies the example file and misses a line
+# must not get a running system (audit E1). Lower-cased for comparison.
+PLACEHOLDER_SECRETS = frozenset({
+    "change-me-64-random-hex",
+    "change-me-strong",
+    "change-me-ro",
+    "change-me",
+    "changeme",
+    "secret",
+    "password",
+    "your-secret-here",
+    "todo",
+})
+
+
 # source_doc.kind values, mirroring the CHECK constraint in
 # db/migrations/0008_ops.sql. Each may have its own storage backend.
 DOC_KINDS = (

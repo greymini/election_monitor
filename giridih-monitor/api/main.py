@@ -16,6 +16,7 @@ from api.routers import admin, auth, data, news, scenario
 from common.config import get_settings
 from common.db import close_pools, query_one
 from common.logging_setup import get_logger, setup_logging
+from common.secrets import check_jwt_secret
 
 log = get_logger(__name__)
 
@@ -29,10 +30,17 @@ BUILD_TIME = datetime.now(UTC).isoformat(timespec="seconds")
 async def lifespan(app: FastAPI):
     setup_logging()
     settings = get_settings()
-    log.info("starting API (auth_mode=%s, analysis model=%s)",
-             settings.auth_mode, settings.model_analysis)
-    if not settings.jwt_secret:
-        log.error("JWT_SECRET is not set - every authenticated request will fail")
+
+    # E1: refuse to start rather than log and carry on. The previous code logged
+    # "every authenticated request will fail", which was wrong in the dangerous
+    # direction - HS256 verification with an empty key succeeds, so an unset
+    # secret was an unauthenticated admin login, not a broken one. Raising here
+    # means uvicorn exits; the module still imports, so the app stays
+    # introspectable.
+    check_jwt_secret(settings.jwt_secret)
+
+    log.info("starting API (auth_mode=%s, chat=%s, analysis model=%s)",
+             settings.auth_mode, settings.chat_enabled, settings.model_analysis)
     yield
     close_pools()
 
