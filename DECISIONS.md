@@ -95,3 +95,38 @@ loader, admin endpoint or hand-written UPDATE would bypass it.
 
 **Would change the answer.** Nothing short of a legal basis for holding rolls off-host. If
 that arrives, the change is deliberate and touches three named places, which is the point.
+
+---
+
+## D-005 · Repo re-rooted at `C:\dev\giridih-monitor`; supersedes D-001
+
+**Why now.** The operator moved the tree to `C:\dev\giridih-monitor` and asked that work
+continue there. The move brought only the *application* subtree: no `.git`, and none of the
+governing documents — no `PROGRESS.md`, `UAT_READINESS.md`, `DECISIONS.md`,
+`CLAUDE_CODE_MASTER_PROMPT.md`, `RUN.md`, HLD, LLD or spec. Working there as delivered would
+have meant losing three commits and the 70-finding audit ledger, and continuing without a
+commit gate.
+
+**Chosen.** `C:\dev\giridih-monitor` is now both the repo root and the application root; the
+two-level split D-001 established is gone. `.git`, `.gitattributes` and the nine governing
+documents were copied in from the old root, and the app subtree's move was committed as 208
+pure renames, so the full history is intact and reachable from the new root.
+
+**What changed concretely.** Tracked paths lose their `giridih-monitor/` prefix:
+`giridih-monitor/analytics/metrics.py` becomes `analytics/metrics.py`. Every command in
+`RUN.md` already ran from the application root, so no command changes — but commands that
+referenced the parent for session documents now find them in the same directory.
+
+**One file was deleted rather than moved.** There were two `.gitignore` files: one at the old
+repo root, one in the app subtree. With a single root there can only be one, and the root
+version is kept because it is the deliberate superset — its own header says it "repeats the
+dangerous patterns so a mistake in one place cannot commit a secret or a voter record". It
+covers everything the app-level file did, with `**/` prefixes, plus `.ruff_cache`, coverage
+output, Playwright artefacts and editor directories. Verified after the move that `.env` is
+still ignored and that `raw/.gitkeep`, `ocr/.gitkeep` and `backups/.gitkeep` are still
+tracked, since those sentinels are what keep the data directories in the tree while their
+contents stay out of it.
+
+**The old path was left in place, untouched and still a valid repo.** It is a backup until the
+operator deletes it. It is also a hazard: two clones of this project now exist and only one is
+being worked on. Nothing has been committed there since `e1b9263`.
