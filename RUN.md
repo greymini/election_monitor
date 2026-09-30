@@ -187,6 +187,9 @@ the default) at 0600 with directories at 0700. The previous default deleted the 
 the extracted page text stayed on disk, which destroyed the auditable original and retained the
 personal data.
 
+The roll load **refuses to run** (exit 3) if the disk scan finds any leftover roll text from a
+host that ran the old code. Clear it first with `python scripts/purge_roll_cache.py --delete`.
+
 Electoral rolls are also refused any remote storage backend. `STORAGE_BACKEND=s3` does not carry
 them with it: a roll load aborts with `RollStorageViolation` rather than uploading names, EPIC
 numbers and addresses to a bucket. After any roll load run the privacy check:

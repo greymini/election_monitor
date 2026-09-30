@@ -105,13 +105,61 @@ this system, treat it as a serious defect and stop using the affected path until
 
 ## Compliance checks
 
-Run periodically and before any external sharing:
+Run after every roll load, and before any external sharing:
 
 ```bash
-pytest tests/test_roll_privacy.py -q     # parsers discard names
-python -m ingest.validate                 # schema has nowhere to put one
+python -m ingest.validate --privacy       # scans disk AND database for EPIC/phone/Aadhaar
+pytest tests/test_privacy_disk.py -q      # proves the roll path writes nothing to disk
+pytest tests/test_roll_privacy.py -q      # proves the parser discards names
 ```
 
-Raw roll PDFs are deleted after parsing unless `RETAIN_RAW_ROLLS=true`. Do not redistribute roll
-extracts. Access is role-scoped: block users see only their block and the caste module is hidden
-from them entirely.
+`--privacy` always exits non-zero on a finding, with or without `--strict`. A privacy finding is
+never advisory.
+
+**The pair of checks this section used to list was not sufficient**, and the audit was right to
+say so. `python -m ingest.validate` inspected `information_schema` column names, and
+`test_roll_privacy.py` exercised the parser functions in isolation — so both passed for the whole
+period during which every page of the electoral roll was sitting under `ocr/` as plaintext JSON.
+The checks above look at file contents and at every text and jsonb column, which is where the
+leak actually was.
+
+### What changed (audit C3, C13)
+
+- `extract_pdf.extract_document` takes `cache=False`, and `parse_roll.scan_pdf` passes it. Roll
+  page text never reaches disk. A test asserts it, so removing the flag fails the suite rather
+  than silently reintroducing the leak.
+- `RETAIN_RAW_ROLLS` now defaults **true**. The old default deleted the source PDF while the
+  cache kept its full text — the system destroyed the auditable original and retained the
+  personal data. The PDF is kept at 0600 under a 0700 directory, which is what LLD §12 describes.
+- Roll PDFs are refused any remote storage backend, whatever `STORAGE_BACKEND` says
+  (`common/storage.assert_local_only`, plus a CHECK constraint in migration 0013).
+- `python -m ingest.parse_roll ... --load` **refuses to run** while the disk scan finds anything,
+  exiting 3. Loading more roll data onto a host that is already leaking is the wrong order.
+
+### If a roll was parsed on this host before the fix
+
+```bash
+python scripts/purge_roll_cache.py            # report what is there; exits 1 on a find
+python scripts/purge_roll_cache.py --delete   # remove it
+python -m ingest.validate --privacy           # confirm clean
+```
+
+The purge never touches `raw/`. Those are the source PDFs; they are the audit trail and are
+expected to contain personal data. The guarantee is that nothing *derived* from them is retained.
+
+### Privacy incident procedure
+
+1. Stop any running load: `docker compose stop worker`.
+2. `python -m ingest.validate --privacy --verbose` to establish scope. The report names the
+   pattern class and the location, never the matched value — do not paste raw data into a ticket.
+3. If the finding is on disk: `python scripts/purge_roll_cache.py --delete`, or
+   `--all` if you would rather re-extract everything than reason about what leaked.
+4. If the finding is in the database: find and delete the offending rows, then establish how they
+   got in. Every free-text write path is supposed to be screened by `common.pii.screen`; a hit in
+   `ground_report` or `review_queue` means a path is unscreened.
+5. Re-run `--privacy` and record the date and outcome here.
+6. Backups taken while the leak existed contain it too. Prune them, or note that they must not be
+   restored to a host with different access controls.
+
+Do not redistribute roll extracts. Access is role-scoped: block users see only their block and
+the caste module is hidden from them entirely.

@@ -149,6 +149,107 @@ def check_no_personal_data() -> list[Check]:
     )]
 
 
+def check_privacy_filesystem() -> list[Check]:
+    """Scan the disk for personal data (audit C3).
+
+    The structural check above inspects `information_schema` column names, which
+    is what the RUNBOOK's compliance section presented as sufficient. It is not:
+    it cannot see file contents, and the leak was entirely on the filesystem.
+    `extract_pdf` wrote every page's complete text to OCR_DIR before any parser
+    ran, and `parse_roll` routed roll PDFs through it, so the full electoral roll
+    sat in plaintext JSON indefinitely while `discard_raw` deleted the source.
+
+    What is scanned: OCR_DIR, the log directory, the system temp directory, and
+    any text sidecar under RAW_DIR. What is not: the PDFs under RAW_DIR
+    themselves. Those are the audit trail and are *expected* to hold personal
+    data; the guarantee is that nothing derived from them is retained.
+    """
+    import tempfile
+    from pathlib import Path
+
+    from common.config import get_settings
+    from common.pii import TEXT_SUFFIXES, scan_file, scan_tree
+
+    settings = get_settings()
+    findings = []
+
+    findings += scan_tree(Path(settings.ocr_dir))
+
+    # Text sidecars under raw/: a .json or .txt next to a source PDF is derived
+    # data, and derived data may not be kept.
+    raw = Path(settings.raw_dir)
+    if raw.exists():
+        for path in sorted(raw.rglob("*")):
+            if path.is_file() and path.suffix.lower() in TEXT_SUFFIXES:
+                findings += scan_file(path)
+
+    # The temp directory, because ocr_tesseract rasterises pages there and a
+    # crashed run can leave them behind.
+    findings += scan_tree(Path(tempfile.gettempdir()) / "giridih-ocr", limit_bytes=2_000_000)
+
+    return [Check(
+        "privacy_filesystem", not findings,
+        "no file under OCR_DIR, RAW_DIR or the temp directory matches an EPIC, mobile "
+        "or Aadhaar pattern" if not findings
+        else f"{len(findings)} location(s) on disk hold personal data. Run "
+             "scripts/purge_roll_cache.py --delete, then re-run this check. The "
+             "matched text is deliberately not shown.",
+        # The describe() form, so the report names the class and never the value.
+        [f.describe() for f in findings],
+    )]
+
+
+def check_privacy_database() -> list[Check]:
+    """Scan every text and jsonb column in the database for personal data.
+
+    The audit was specific about the gap: the structural check "cannot see file
+    contents, review_queue.payload, ground_report.text or news_item.body". The
+    first is covered above; these are the rest. `ground_report.text` is the one
+    unguarded free-text ingress in the system (E5) - 4,000 characters from any
+    authenticated user, stored verbatim and embedded for vector search - and
+    `review_queue.payload` carries parser excerpts that can include roll text.
+
+    Every text and jsonb column is enumerated from the catalogue rather than
+    listed here, so a new column is covered the day it is added rather than the
+    day somebody remembers to add it to this function.
+    """
+    from common.pii import PATTERNS
+
+    columns = query(
+        "SELECT table_name, column_name FROM information_schema.columns "
+        "WHERE table_schema = 'public' "
+        "AND data_type IN ('text', 'character varying', 'jsonb', 'json') "
+        "AND table_name NOT LIKE 'pg_%%' "
+        "ORDER BY table_name, column_name"
+    )
+
+    hits = []
+    for col in columns:
+        table, column = col["table_name"], col["column_name"]
+        for name, pattern in PATTERNS.items():
+            # The regex runs in Postgres so the text never crosses the wire -
+            # pulling every free-text column into Python to scan it would move
+            # the data we are looking for into this process's memory and its
+            # traceback.
+            found = query(
+                f'SELECT COUNT(*) AS n FROM "{table}" '
+                f'WHERE "{column}"::text ~ %s',
+                (pattern.pattern,),
+            )
+            n = (found[0]["n"] if found else 0) or 0
+            if n:
+                hits.append({"table": table, "column": column, "pattern": name, "rows": n})
+
+    return [Check(
+        "privacy_database", not hits,
+        "no text or jsonb column holds an EPIC, mobile or Aadhaar pattern" if not hits
+        else f"{len(hits)} column(s) hold personal data. Find and remove the offending "
+             "rows, then investigate how they got in - every free-text write path is "
+             "supposed to be screened by common.pii.screen.",
+        hits,
+    )]
+
+
 def check_caste_confidence() -> list[Check]:
     rows = query(
         "SELECT COUNT(*) FILTER (WHERE confidence < 0.4) AS weak, COUNT(*) AS total "
@@ -172,6 +273,11 @@ ALL_CHECKS = [
     check_crosswalk_coverage,
     check_roll_continuity,
     check_no_personal_data,
+    # C3: the structural check above only reads column names, which is what the
+    # RUNBOOK presented as sufficient. The leak was on the filesystem, so the
+    # full run includes both scans too.
+    check_privacy_filesystem,
+    check_privacy_database,
     check_caste_confidence,
 ]
 
@@ -186,11 +292,44 @@ def run_all() -> list[Check]:
     return results
 
 
+PRIVACY_CHECKS = (check_no_personal_data, check_privacy_filesystem, check_privacy_database)
+
+
+def run_privacy() -> list[Check]:
+    """Just the compliance checks, for `--privacy`.
+
+    Separate because this is the one thing that must be runnable immediately
+    after a roll load, on its own, without waiting for the result and crosswalk
+    checks - and because RUN.md 4.4 tells the operator to do exactly that.
+    """
+    results: list[Check] = []
+    for fn in PRIVACY_CHECKS:
+        try:
+            results += fn()
+        except Exception as exc:  # noqa: BLE001
+            results.append(Check(fn.__name__, False, f"the check itself failed: {exc}"))
+    return results
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Cross-check the loaded data")
     ap.add_argument("--strict", action="store_true", help="exit non-zero if any check fails")
     ap.add_argument("--verbose", action="store_true", help="print the offending rows")
+    ap.add_argument("--privacy", action="store_true",
+                    help="run only the compliance checks: the filesystem and database "
+                         "scans for EPIC, mobile and Aadhaar patterns. Always exits "
+                         "non-zero on a finding, with or without --strict.")
     args = ap.parse_args(argv)
+
+    if args.privacy:
+        checks = run_privacy()
+        for c in checks:
+            print(f"{'PASS' if c.passed else 'FAIL'}  {c.name}: {c.detail}")
+            if args.verbose or not c.passed:
+                for row in (c.rows or [])[:20]:
+                    print(f"        {row}")
+        # A privacy finding is never advisory.
+        return 0 if all(c.passed for c in checks) else 1
 
     failed: list[Check] = []
     with job_context("ingest.validate") as job:

@@ -55,14 +55,38 @@ def extract_document(
     force: bool = False,
     do_ocr: bool = True,
     max_pages: int | None = None,
+    cache: bool = True,
 ) -> list[PageText]:
-    """Extract every page. Uses the on-disk cache unless force=True."""
+    """Extract every page. Uses the on-disk cache unless force=True.
+
+    `cache=False` keeps every page in memory and writes nothing. Roll parsing
+    passes it, and audit finding C3 is why.
+
+    This function wrote each page's complete extracted text to
+    `OCR_DIR/<stem>-<sha12>/page_NNNN.json` before any parser saw it, and
+    `parse_roll.scan_pdf` routed roll PDFs through it like any other document.
+    So the full electoral roll - every elector's name, EPIC number, father's or
+    husband's name, house number and age - was persisted as plaintext JSON and
+    kept indefinitely. `discard_raw()` then deleted the source PDF, because
+    RETAIN_RAW_ROLLS defaulted false: the system destroyed the auditable
+    original and kept the personal data.
+
+    That contradicted README's "the names, EPIC numbers and addresses are
+    discarded in memory", LLD 12's "no individual voter records anywhere in DB,
+    logs, or LLM prompts", and the DPDP-Act reasoning the whole design rests on.
+    The existing privacy test passed throughout, because it exercised the parser
+    functions in isolation and never touched the cache.
+
+    The cache is a performance convenience for re-parsing a Form 20. It is not
+    worth holding a roll on disk for, so the roll path does without it.
+    """
     import pdfplumber
 
     settings = get_settings()
     digest = sha256_file(pdf_path)
     out_dir = cache_dir(pdf_path, digest)
-    out_dir.mkdir(parents=True, exist_ok=True)
+    if cache:
+        out_dir.mkdir(parents=True, exist_ok=True)
 
     pages: list[PageText] = []
     ocr_needed: list[int] = []
@@ -73,7 +97,7 @@ def extract_document(
         for idx in range(limit):
             page_no = idx + 1
             cached = out_dir / f"page_{page_no:04d}.json"
-            if cached.exists() and not force:
+            if cache and cached.exists() and not force:
                 data = json.loads(cached.read_text(encoding="utf-8"))
                 pages.append(PageText(
                     page_no=data["page_no"], text=data["text"], source=data["source"],
@@ -94,7 +118,9 @@ def extract_document(
                 pt = PageText(page_no=page_no, text=text, source="empty", char_count=len(text))
                 ocr_needed.append(page_no)
             pages.append(pt)
-            cached.write_text(json.dumps(pt.to_dict(), ensure_ascii=False), encoding="utf-8")
+            if cache:
+                cached.write_text(json.dumps(pt.to_dict(), ensure_ascii=False),
+                                  encoding="utf-8")
 
     if ocr_needed and do_ocr:
         log.info("%s: %d/%d page(s) have no text layer - sending to OCR",
@@ -107,8 +133,9 @@ def extract_document(
             r = by_page.get(pt.page_no)
             if r is not None:
                 pages[i] = r
-                (out_dir / f"page_{r.page_no:04d}.json").write_text(
-                    json.dumps(r.to_dict(), ensure_ascii=False), encoding="utf-8")
+                if cache:
+                    (out_dir / f"page_{r.page_no:04d}.json").write_text(
+                        json.dumps(r.to_dict(), ensure_ascii=False), encoding="utf-8")
 
     return pages
 

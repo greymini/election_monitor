@@ -281,10 +281,20 @@ def scan_pdf(pdf_path: Path, supplement: bool = False, force: bool = False) -> l
 
     A single PDF often holds many parts, so pages are grouped by the PS number
     printed in their header, and one RollCounts is produced per station.
+
+    `cache=False` is not optional here and must never be removed. Audit C3: with
+    the cache on, every page's complete text - names, EPIC numbers, relatives'
+    names, house numbers, ages - was written to OCR_DIR as plaintext JSON and
+    kept indefinitely, while discard_raw deleted the source PDF. The system
+    destroyed the evidence and retained the personal data.
+
+    `tests/test_roll_privacy.py` asserts that nothing lands under OCR_DIR when
+    this runs, so removing the flag fails a test rather than silently
+    reintroducing the leak.
     """
     from ingest.extract_pdf import extract_document
 
-    pages = extract_document(pdf_path, force=force)
+    pages = extract_document(pdf_path, force=force, cache=False)
     groups: dict[int | None, list[str]] = {}
     current: int | None = None
     for page in pages:
@@ -393,16 +403,45 @@ def load(results: list[RollCounts], revision_label: str, revision_date: str,
 
 
 def discard_raw(pdf_path: Path) -> None:
-    """Delete the source roll PDF unless RETAIN_RAW_ROLLS is on (LLD 12)."""
+    """Retain the source roll PDF, restricted, unless RETAIN_RAW_ROLLS is off.
+
+    C13, and the other half of C3. The default was to delete the PDF, which -
+    combined with the page cache that kept its full text - meant the system
+    destroyed the only auditable original while retaining the personal data
+    extracted from it. You could not re-parse to verify a count or fix a parser
+    bug, and you could not show a regulator what the source said, but you were
+    still holding the names.
+
+    RETAIN_RAW_ROLLS now defaults true and the file is left at 0600 under a 0700
+    directory, which is what LLD 12 actually describes: "stored in raw/ with
+    filesystem permissions to worker only". Deleting it remains possible for an
+    operator who wants it gone, and is logged.
+    """
     from common.config import get_settings
 
     if get_settings().retain_raw_rolls:
+        _restrict_roll_file(pdf_path)
         return
     try:
         pdf_path.unlink()
-        log.info("deleted raw roll %s (RETAIN_RAW_ROLLS=false)", pdf_path.name)
+        log.warning("deleted raw roll %s (RETAIN_RAW_ROLLS=false). The auditable "
+                    "original is gone; a count cannot be re-verified from source.",
+                    pdf_path.name)
     except OSError as exc:
         log.warning("could not delete %s: %s", pdf_path.name, exc)
+
+
+def _restrict_roll_file(pdf_path: Path) -> None:
+    """0600 on the file, 0700 on its directory. Best effort: os.chmod only
+    toggles the read-only bit on Windows, and the compliance target is the Linux
+    host."""
+    import os
+
+    for path, mode in ((pdf_path, 0o600), (pdf_path.parent, 0o700)):
+        try:
+            os.chmod(path, mode)
+        except (OSError, NotImplementedError) as exc:
+            log.debug("could not restrict %s: %s", path, exc)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -455,6 +494,20 @@ def _run(args, path: Path, provenance: dict, kind: str) -> int:
     if args.dry_run or not args.load:
         log.info("dry run - nothing written. Re-run with --load to write.")
         return 0
+
+    # C3 is closed, but a host that ran the old code still has roll text under
+    # OCR_DIR and it does not expire. Loading more roll data onto a host that is
+    # already leaking is the wrong order of operations, so the load refuses
+    # until the disk is clean.
+    from ingest.validate import check_privacy_filesystem
+
+    for check in check_privacy_filesystem():
+        if not check.passed:
+            log.error("refusing to load: %s", check.detail)
+            for row in (check.rows or [])[:10]:
+                log.error("  %s", row)
+            log.error("Run scripts/purge_roll_cache.py --delete, then retry.")
+            return 3
 
     stats = load(results, args.revision, args.date, args.supplement,
                  election_label=args.election, is_post_sir=args.post_sir,

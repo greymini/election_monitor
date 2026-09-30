@@ -4,12 +4,13 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
 from api.deps import CurrentAC, CurrentUser
 from common.db import execute, query
 from common.logging_setup import get_logger
+from common.pii import PiiRejected, screen
 
 log = get_logger(__name__)
 router = APIRouter(prefix="/acs/{ac_number}", tags=["news"])
@@ -129,6 +130,16 @@ def create_ground_report(body: GroundReport, user: CurrentUser, ac: CurrentAC) -
     Reporters write about places and conditions, not about named individuals;
     the form text is stored as written and is never exposed to raw SQL.
     """
+    # E5: this was the one unguarded free-text ingress in a system whose whole
+    # design is aggregate-only - 4,000 characters from any authenticated user,
+    # stored verbatim and embedded for vector search, with nothing screening it.
+    # The docstring asserted that reporters write about places and conditions
+    # rather than named individuals, which is an assumption, not a control.
+    try:
+        screen(body.text, field="report")
+    except PiiRejected as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from None
+
     execute(
         "INSERT INTO ground_report (ac_id, booth_uid, area_id, reporter_id, text, issues, "
         "sentiment) VALUES (%s, %s, %s, %s, %s, %s, %s)",
