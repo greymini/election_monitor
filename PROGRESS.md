@@ -218,7 +218,7 @@ leaving 12 that this batch closes. Section H adds 9 testing items: 3 fixed, 2 pa
 
 | ID | Severity | What | Status |
 |---|---|---|---|
-| A1 | Critical | Compose pins `pgvector/pgvector:pg16`, which has no PostGIS, so migration 0001 fails and a clean checkout cannot start | **partial** `PENDING` — `docker/Dockerfile.db` builds PostgreSQL 16 from `postgis/postgis:16-3.4` with pgvector added and fails the *build* if any of the four extensions 0001 needs is absent; compose points at it. Written and reviewed but **never built** — no Docker here. Separately, `pgserver` now makes the generated SQL functions runnable without Docker (82 tests, RUN), which is what A1 was blocking. |
+| A1 | Critical | Compose pins `pgvector/pgvector:pg16`, which has no PostGIS, so migration 0001 fails and a clean checkout cannot start | **partial** `1430f7c` — `docker/Dockerfile.db` builds PostgreSQL 16 from `postgis/postgis:16-3.4` with pgvector added and fails the *build* if any of the four extensions 0001 needs is absent; compose points at it. Written and reviewed but **never built** — no Docker here. Separately, `pgserver` now makes the generated SQL functions runnable without Docker (82 tests, RUN), which is what A1 was blocking. |
 | A2 | High | Port 443 published and a certs volume mounted, but nginx has one `listen 80` block and no certbot exists | **open** — deployment, scoped out |
 | A3 | High | Worker mounts volumes at paths absent from the image, so Docker creates them root-owned and every write fails | **open** — needs a live host to verify; deployment |
 | A4 | Medium | No `web/.dockerignore`, so the host's `node_modules` enters the build context | **open** — deployment |
@@ -331,7 +331,7 @@ leaving 12 that this batch closes. Section H adds 9 testing items: 3 fixed, 2 pa
 | H.6 | Roll composition invariants | **open** — **item 5 of this batch** |
 | H.7 | API contract tests for block-role scoping | **open** — **item 7 of this batch** |
 | H.8 | `jellyfish` vs fallback agreement | **fixed** `760a244` |
-| H.9 | Metric parity: `metrics.py` against `0015_metrics.sql` on the same fixtures | **partial** `PENDING` — the Python half, the drift checks (87) and **the SQL functions executed in a real PostgreSQL via `pgserver` (82, RUN)** all pass. What remains is the view level: 93 e2e tests still NOT RUN, because the views need the full schema and so PostGIS. |
+| H.9 | Metric parity: `metrics.py` against `0015_metrics.sql` on the same fixtures | **partial** `1430f7c` — the Python half, the drift checks (87) and **the SQL functions executed in a real PostgreSQL via `pgserver` (82, RUN)** all pass. What remains is the view level: 93 e2e tests still NOT RUN, because the views need the full schema and so PostGIS. |
 
 ### New findings from this batch
 
@@ -401,3 +401,4 @@ Not audit IDs — found while doing the work, recorded so they are not lost.
 | 30 Sep 2026 | `ed0a52a` | **Item 1: metric parity.** The §3.2 formulas now exist once, in `analytics/metric_sql.py`, and the ten views call generated functions instead of restating them — the margin quotient alone had been written out seven times, which is how D1 survived. Parity is three-way: hand-computed == Python == SQL. N3 fixed (`mv_swing_vanished` had no gate at all); N1 and N2 recorded. 587 to 669 tests. |
 | 30 Sep 2026 | `7454a91` | **Repo re-rooted** at `C:\dev\giridih-monitor`; the app subtree moves to the root as 208 pure renames. D-005 supersedes D-001. |
 | 30 Sep 2026 | `32a96f0` | **N1 and N2 closed.** A missing crosswalk link now means "cannot compare" in Python too and cannot be omitted (`TypeError`); `mv_ac_summary` ranks candidates on the booth view's `contestant` key instead of bucketing independents into one party row. 669 to 677 tests. |
+| 30 Sep 2026 | `1430f7c` | **Item 2: A1 and the first real SQL run.** `docker/Dockerfile.db` gives PostGIS + pgvector and fails the build if any of 0001's four extensions is missing (written, **never built** - no Docker). `pgserver` made the generated metric functions executable without Docker: **82 tests RUN and passing** against a real PostgreSQL 16 - the item 1 SQL had never run before this. The 93 e2e view tests and the DB privacy scan stay NOT RUN; they need the full schema, so PostGIS. N4 recorded. 677 to 759 tests. |
