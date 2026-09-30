@@ -46,8 +46,14 @@ interface ElectionRow {
   runner_party: string | null
   runner_votes: number | null
   margin_votes: number | null
+  /** From metric_margin_pct on the server. Not derived here: the formula is
+   *  defined once, in analytics/metric_sql.py. */
+  margin_pct: number | null
+  /** From metric_turnout_pct on the server, for the same reason. */
+  turnout_pct: number | null
   has_results?: boolean
   source_doc?: string | null
+  source_page?: number | null
 }
 
 interface Summary {
@@ -176,11 +182,27 @@ export default function Overview({ ac }: { ac: AcState }) {
           }
           sub={
             <>
+              {/* Item 4. This read "JMM / BJP · VS-2024": the pair, but not
+                  who won, by how much, or over whom. The margin percentage
+                  comes from the API, which computes it with the canonical
+                  metric_margin_pct - deriving it here from margin_votes and a
+                  total would be a fourth copy of that formula. */}
               {baselineRow?.winner_party
-                ? `${baselineRow.winner_party} / ${baselineRow.runner_party ?? '—'} · ${baselineRow.label}`
+                ? t('overview.marginSentence', {
+                    winner: baselineRow.winner_party,
+                    votes: num(baselineRow.margin_votes),
+                    pct: baselineRow.margin_pct == null
+                      ? '—'
+                      : pct(baselineRow.margin_pct, 2),
+                    runner: baselineRow.runner_party ?? t('common.noRunnerUp'),
+                    election: baselineRow.label,
+                  })
                 : t('overview.noResultsYet')}
               <span className="ml-1.5">
-                <SourceLink doc={baselineRow?.source_doc} page={null} />
+                <SourceLink
+                  doc={baselineRow?.source_doc}
+                  page={baselineRow?.source_page ?? null}
+                />
               </span>
             </>
           }
@@ -204,11 +226,10 @@ export default function Overview({ ac }: { ac: AcState }) {
           label={t('common.turnout')}
           value={
             <Value
-              value={
-                baselineRow?.electors && baselineRow?.votes
-                  ? Math.round((1000 * baselineRow.votes) / baselineRow.electors) / 10
-                  : null
-              }
+              // Was computed here as votes/electors, from a vote count that
+              // excluded NOTA - so it disagreed with METRICS.md and with the
+              // booth table. The server returns metric_turnout_pct now.
+              value={baselineRow?.turnout_pct ?? null}
               reason={t('overview.noRollLinked')}
               render={(v) => pct(v)}
             />
@@ -221,10 +242,17 @@ export default function Overview({ ac }: { ac: AcState }) {
             <Value
               value={data.bypoll.days_to_deadline}
               reason={data.bypoll.note}
-              render={(v) => `${num(v)} ${t('overview.daysLeft')}`}
+              // Item 1. This was `${num(v)} ${t('overview.daysLeft')}`, and the
+              // key is "{{count}} days left" - so it rendered
+              // "157 {{count}} days left". `count` drives i18next's plural
+              // selection and `formatted` carries the Indian-grouped digits,
+              // because interpolation will not apply num() for us.
+              render={(v) => t('overview.daysLeft', { count: v, formatted: num(v) })}
             />
           }
-          sub={data.bypoll.deadline ? dateShort(data.bypoll.deadline) : data.bypoll.note}
+          sub={data.bypoll.deadline
+            ? dateShort(data.bypoll.deadline, i18n.language)
+            : data.bypoll.note}
         />
       </div>
 

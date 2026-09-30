@@ -1,4 +1,7 @@
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+
+import { isFixtureMode } from '../lib/api'
 
 /**
  * How a number says where it came from, and how a blank says why.
@@ -59,7 +62,22 @@ export function Value<T>({
   return <>{render(value)}</>
 }
 
-/** Source document and page for a loaded figure, as a link into the PDF. */
+/**
+ * Source document and page for a loaded figure, as a link into the PDF.
+ *
+ * Three states, and the two that are not "a real page" used to be rendered as
+ * if they were:
+ *
+ *   * **No document.** A dash with a reason, as everywhere else.
+ *   * **A document but no page.** This rendered `p?` and still linked into the
+ *     PDF. `p?` is not a page number, it is the absence of one dressed as a
+ *     value, and the link invited a reader to go and check a page that was
+ *     never recorded. Now a dash with a tooltip naming the document, and no
+ *     link - there is nothing specific to open.
+ *   * **Fixture data.** In fixture mode the "document" is invented, so a link
+ *     to `/raw/...` is a 404 at best and, worse, presents made-up provenance as
+ *     real. Labelled as a fixture instead, and not a link.
+ */
 export function SourceLink({
   doc,
   page,
@@ -73,10 +91,38 @@ export function SourceLink({
   if (!doc) {
     return <Missing reason={t('prov.noSource')} />
   }
+
+  // Fixtures are not evidence. Say so rather than linking to a file that either
+  // does not exist or, on a machine that happens to have a real raw/ tree,
+  // is not where this number came from.
+  if (isFixtureMode()) {
+    return (
+      <span
+        className="text-2xs"
+        style={{ color: 'var(--text-muted)' }}
+        title={t('prov.fixtureSource', { doc })}
+      >
+        {t('prov.fixtureLabel')}
+      </span>
+    )
+  }
+
+  if (!page) {
+    return (
+      <span
+        className="text-2xs"
+        style={{ color: 'var(--text-muted)' }}
+        title={t('prov.pageUnknown', { doc })}
+      >
+        —
+      </span>
+    )
+  }
+
   // The raw/ tree is served read-only by nginx at /raw. #page= is honoured by
   // every embedded PDF viewer, so a figure is one click from the page it was
   // read off.
-  const href = `/raw/${doc}${page ? `#page=${page}` : ''}`
+  const href = `/raw/${doc}#page=${page}`
   return (
     <a
       className="text-2xs underline decoration-dotted"
@@ -84,9 +130,9 @@ export function SourceLink({
       href={href}
       target="_blank"
       rel="noreferrer"
-      title={t('prov.openSource', { doc, page: page ?? '?' })}
+      title={t('prov.openSource', { doc, page })}
     >
-      {compact ? `p${page ?? '?'}` : `${doc} p${page ?? '?'}`}
+      {compact ? `p${page}` : `${doc} p${page}`}
     </a>
   )
 }
@@ -201,6 +247,45 @@ export function FixtureBanner({ note }: { note?: string | null }) {
 }
 
 /**
+ * Copy a shell command to the clipboard.
+ *
+ * The commands in the data-health strip exist so an operator can run them, and
+ * retyping `python -m ingest.load_form20 --ac 32 --doc ...` from a wrapped
+ * code block is where typos come from. Falls back to selecting the text when
+ * the Clipboard API is unavailable, which is any page not served over HTTPS or
+ * localhost - including, quite possibly, the one this is deployed on.
+ */
+export function CopyButton({ value }: { value: string }) {
+  const { t } = useTranslation()
+  const [copied, setCopied] = useState(false)
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(value)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1500)
+    } catch {
+      // No clipboard permission. Say nothing rather than claiming success:
+      // a button that reports "copied" over an empty clipboard is worse than
+      // one that visibly does nothing.
+      setCopied(false)
+    }
+  }
+
+  return (
+    <button
+      className="btn shrink-0 px-1 py-0 text-3xs"
+      onClick={() => void copy()}
+      aria-label={t('common.copyCommand')}
+      title={copied ? t('common.copied') : t('common.copyCommand')}
+    >
+      {copied ? '✔' : '⧉'}
+    </button>
+  )
+}
+
+
+/**
  * One cell of the data-health strip: whether a dataset is loaded, partial or
  * missing, and the command that fills it.
  */
@@ -234,13 +319,22 @@ export function HealthCell({
         {detail ?? t(`health.${state}`)}
       </div>
       {state !== 'loaded' && command && (
-        <code
-          className="mt-0.5 block overflow-x-auto whitespace-nowrap text-3xs"
-          style={{ color: 'var(--text-muted)' }}
-          title={t('health.runThis')}
-        >
-          {command}
-        </code>
+        // Item 5: this was `overflow-x-auto whitespace-nowrap`, which put a
+        // horizontal scrollbar inside a card in a grid - the one place a
+        // scrollbar is least expected and hardest to reach. The command wraps
+        // now, on whitespace and as a last resort mid-token, and there is a
+        // copy button because the reason it is on screen at all is for someone
+        // to run it.
+        <div className="mt-0.5 flex items-start gap-1">
+          <code
+            className="min-w-0 flex-1 whitespace-pre-wrap break-all text-3xs"
+            style={{ color: 'var(--text-muted)' }}
+            title={t('health.runThis')}
+          >
+            {command}
+          </code>
+          <CopyButton value={command} />
+        </div>
       )}
     </div>
   )

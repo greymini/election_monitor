@@ -1,17 +1,20 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { CircleMarker, MapContainer, TileLayer, Tooltip as LeafletTooltip } from 'react-leaflet'
+import { CircleMarker, MapContainer, Tooltip as LeafletTooltip } from 'react-leaflet'
+import type { LatLngTuple } from 'leaflet'
 
+import BaseTiles from '../components/BaseTiles'
 import BoothDrawer from '../components/BoothDrawer'
 import DivergingLegend from '../components/DivergingLegend'
+import FitBounds from '../components/FitBounds'
 import SequentialLegend from '../components/SequentialLegend'
 import { FixtureBanner } from '../components/Provenance'
 import { ErrorState, Loading } from '../components/States'
 import type { AcState } from '../lib/ac'
 import { api } from '../lib/api'
 import { num, pct } from '../lib/format'
-import { divergingColor, sequentialColor } from '../lib/tokens'
+import { divergingPartyColor, sequentialColor } from '../lib/tokens'
 
 import 'leaflet/dist/leaflet.css'
 
@@ -40,6 +43,25 @@ import 'leaflet/dist/leaflet.css'
  * asserted "marker size is the electorate". Size now comes from real electors,
  * and a booth whose electorate is unknown is drawn as a hollow ring rather than
  * silently sized as if it were small.
+ *
+ * And the four from the hardening brief:
+ *
+ * **Base tiles (10).** The CARTO URL is gone; `lib/tiles.ts` reads the source
+ * from the environment and defaults to OpenStreetMap. Tile failure now degrades
+ * to a notice over a plain background instead of a blank page - the booth data
+ * is the point of this screen and none of it depends on the basemap.
+ *
+ * **Party-coloured ramp (11).** `divergingPartyColor` ends on the contest
+ * pair's own colours, the same ones the legend chips use, so marker and legend
+ * agree by construction and every AC gets its own pair rather than JMM/BJP's.
+ *
+ * **fitBounds (12).** The view followed a hardcoded per-AC centre at a fixed
+ * zoom, so filtering to one block left its booths off screen. It now fits the
+ * markers on load and on every filter change, and handles zero and one marker
+ * without throwing.
+ *
+ * **Filter labels (14).** "All" and "Block" were concatenated into "All Block".
+ * Each label is one key now, in both languages.
  */
 
 interface Props {
@@ -95,6 +117,8 @@ export default function MapExplorer({ ac }: Props) {
   const [blockId, setBlockId] = useState<string>('')
   const [areaId, setAreaId] = useState<string>('')
   const [selected, setSelected] = useState<string | null>(null)
+  const [tilesFailed, setTilesFailed] = useState(false)
+  const [tileNoticeDismissed, setTileNoticeDismissed] = useState(false)
 
   const meta = useQuery<{
     blocks: Array<{ block_id: number; name_en: string; name_hi: string }>
@@ -133,10 +157,21 @@ export default function MapExplorer({ ac }: Props) {
     if (typeof value !== 'number') return 'var(--text-muted)'
     return spec.diverging
       // F1: the value is already signed by the contest pair, so both arms of
-      // the ramp are reachable and mean what the legend says.
-      ? divergingColor(value, spec.max)
+      // the ramp are reachable and mean what the legend says. Item 11: the arms
+      // end on that pair's own party colours, matching the legend chips.
+      ? divergingPartyColor(
+          value, spec.max,
+          contest?.party_b ?? 'BJP', contest?.party_a ?? 'JMM',
+        )
       : sequentialColor(value, spec.max)
   }
+
+  /** Marker coordinates, for fitBounds. GeoJSON is [lon, lat]; Leaflet wants
+   *  [lat, lon], and getting that backwards puts Giridih in the Indian Ocean. */
+  const points = useMemo<LatLngTuple[]>(
+    () => placed.map((f) => [f.geometry!.coordinates[1], f.geometry!.coordinates[0]]),
+    [placed],
+  )
 
   const areasForBlock = useMemo(
     () => (meta.data?.areas ?? []).filter((a) => !blockId || String(a.block_id) === blockId),
@@ -176,7 +211,7 @@ export default function MapExplorer({ ac }: Props) {
           <select className="select text-2xs" value={blockId}
                   onChange={(e) => { setBlockId(e.target.value); setAreaId('') }}
                   aria-label={t('common.block')}>
-            <option value="">{t('common.all')} {t('common.block')}</option>
+            <option value="">{t('common.allBlocks')}</option>
             {(meta.data?.blocks ?? []).map((b) => (
               <option key={b.block_id} value={b.block_id}>
                 {hi ? b.name_hi : b.name_en}
@@ -186,7 +221,7 @@ export default function MapExplorer({ ac }: Props) {
           <select className="select text-2xs" value={areaId}
                   onChange={(e) => setAreaId(e.target.value)}
                   aria-label={t('common.area')}>
-            <option value="">{t('common.all')} {t('common.area')}</option>
+            <option value="">{t('common.allAreas')}</option>
             {areasForBlock.map((a) => (
               <option key={a.area_id} value={a.area_id}>
                 {hi ? a.name_hi : a.name_en}
@@ -196,6 +231,22 @@ export default function MapExplorer({ ac }: Props) {
         </div>
       </div>
 
+      {tilesFailed && !tileNoticeDismissed && (
+        <div
+          className="card flex items-start justify-between gap-3 px-3 py-2 text-2xs"
+          role="status"
+          style={{ color: 'var(--text-secondary)' }}
+        >
+          <span>{t('map.tilesUnavailable')}</span>
+          <button
+            className="btn px-2 py-0.5 text-3xs"
+            onClick={() => setTileNoticeDismissed(true)}
+          >
+            {t('common.dismiss')}
+          </button>
+        </div>
+      )}
+
       <div className="card overflow-hidden px-0 py-0">
         <div style={{ height: '62vh' }}>
           <MapContainer
@@ -204,10 +255,8 @@ export default function MapExplorer({ ac }: Props) {
             style={{ height: '100%', width: '100%' }}
             scrollWheelZoom
           >
-            <TileLayer
-              attribution='&copy; OpenStreetMap, &copy; CARTO'
-              url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
-            />
+            <BaseTiles onFailure={() => setTilesFailed(true)} />
+            <FitBounds points={points} />
             {placed.map((f) => {
               const p = f.properties
               const value = p[metric]
@@ -281,13 +330,15 @@ export default function MapExplorer({ ac }: Props) {
           <li>{t('map.sizeNote')}</li>
           {query.data && query.data.meta.ungeocoded > 0 && (
             <li>
-              {t('map.ungeocoded', { n: query.data.meta.ungeocoded })}
+              {t('map.ungeocoded', { count: query.data.meta.ungeocoded })}
               {' '}
-              <code>python -m ingest.geocode --ac {ac.acNumber}</code>
+              <code className="whitespace-pre-wrap break-all">
+                python -m ingest.geocode --ac {ac.acNumber}
+              </code>
             </li>
           )}
           {nullCount > 0 && (
-            <li>{t('map.nullCount', { n: nullCount, metric: t(spec.label) })}</li>
+            <li>{t('map.nullCount', { count: nullCount, metric: t(spec.label) })}</li>
           )}
           {query.data && query.data.meta.electors_known < query.data.meta.count && (
             <li>

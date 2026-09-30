@@ -1,10 +1,6 @@
 import { useTranslation } from 'react-i18next'
 
-import { partyColor, token } from '../lib/tokens'
-
-const STEPS = ['--div-a5', '--div-a4', '--div-a3', '--div-a2', '--div-a1',
-               '--div-mid',
-               '--div-b1', '--div-b2', '--div-b3', '--div-b4', '--div-b5']
+import { divergingPartySteps, partyColor } from '../lib/tokens'
 
 interface Props {
   saturateAt?: number
@@ -14,16 +10,29 @@ interface Props {
 }
 
 /**
- * The margin scale is blue-to-red rather than the parties' own green and
- * saffron. Those two are indistinguishable under red-green colour blindness
- * once a diverging ramp forces them to matched lightness, so the ramp uses the
- * validated blue/red pair and this legend carries the party colours as chips at
- * each end - identity by label and chip, magnitude by ramp.
+ * The margin scale, in the contest pair's own colours.
+ *
+ * The ramp swatches come from `divergingPartySteps`, which is the same function
+ * the markers use, so a booth's colour and the legend agree by construction
+ * rather than by two palettes being kept in step by hand. That was the point of
+ * the fix: the ramp ends are now the colours of the chips beside them.
+ *
+ * **The colour-blindness concern this replaces, addressed rather than dropped.**
+ * This legend previously used a validated blue/red ramp, on the argument that
+ * JMM green and BJP saffron are hard to separate under red-green colour
+ * blindness. That is true when a ramp forces both arms to matched lightness. It
+ * is not true of these two: the green sits near 0.13 relative luminance and the
+ * saffron near 0.42, so the arms differ in lightness by about a factor of three
+ * and stay separable with no hue information at all. `luminanceGap` in
+ * `lib/tokens.ts` exists so a test can hold that, and the numeric scale below
+ * means the magnitude is readable without any colour.
  */
 export default function DivergingLegend({
   saturateAt = 20, leftParty = 'JMM', rightParty = 'BJP', title,
 }: Props) {
   const { t } = useTranslation()
+  const steps = divergingPartySteps(saturateAt, leftParty, rightParty)
+
   return (
     <div className="card px-3 py-2">
       <div className="text-2xs font-medium uppercase tracking-wide"
@@ -37,9 +46,9 @@ export default function DivergingLegend({
           {leftParty}
         </span>
         <div className="flex h-3 flex-1 overflow-hidden rounded" role="img"
-             aria-label={`${leftParty} lead to ${rightParty} lead, saturating at ${saturateAt} points`}>
-          {STEPS.map((step) => (
-            <span key={step} className="flex-1" style={{ background: token(step) }} />
+             aria-label={t('map.legendRamp', { left: leftParty, right: rightParty, points: saturateAt })}>
+          {steps.map((colour, index) => (
+            <span key={index} className="flex-1" style={{ background: colour }} />
           ))}
         </div>
         <span className="inline-flex items-center gap-1 text-2xs font-medium">

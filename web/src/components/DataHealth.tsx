@@ -68,7 +68,7 @@ export default function DataHealthStrip({
       label: t('health.form20'),
       state: state(health.elections_with_results > 0, health.elections_with_results < 2),
       detail: health.elections_with_results > 0
-        ? t('health.electionsLoaded', { n: health.elections_with_results })
+        ? t('health.electionsLoaded', { count: health.elections_with_results })
         : null,
       command: `python -m ingest.parse_form20 <pdf> --election VS-2024 --load`,
     },
@@ -136,7 +136,7 @@ export default function DataHealthStrip({
         <span className="text-2xs" style={{ color: 'var(--text-muted)' }}>
           {missing === 0
             ? t('health.allLoaded')
-            : t('health.someMissing', { n: missing })}
+            : t('health.someMissing', { count: missing })}
         </span>
       </div>
 
@@ -154,7 +154,7 @@ export default function DataHealthStrip({
 
       {health.open_reviews > 0 && (
         <p className="mt-2 text-2xs" style={{ color: 'var(--status-warn, var(--text-muted))' }}>
-          {t('health.openReviews', { n: health.open_reviews })}
+          {t('health.openReviews', { count: health.open_reviews })}
         </p>
       )}
 

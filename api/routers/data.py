@@ -60,9 +60,16 @@ def summary(user: CurrentUser, ac: CurrentAC) -> dict:
         "WITH totals AS ("
         "  SELECT e.election_id, e.label, e.type, e.year, e.is_baseline,"
         "         COUNT(DISTINCT w.booth_uid) AS booths,"
-        "         SUM(w.votes_counted) AS votes,"
+        # `votes_counted` and `total_valid` are pre-0015 column names and do
+        # not exist on the rebuilt view, so this endpoint raised
+        # UndefinedColumn - a live 500 on the first page every user sees.
+        # Nothing caught it because no test had ever executed a query
+        # against a real schema. `votes_polled` is the right numerator for
+        # turnout (valid + rejected, METRICS.md) where `votes_counted`
+        # excluded NOTA and understated it.
+        "         SUM(w.votes_polled) AS votes,"
         "         SUM(w.electors) AS electors,"
-        "         SUM(w.total_valid) AS total_valid,"
+        "         SUM(w.valid_votes) AS total_valid,"
         "         SUM(w.nota) AS nota,"
         "         SUM(w.jmm) AS jmm, SUM(w.bjp) AS bjp, SUM(w.ajsu) AS ajsu,"
         "         SUM(w.jlkm) AS jlkm, SUM(w.inc) AS inc, SUM(w.rjd) AS rjd,"
@@ -73,7 +80,8 @@ def summary(user: CurrentUser, ac: CurrentAC) -> dict:
         "  GROUP BY e.election_id, e.label, e.type, e.year, e.is_baseline"
         "), ranked AS ("
         "  SELECT t.*, r.abbr, r.votes,"
-        "         ROW_NUMBER() OVER (PARTITION BY t.election_id ORDER BY r.votes DESC) AS rn"
+        "         ROW_NUMBER() OVER (PARTITION BY t.election_id ORDER BY r.votes DESC) AS rn,"
+        "         COUNT(*) OVER (PARTITION BY t.election_id) AS contestants"
         "  FROM totals t"
         # NOTA is excluded: it is not a candidate and can never win or be
         # runner-up (METRICS.md, margin_votes).
@@ -87,7 +95,15 @@ def summary(user: CurrentUser, ac: CurrentAC) -> dict:
         "       t.total_valid, t.nota,"
         "       win.abbr AS winner_party, win.votes AS winner_votes,"
         "       run.abbr AS runner_party, run.votes AS runner_votes,"
-        "       (win.votes - run.votes)::INT AS margin_votes "
+        # Through the generated functions, not a hand-written subtraction:
+        # the fewer-than-two rule and the NOTA-inclusive denominator are
+        # defined once, in analytics/metric_sql.py. Writing the quotient
+        # out here again is how D1 happened.
+        "       metric_margin_votes(win.votes, run.votes, win.contestants)::INT"
+        "           AS margin_votes,"
+        "       metric_margin_pct(win.votes, run.votes, win.contestants,"
+        "                         t.total_valid) AS margin_pct,"
+        "       metric_turnout_pct(t.votes, t.electors) AS turnout_pct "
         "FROM totals t "
         "LEFT JOIN ranked win ON win.election_id = t.election_id AND win.rn = 1 "
         "LEFT JOIN ranked run ON run.election_id = t.election_id AND run.rn = 2 "
@@ -96,7 +112,7 @@ def summary(user: CurrentUser, ac: CurrentAC) -> dict:
     )
     baseline = query_one(
         "SELECT e.label, SUM(w.jmm) AS jmm, SUM(w.bjp) AS bjp, SUM(w.jlkm) AS jlkm, "
-        "SUM(w.nota) AS nota, SUM(w.electors) AS electors, SUM(w.votes_counted) AS votes "
+        "SUM(w.nota) AS nota, SUM(w.electors) AS electors, SUM(w.votes_polled) AS votes "
         "FROM mv_result_booth_wide w JOIN election e ON e.election_id = w.election_id "
         "WHERE e.is_baseline AND e.ac_id = %s GROUP BY e.label",
         (ac.ac_id,),

@@ -221,7 +221,7 @@ export default function CasteScatter({ ac }: { ac: AcState }) {
           </p>
           {points.length !== usable.length && (
             <p className="text-2xs" style={{ color: 'var(--status-warn, var(--text-muted))' }}>
-              {t('casteScatter.excluded', { n: points.length - usable.length })}
+              {t('casteScatter.excluded', { count: points.length - usable.length })}
             </p>
           )}
         </section>

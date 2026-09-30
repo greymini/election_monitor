@@ -2,7 +2,8 @@
   "app": {
     "title": "Giridih AC-32 Election Monitor",
     "short": "Giridih Monitor",
-    "constituency": "Giridih Assembly (AC-32)"
+    "constituency": "Giridih Assembly (AC-32)",
+    "platform": "Election Monitor"
   },
   "nav": {
     "overview": "Overview",
@@ -20,7 +21,13 @@
     "booths": "Booths",
     "casteScatter": "Caste × vote",
     "candidates": "Candidates",
-    "localPolitics": "Local politics"
+    "localPolitics": "Local politics",
+    "label": "Main navigation",
+    "groupResults": "Results",
+    "groupVoters": "Voters & community",
+    "groupPolitics": "Politics & news",
+    "groupAnalysis": "Analysis",
+    "groupAdmin": "Admin"
   },
   "common": {
     "loading": "Loading…",
@@ -50,12 +57,17 @@
     "source": "Source",
     "confidence": "Confidence",
     "estimate": "Estimate",
-    "baseline": "baseline"
+    "baseline": "baseline",
+    "allBlocks": "All blocks",
+    "allAreas": "All panchayats and wards",
+    "dismiss": "Dismiss",
+    "copyCommand": "Copy command",
+    "copied": "Copied",
+    "noRunnerUp": "no runner-up"
   },
   "overview": {
     "heading": "Constituency overview",
     "bypollIn": "By-election deadline",
-    "daysLeft": "{{count}} days left",
     "marginTrend": "Winning margin (assembly)",
     "electorTrend": "Electors and turnout",
     "dataHealth": "Data health",
@@ -71,14 +83,16 @@
     "noBoothsLoaded": "No booths are loaded for this election.",
     "publishedFallback": "Published figures from public reporting — no Form 20 is loaded, so re-verify before use",
     "fromLoaded": "From loaded Form 20 data",
-    "reviewNote": "Every figure here should be checked against its source page before it is used in a decision."
+    "reviewNote": "Every figure here should be checked against its source page before it is used in a decision.",
+    "daysLeft_one": "{{formatted}} day left",
+    "daysLeft_other": "{{formatted}} days left",
+    "marginSentence": "{{winner}} won by {{votes}} ({{pct}}) over {{runner}} · {{election}}"
   },
   "map": {
     "heading": "Booth map",
     "legendMargin": "Winning margin",
     "jmmLead": "JMM lead",
     "bjpLead": "BJP lead",
-    "ungeocoded": "{{n}} booth(s) have no location and are not drawn. Place them with:",
     "clickBooth": "Click a booth for its card",
     "signedMargin": "Margin, signed by winner",
     "margin": "Margin",
@@ -89,11 +103,16 @@
     "notLoaded": "not loaded",
     "noValue": "not available",
     "electorsUnknown": "unknown",
-    "greyMeans": "grey: no value for this metric, or neither contest party won",
+    "greyMeans": "grey: no data for this metric, or neither contest party won",
     "hollowMeans": "hollow: electorate unknown, so the size means nothing",
     "sizeNote": "Marker size is the electorate, from the linked roll snapshot.",
-    "nullCount": "{{n}} booth(s) have no {{metric}} and are grey.",
-    "electorsPartial": "{{known}} of {{total}} booths know their electorate; the rest are drawn hollow."
+    "electorsPartial": "{{known}} of {{total}} booths know their electorate; the rest are drawn hollow.",
+    "tilesUnavailable": "Base map unavailable — booth data is still shown.",
+    "legendRamp": "{{left}} lead through to {{right}} lead, saturating at {{points}} points",
+    "ungeocoded_one": "{{count}} booth has no location and is not drawn. Place it with:",
+    "ungeocoded_other": "{{count}} booths have no location and are not drawn. Place them with:",
+    "nullCount_one": "{{count}} booth has no {{metric}} and is grey.",
+    "nullCount_other": "{{count}} booths have no {{metric}} and are grey."
   },
   "results": {
     "heading": "Booth-wise results",
@@ -170,7 +189,10 @@
     "confidence": "Confidence",
     "noConfidence": "No confidence score recorded",
     "belowFloor": "Below the {{floor}} confidence floor - too weak to act on",
-    "confidenceBand": "Confidence: {{band}}"
+    "confidenceBand": "Confidence: {{band}}",
+    "pageUnknown": "Read from {{doc}}, but the page was not recorded.",
+    "fixtureLabel": "fixture",
+    "fixtureSource": "Fixture data. {{doc}} is an example, not a loaded document."
   },
   "health": {
     "heading": "Data health",
@@ -188,14 +210,17 @@
     "local": "Local election results",
     "reviews": "Open review items",
     "rows": "{{n}} rows",
-    "electionsLoaded": "{{n}} election(s)",
     "weakCrosswalks": "{{n}} weak, unreviewed",
     "latestRoll": "latest {{date}}",
     "geocoded": "{{done}} of {{total}} placed",
     "allLoaded": "everything loaded",
-    "someMissing": "{{n}} dataset(s) not loaded",
-    "openReviews": "{{n}} open review item(s) - clear these before trusting a multi-year comparison",
-    "note": "A count of zero reads as not loaded, not as a measured zero. Run the command shown to fill a gap."
+    "note": "A count of zero reads as not loaded, not as a measured zero. Run the command shown to fill a gap.",
+    "electionsLoaded_one": "{{count}} election",
+    "electionsLoaded_other": "{{count}} elections",
+    "someMissing_one": "{{count}} dataset not loaded",
+    "someMissing_other": "{{count}} datasets not loaded",
+    "openReviews_one": "{{count}} open review item — clear it before trusting a multi-year comparison",
+    "openReviews_other": "{{count}} open review items — clear these before trusting a multi-year comparison"
   },
   "booths": {
     "heading": "Booth table",
@@ -269,7 +294,8 @@
     "howToRead": "How to read this",
     "fit": "Least squares over {{n}} usable booths: slope {{slope}}, r = {{r}}. A weak r means the relationship barely exists in this data.",
     "noFit": "Too few usable booths to fit a line. Four is the minimum; a line through fewer is decoration.",
-    "excluded": "{{n}} booth(s) are drawn hollow and excluded from the fit: their community estimate is below the 0.4 confidence floor."
+    "excluded_one": "{{count}} booth is drawn hollow and excluded from the fit: its community estimate is below the 0.4 confidence floor.",
+    "excluded_other": "{{count}} booths are drawn hollow and excluded from the fit: their community estimates are below the 0.4 confidence floor."
   },
   "card": {
     "results": "Results",
@@ -290,5 +316,12 @@
     "noPriority": "No priority score: every input is missing for this booth.",
     "newsPending": "Area-tagged news for this booth arrives with the news layer (Track B).",
     "groundPending": "Ground reports arrive with the field form (Track B)."
+  },
+  "theme": {
+    "system": "system",
+    "light": "light",
+    "dark": "dark",
+    "current": "Theme: {{mode}}",
+    "switchTo": "Switch to {{mode}} theme"
   }
 }

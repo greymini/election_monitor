@@ -150,8 +150,15 @@ function summaryFor(acNumber: number) {
           winner_party: 'JMM', winner_votes: 94042,
           runner_party: 'BJP', runner_votes: 90204,
           margin_votes: 3838,
+          // 3838 / 207598 = 1.8488% -> 1.85, the published figure. Present so
+          // the margin card can state the percentage; without it the sentence
+          // renders an em dash where the number should be.
+          margin_pct: 1.85,
+          // 207598 / 304898 = 68.087% -> 68.09.
+          turnout_pct: 68.09,
           has_results: true,
           source_doc: SOURCE_DOC,
+          source_page: 1,
         },
         {
           label: 'VS-2019', type: 'VS', year: 2019, is_baseline: false,
@@ -159,8 +166,18 @@ function summaryFor(acNumber: number) {
           total_valid: null, nota: null,
           winner_party: 'JMM', winner_votes: 80871,
           runner_party: 'BJP', runner_votes: 64987,
-          margin_votes: 15884, has_results: true,
+          margin_votes: 15884,
+          // NULL, not a number: total_valid is null for this year, and
+          // metric_margin_pct divides by it. This row is here to exercise that
+          // rule in fixture mode rather than only in the SQL tests.
+          margin_pct: null,
+          // 168000 / 264814 = 63.44%.
+          turnout_pct: 63.44,
+          has_results: true,
           source_doc: 'form20-vs2019-ac32.pdf',
+          // The page was not recorded for this document, which is the case
+          // SourceLink now renders as a dash with a tooltip rather than "p?".
+          source_page: null,
         },
         {
           label: 'LS-2024', type: 'LS', year: 2024, is_baseline: false,
@@ -168,8 +185,10 @@ function summaryFor(acNumber: number) {
           total_valid: null, nota: null,
           winner_party: 'AJSU', winner_votes: null,
           runner_party: 'JMM', runner_votes: null,
-          margin_votes: null, has_results: true,
+          margin_votes: null, margin_pct: null, turnout_pct: null,
+          has_results: true,
           source_doc: 'form20-ls2024-pc11.pdf',
+          source_page: null,
         },
       ]
       : [],

@@ -4,6 +4,8 @@
  * what readers here expect, and en-US grouping (304,898) reads as wrong.
  */
 
+import i18n from '../i18n'
+
 const INDIAN = new Intl.NumberFormat('en-IN')
 
 export function num(value: number | null | undefined): string {
@@ -27,11 +29,24 @@ export function signedNum(value: number | null | undefined): string {
   return `${value > 0 ? '+' : value < 0 ? '−' : ''}${INDIAN.format(Math.abs(Math.round(value)))}`
 }
 
-export function dateShort(value: string | null | undefined, lang = 'hi'): string {
+/**
+ * A short date in the *selected* language.
+ *
+ * The default used to be `'hi'`, so any caller that omitted the argument
+ * rendered a Devanagari date on an English page - and two of the five callers
+ * omitted it. Defaulting to the live i18next language means a caller that does
+ * not care gets the right answer, and one that does can still override.
+ *
+ * Both locales are Indian (`hi-IN` / `en-IN`), so the day-month-year order and
+ * the calendar are the same either way; it is the month name and the digits
+ * that change.
+ */
+export function dateShort(value: string | null | undefined, lang?: string): string {
   if (!value) return '—'
   const d = new Date(value)
   if (Number.isNaN(d.getTime())) return String(value)
-  return d.toLocaleDateString(lang === 'hi' ? 'hi-IN' : 'en-IN', {
+  const resolved = lang ?? i18n.language ?? 'en'
+  return d.toLocaleDateString(resolved.startsWith('hi') ? 'hi-IN' : 'en-IN', {
     day: 'numeric', month: 'short', year: 'numeric',
   })
 }

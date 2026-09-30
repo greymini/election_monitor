@@ -193,3 +193,43 @@ database would have stopped there. And `tests/e2e/test_metrics_sql.py`'s dataset
 fixture was function-scoped over a session-scoped connection, so 13 of its 14 tests
 died on a duplicate key the first time they ran. Both had passed review repeatedly
 while nothing executed them.
+
+---
+
+## D-007 · The base map broke because CARTO withdrew keyless tiles
+
+**What happened.** The booth map rendered tiles reading "API key required".
+Nothing in this repository changed: the tile URL
+`https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png` is byte-identical
+to the baseline commit `1b0efed`. CARTO changed the terms on their keyless
+endpoint and now serves watermark tiles to unauthenticated callers. Confirmed by
+the operator directly in a browser, so no investigation was needed here.
+
+**Chosen.** The URL is gone from the code. `web/src/lib/tiles.ts` is the only
+module permitted to name a tile server, and it reads four optional variables —
+`VITE_TILE_URL`, `VITE_TILE_ATTRIBUTION`, `VITE_TILE_MAX_ZOOM`,
+`VITE_TILE_SUBDOMAINS` — all documented in `.env.example`. Unset, the default is
+OpenStreetMap's standard tiles, which require no key. Because the URL may carry a
+key as a query parameter, moving to MapTiler or Thunderforest later is an `.env`
+edit rather than a deployment of new code; both are shown commented in
+`.env.example`, marked "for later".
+
+Attribution follows the URL rather than being defaulted alongside it. A custom
+tile server rendered under the OpenStreetMap credit is a false statement about
+provenance, which is worse than no credit.
+
+**Tile failure no longer breaks the map.** `BaseTiles` counts Leaflet
+`tileerror` events and, past six, reports upward once; the page shows a
+dismissible "Base map unavailable — booth data is still shown" notice and keeps
+every marker, filter and legend working on a plain background. Six rather than
+one because a single failed tile is ordinary at the edge of a pan, while a
+withdrawn provider fails essentially all of them. A successful tile resets the
+count, so ordinary noise cannot creep to the threshold across a session.
+
+**The general lesson, which is the reason this is a decision and not a bugfix.**
+A hardcoded third-party URL is a dependency on another company's pricing, and
+this one was load-bearing for a whole screen. The map was the only part of the
+product whose availability depended on an unauthenticated free tier, and the
+failure mode was silent: watermarked tiles still render, so nothing errored and
+no test noticed. Two tests now guard it — one fails if `cartocdn` appears
+anywhere in the source, one fails if a tile URL appears outside `lib/tiles.ts`.
