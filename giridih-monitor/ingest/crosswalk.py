@@ -149,34 +149,75 @@ def match_stations(old_list: list[Station], anchor: list[Station]) -> list[Match
     return matches
 
 
+# Master prompt 3.3: a split is one old station mapping to several new booths
+# at or above this score. Lower than AUTO_ACCEPT because a split station's
+# building name is often abbreviated differently on each of the new rows.
+SPLIT_FLOOR = 0.75
+
+
 def detect_splits(matches: list[Match]) -> set[str]:
     """booth_uids that more than one older station matched onto.
 
-    A one-to-many match means the station was split (or merged, read the other
-    way). Comparisons across such a booth must use summed votes, which
-    mv_result_booth_party already does by grouping on booth_uid.
+    Read from the older list's side this is a merge: several old stations now
+    share one booth. Read from the newer list's side it is a split. Both need
+    the comparison to be done on the aggregated group rather than on one member
+    of it, which is why `booth_lineage` records the relationship and the swing
+    views return NULL until it is aggregated.
     """
     counts: dict[str, int] = {}
     for m in matches:
-        if m.booth_uid and m.method in {"exact", "fuzzy"}:
+        if m.booth_uid and m.score >= SPLIT_FLOOR:
             counts[m.booth_uid] = counts.get(m.booth_uid, 0) + 1
     return {uid for uid, n in counts.items() if n > 1}
+
+
+def lineage_rows(matches: list[Match], splits: set[str]) -> list[dict]:
+    """Rows for `booth_lineage`, one per (old station, new booth) pair in a
+    split or merge group.
+
+    `weight` is the share of the old station's electorate attributed to this new
+    booth. Without a published split ratio - the CEO does not publish one - an
+    equal split across the group is the only defensible assumption, and it is
+    recorded as such so a later correction is a data edit rather than a code
+    change.
+    """
+    grouped: dict[str, list[Match]] = {}
+    for m in matches:
+        if m.booth_uid in splits:
+            grouped.setdefault(m.booth_uid, []).append(m)
+
+    rows = []
+    for uid, group in grouped.items():
+        weight = round(1.0 / len(group), 4)
+        for m in group:
+            rows.append({
+                "old_ps": m.ps_number,
+                "new_booth_uid": uid,
+                # Several old stations onto one new booth is a merge from the
+                # old list's point of view.
+                "kind": "merge" if len(group) > 1 else "split",
+                "weight": weight,
+                "note": (f"{len(group)} stations map onto {uid} at >= {SPLIT_FLOOR}; "
+                         "weight is an equal split, no published ratio exists"),
+            })
+    return rows
 
 
 # --------------------------------------------------------------------------
 # Database glue
 # --------------------------------------------------------------------------
 
-def load_stations(election_label: str) -> list[Station]:
+def load_stations(election_label: str, ac_id: int) -> list[Station]:
     from common.db import query
 
     rows = query(
-        "SELECT p.ps_number, p.building, p.village_or_locality, p.area_hint, p.roll_part, x.booth_uid "
-        "FROM ps_list_entry p "
+        "SELECT p.ps_number, p.building, p.village_or_locality, p.area_hint, p.roll_part, "
+        "x.booth_uid FROM ps_list_entry p "
         "JOIN election e ON e.election_id = p.election_id "
-        "LEFT JOIN booth_crosswalk x ON x.election_id = p.election_id AND x.ps_number = p.ps_number "
-        "WHERE e.label = %s ORDER BY p.ps_number",
-        (election_label,),
+        "LEFT JOIN booth_crosswalk x ON x.election_id = p.election_id "
+        "                           AND x.ps_number = p.ps_number "
+        "WHERE e.label = %s AND p.ac_id = %s ORDER BY p.ps_number",
+        (election_label, ac_id),
     )
     return [
         Station(
@@ -190,37 +231,78 @@ def load_stations(election_label: str) -> list[Station]:
     ]
 
 
-def anchor_stations() -> list[Station]:
+def anchor_stations(ac_id: int) -> list[Station]:
     """The booth table itself is the anchor once parse_pslist --anchor has run."""
     from common.db import query
 
     rows = query(
-        "SELECT booth_uid, current_ps_number, building, village_or_locality FROM booth "
-        "WHERE is_active ORDER BY current_ps_number NULLS LAST, booth_uid"
+        "SELECT booth_uid, current_ps_number, building, village_or_locality, roll_part "
+        "FROM booth WHERE is_active AND ac_id = %s "
+        "ORDER BY current_ps_number NULLS LAST, booth_uid",
+        (ac_id,),
     )
     return [
         Station(
             ps_number=r["current_ps_number"] or 0,
             building=r["building"] or "",
             place=r["village_or_locality"] or "",
+            # C10: `booth` did not carry roll_part, so
+            # `old.roll_part is not None and new.roll_part is not None` was
+            # always False and the documented 0.20 roll-part term never
+            # contributed - every score was really 62.5% building / 37.5% place,
+            # with the renormalisation doing all the work. 0014 adds the column;
+            # this supplies it.
+            roll_part=r["roll_part"],
             booth_uid=r["booth_uid"],
         )
         for r in rows
     ]
 
 
-def apply_matches(election_label: str, matches: list[Match], splits: set[str],
-                  next_uid_start: int) -> dict:
+def apply_matches(election_label: str, ac_id: int, ac_number: int,
+                  matches: list[Match], splits: set[str]) -> dict:
+    """Write the crosswalk for one election, in one transaction.
+
+    Three audit findings live here.
+
+    **B2, the silent data loss.** A station scoring between REVIEW_FLOOR and
+    AUTO_ACCEPT used to write *only* a review_queue row and no
+    `booth_crosswalk` row at all - and every materialized view reaches results
+    through an inner join on that table, so those stations' votes vanished from
+    every rollup with no error. The HLD expects 10-20% of booths to need manual
+    matching, so a 2019 comparison was built on 80-90% of the constituency while
+    presenting itself as complete. The row is now written with its real
+    sub-threshold confidence and `reviewed = false`: the confidence column and
+    the weak-crosswalk counter already existed to carry exactly this
+    uncertainty, and dropping the row destroyed information instead of flagging
+    it. The swing views withhold a number for such a booth until a human
+    reviews it, while the booth itself still appears everywhere.
+
+    **B3, the colliding UIDs.** `main()` called this with `next_uid_start=0`
+    hardcoded, so new booths were minted as B9001, B9002 ... from a counter that
+    restarted at zero on every invocation. Crosswalking VS-2019 produced B9001;
+    crosswalking VS-2014 next produced B9001 again, and because the booth insert
+    was ON CONFLICT DO NOTHING the existing row survived while the new crosswalk
+    row pointed at a booth created for a completely different polling station.
+    Two unrelated stations' votes were then summed onto one booth_uid by
+    mv_result_booth_party's GROUP BY. UIDs now come from the per-AC sequence.
+
+    **C16, the doubling queue.** Both branches inserted into review_queue with
+    no dedupe, and the runbook tells operators to re-run after fixes, so the
+    queue doubled every time. 0014 adds a unique index on (kind, ref).
+    """
     from common.db import connection
 
-    stats = {"accepted": 0, "review": 0, "new": 0}
-    counter = next_uid_start
+    stats = {"accepted": 0, "review": 0, "new": 0, "lineage": 0}
 
     with connection() as conn, conn.cursor() as cur:
-        cur.execute("SELECT election_id FROM election WHERE label = %s", (election_label,))
+        cur.execute(
+            "SELECT election_id FROM election WHERE label = %s AND ac_id = %s",
+            (election_label, ac_id),
+        )
         row = cur.fetchone()
         if row is None:
-            raise ValueError(f"unknown election label {election_label!r}")
+            raise ValueError(f"unknown election label {election_label!r} for AC {ac_number}")
         eid = row["election_id"]
 
         for m in matches:
@@ -229,77 +311,136 @@ def apply_matches(election_label: str, matches: list[Match], splits: set[str],
                 ensure_ascii=False,
             )
 
-            if m.method in {"exact", "fuzzy"} and m.booth_uid:
-                method = "split" if m.booth_uid in splits else m.method
-                cur.execute(
-                    "INSERT INTO booth_crosswalk (election_id, ps_number, booth_uid, match_method, "
-                    "confidence, reviewed, evidence) VALUES (%s, %s, %s, %s, %s, false, %s) "
-                    "ON CONFLICT (election_id, ps_number) DO UPDATE SET booth_uid = EXCLUDED.booth_uid, "
-                    "match_method = EXCLUDED.match_method, confidence = EXCLUDED.confidence, "
-                    "evidence = EXCLUDED.evidence WHERE booth_crosswalk.reviewed = false",
-                    (eid, m.ps_number, m.booth_uid, method, m.score, evidence),
-                )
-                stats["accepted"] += 1
+            if m.booth_uid and m.method in {"exact", "fuzzy", "review"}:
+                # One branch for everything that matched. The band decides the
+                # confidence and whether a human needs to look, not whether a
+                # row exists at all.
+                if m.booth_uid in splits:
+                    method = "split"
+                elif m.method == "review":
+                    method = "fuzzy"
+                else:
+                    method = m.method
 
-            elif m.method == "review":
                 cur.execute(
-                    "INSERT INTO review_queue (kind, ref, payload, note) VALUES "
-                    "('crosswalk', %s, %s, %s) ",
-                    (f"{election_label}#PS{m.ps_number}", evidence,
-                     f"PS {m.ps_number} -> {m.booth_uid} at {m.score:.3f} "
-                     f"(between {REVIEW_FLOOR} and {AUTO_ACCEPT}) - confirm or correct"),
+                    "INSERT INTO booth_crosswalk (election_id, ac_id, ps_number, booth_uid, "
+                    "match_method, confidence, reviewed, evidence) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, false, %s) "
+                    "ON CONFLICT (election_id, ps_number) DO UPDATE SET "
+                    "  booth_uid = EXCLUDED.booth_uid, match_method = EXCLUDED.match_method, "
+                    "  confidence = EXCLUDED.confidence, evidence = EXCLUDED.evidence, "
+                    "  ac_id = EXCLUDED.ac_id "
+                    "WHERE booth_crosswalk.reviewed = false",
+                    (eid, ac_id, m.ps_number, m.booth_uid, method, m.score, evidence),
                 )
-                stats["review"] += 1
+
+                if m.method == "review":
+                    stats["review"] += 1
+                    _queue(
+                        cur, ac_id, election_label, m, evidence,
+                        f"PS {m.ps_number} -> {m.booth_uid} at {m.score:.3f}, between "
+                        f"{REVIEW_FLOOR} and {AUTO_ACCEPT}. The row is loaded with this "
+                        "confidence and reviewed=false, so the booth appears everywhere "
+                        "but its swing is withheld until you confirm or correct it.",
+                    )
+                else:
+                    stats["accepted"] += 1
 
             else:
-                # Genuinely new or unmatchable station: give it its own booth_uid
-                # so its votes are not silently dropped from AC totals.
-                counter += 1
-                new_uid = f"B9{counter:03d}"
+                # Genuinely new or unmatchable: mint a booth so its votes are
+                # not silently dropped from the AC totals.
+                cur.execute("SELECT next_booth_uid(%s) AS uid", (ac_number,))
+                new_uid = cur.fetchone()["uid"]
+
                 cur.execute(
-                    "SELECT area_id FROM booth ORDER BY booth_uid LIMIT 1"
+                    "SELECT area_id FROM booth WHERE ac_id = %s ORDER BY booth_uid LIMIT 1",
+                    (ac_id,),
                 )
                 fallback = cur.fetchone()
                 if fallback is None:
-                    log.error("no booths exist yet - run parse_pslist --anchor first")
+                    log.error("AC %s has no booths yet - run parse_pslist --anchor first",
+                              ac_number)
                     break
+
                 cur.execute(
-                    "INSERT INTO booth (booth_uid, area_id, building, notes, is_active) "
-                    "VALUES (%s, %s, %s, %s, false) ON CONFLICT (booth_uid) DO NOTHING",
-                    (new_uid, fallback["area_id"], "",
+                    "INSERT INTO booth (booth_uid, ac_id, area_id, building, notes, is_active) "
+                    "VALUES (%s, %s, %s, %s, %s, false) ON CONFLICT (booth_uid) DO NOTHING",
+                    (new_uid, ac_id, fallback["area_id"], "",
                      f"created by crosswalk for {election_label} PS {m.ps_number}; "
-                     f"area needs manual assignment"),
+                     "area needs manual assignment"),
                 )
                 cur.execute(
-                    "INSERT INTO booth_crosswalk (election_id, ps_number, booth_uid, match_method, "
-                    "confidence, reviewed, evidence) VALUES (%s, %s, %s, 'new', %s, false, %s) "
+                    "INSERT INTO booth_crosswalk (election_id, ac_id, ps_number, booth_uid, "
+                    "match_method, confidence, reviewed, evidence) "
+                    "VALUES (%s, %s, %s, %s, 'new', %s, false, %s) "
                     "ON CONFLICT (election_id, ps_number) DO NOTHING",
-                    (eid, m.ps_number, new_uid, m.score, evidence),
+                    (eid, ac_id, m.ps_number, new_uid, m.score, evidence),
                 )
-                cur.execute(
-                    "INSERT INTO review_queue (kind, ref, payload, note) VALUES "
-                    "('crosswalk', %s, %s, %s)",
-                    (f"{election_label}#PS{m.ps_number}", evidence,
-                     f"PS {m.ps_number}: best match only {m.score:.3f} - created {new_uid}, "
-                     f"assign it to a panchayat or ward"),
+                _queue(
+                    cur, ac_id, election_label, m, evidence,
+                    f"PS {m.ps_number}: best match only {m.score:.3f} - created {new_uid}, "
+                    "which is inactive until you assign it to a panchayat or ward.",
                 )
                 stats["new"] += 1
+
+        # Lineage for split and merge groups, so a multi-year comparison can be
+        # made on the group rather than on one member of it.
+        for lineage in lineage_rows(matches, splits):
+            cur.execute(
+                "INSERT INTO booth_lineage (old_election_id, old_ps, new_booth_uid, kind, "
+                "weight, ac_id, note) VALUES (%s, %s, %s, %s, %s, %s, %s) "
+                "ON CONFLICT (old_election_id, old_ps, new_booth_uid) DO UPDATE SET "
+                "kind = EXCLUDED.kind, weight = EXCLUDED.weight, note = EXCLUDED.note",
+                (eid, lineage["old_ps"], lineage["new_booth_uid"], lineage["kind"],
+                 lineage["weight"], ac_id, lineage["note"]),
+            )
+            stats["lineage"] += 1
+
     return stats
+
+
+def _queue(cur, ac_id: int, election_label: str, m: Match, evidence: str, note: str) -> None:
+    """One review-queue row per (kind, ref), upserted rather than appended.
+
+    C16: the runbook tells operators to re-run the crosswalk after fixing
+    something, and these inserts had no dedupe, so every re-run doubled the
+    queue. The WHERE clause also stops a re-run reopening an item somebody has
+    already closed.
+    """
+    cur.execute(
+        "INSERT INTO review_queue (kind, ref, ac_id, payload, note) "
+        "VALUES ('crosswalk', %s, %s, %s, %s) "
+        "ON CONFLICT (kind, ref) DO UPDATE SET payload = EXCLUDED.payload, "
+        "note = EXCLUDED.note, ac_id = EXCLUDED.ac_id "
+        "WHERE review_queue.status = 'open'",
+        (f"{election_label}#PS{m.ps_number}", ac_id, evidence, note),
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Crosswalk an older PS list onto the anchor booths")
     ap.add_argument("--election", required=True, help="election label to crosswalk, e.g. VS-2019")
+    # Required, not optional: a PS number is only unique within an AC, so
+    # crosswalking without one would match stations across constituencies.
+    ap.add_argument("--ac", type=int, required=True, help="constituency number, e.g. 32")
     ap.add_argument("--apply", action="store_true", help="write booth_crosswalk rows")
     ap.add_argument("--report", action="store_true", help="print every match, not just the summary")
     args = ap.parse_args(argv)
 
-    anchor = anchor_stations()
-    if not anchor:
-        log.error("no anchor booths - run parse_pslist with --anchor on the newest PS list first")
+    from common.db import query_one
+
+    ac = query_one("SELECT ac_id, ac_number, name_en FROM ac WHERE ac_number = %s", (args.ac,))
+    if ac is None:
+        log.error("no constituency numbered %s is seeded", args.ac)
         return 2
 
-    old = load_stations(args.election)
+    anchor = anchor_stations(ac["ac_id"])
+    if not anchor:
+        log.error("AC %s has no anchor booths - run parse_pslist with --anchor on its newest "
+                  "PS list first", args.ac)
+        return 2
+
+    old = load_stations(args.election, ac["ac_id"])
     if not old:
         log.error("no ps_list_entry rows for %s - run parse_pslist --load for that election first",
                   args.election)
@@ -330,8 +471,12 @@ def main(argv: list[str] | None = None) -> int:
                      m.score, m.method, m.components)
 
     if args.apply:
-        stats = apply_matches(args.election, matches, splits, next_uid_start=0)
-        log.info("applied: %(accepted)d accepted, %(review)d queued for review, %(new)d new", stats)
+        stats = apply_matches(args.election, ac["ac_id"], ac["ac_number"], matches, splits)
+        log.info("applied: %(accepted)d accepted, %(review)d loaded for review, %(new)d new, "
+                 "%(lineage)d lineage row(s)", stats)
+        log.info("Review-band matches are loaded with reviewed=false, so their booths appear "
+                 "everywhere but their swing is withheld. Clear /admin/crosswalk before "
+                 "trusting a multi-year comparison.")
     else:
         log.info("dry run - nothing written. Re-run with --apply to write.")
     return 0

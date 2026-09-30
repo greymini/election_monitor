@@ -121,9 +121,11 @@ All commands run inside the worker. Prefix each with `docker compose run --rm wo
 Every loader supports `--dry-run` (shows what would happen, writes nothing). Run dry first, then
 for real.
 
-> **Not yet implemented:** the `--ac <number>` flag shown in the commands below. The multi-AC
-> spine is in progress; until it lands, the loaders operate on the single seeded constituency and
-> `--ac` is rejected as an unknown argument. Leave it off. The rest of each command is accurate.
+> **`--ac` status.** `ingest.crosswalk` requires it: a PS number is only unique within a
+> constituency, so crosswalking without one would match stations across ACs. The parsers
+> (`parse_form20`, `parse_pslist`, `parse_roll`) resolve their constituency from the election
+> label and the document instead, and reject `--ac` as an unknown argument - leave it off there.
+> `ingest.validate` and `analytics.caste_estimate` do not accept it yet.
 
 Each parser takes the document three ways. A path works as it always did; the other two exist so
 ingestion can run from a laptop against a remote `DATABASE_URL`, without a local copy of `raw/`:
