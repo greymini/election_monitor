@@ -27,70 +27,57 @@ It turns ECI Form 20 results, polling-station lists, electoral-roll counts, Cens
 | Tests | pytest, Playwright |
 | Hosting (planned) | Vercel (frontend), Railway (API), Supabase (Postgres + storage) |
 
-## Quick start (Windows PowerShell)
+## Repository layout
 
-Requires Python 3.11 and Node 20.
-
-```powershell
-python -m venv .venv
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements-api.txt      # plus the other requirements-*.txt files in the root
-cd web; npm install; cd ..
-copy .env.example .env                   # set JWT_SECRET to a long random value
+```
+backend/    Python: api, analytics, ingest, news, worker, chatbot (parked), common, db, scripts, tests
+frontend/   React + Vite + TypeScript dashboard, Vitest unit tests, Playwright e2e
+docs/       design/ (HLD, LLD, decisions, metrics, endpoints) · operations/ · status/ · archive/
+docker-compose.yml, Makefile, .env.example
 ```
 
-**Frontend only, mock data:**
-```powershell
-cd web
-$env:VITE_FIXTURES="1"; npm run dev      # http://localhost:5173
+## Quick start
+
+Requires Python 3.11 and Node 20+. Full instructions, including Windows PowerShell and
+Docker: **[docs/GETTING_STARTED.md](docs/GETTING_STARTED.md)**.
+
+```bash
+make setup          # .venv, Python deps, npm deps, Playwright Chromium
+make dev-fixtures   # frontend only, mock data:            http://localhost:5173
+make dev-stack      # backend on an embedded Postgres + mock data, API on :8000 (prints logins)
+make dev-frontend   # in a second terminal: frontend talking to that API
+make test           # backend unit + DB tests, frontend unit tests, build, i18n, Playwright
 ```
-
-**Full stack on a local database (no Docker):**
-```powershell
-python scripts/dev_stack.py              # window 1: builds the DB, loads mock data, starts the API on :8000
-cd web; npm run dev                      # window 2: frontend talking to the API
-```
-
-Docker Compose is also supported for a single-server setup.
-
-Full operator guide: `RUN.md`. Loading real data and troubleshooting: `docs/RUNBOOK.md`.
 
 ## Configuration
 
-Main `.env` settings (see `.env.example` for the full list):
+Backend settings live in the root `.env` (see `.env.example`); the app reads the process
+environment, so export them (Docker Compose and `dev_stack.py` do this for you). Frontend
+`VITE_*` settings live in `frontend/.env` (see `frontend/.env.example`).
 
-| Variable | Purpose |
-|---|---|
-| `DATABASE_URL` | PostgreSQL connection |
-| `JWT_SECRET` | Required; the API refuses weak or placeholder values |
-| `CHAT_ENABLED` | `false`; the chatbot is parked |
-| `STORAGE_BACKEND` | `local` or `s3` (roll PDFs always stay local) |
-| `VITE_TILE_URL` | Map tile source; defaults to OpenStreetMap |
-| `ANTHROPIC_API_KEY` | Optional; news labelling only |
-| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | Optional; alerts |
-
-## Tests
-
-```powershell
-pytest
-cd web; npx playwright test              # add channel: 'msedge' in playwright.config.ts if Chromium can't download
-```
+| Variable | Where | Purpose |
+|---|---|---|
+| `DATABASE_URL` | backend | PostgreSQL 16 with pgvector |
+| `JWT_SECRET` | backend | Required; the API refuses weak or placeholder values |
+| `CHAT_ENABLED` | backend | `false`; the chatbot is parked |
+| `STORAGE_BACKEND` | backend | `local` or `s3` (roll PDFs always stay local) |
+| `ANTHROPIC_API_KEY` | backend | Optional; news labelling only |
+| `VITE_FIXTURES` | frontend | `1` = mock data, no backend |
+| `VITE_TILE_URL` | frontend | Map tiles; defaults to OpenStreetMap |
+| `VITE_SOURCE_DOCS_URL` | frontend | Where source PDFs are published; unset = no source links |
 
 ## Documentation
 
 | File | What it is |
 |---|---|
-| `NEXT_STEPS.md` | What to do next, in order |
-| `RUN.md` | Plain-language run guide |
-| `Giridih_AC32_Election_Monitor_HLD.md` | High-level design (v2) |
-| `Giridih_AC32_Election_Monitor_LLD.md` | Low-level design (v2) |
-| `MULTI_AC_EXPANSION_SPEC.md` | Multi-constituency spec and data points |
-| `docs/METRICS.md` | Every metric definition and NULL rule |
-| `docs/ENDPOINTS.md` | Every API route and its callers |
-| `docs/RUNBOOK.md` | Operations and incident procedures |
-| `DECISIONS.md` | Design decisions and why |
-| `PROGRESS.md`, `UAT_READINESS.md` | Current status and test evidence |
-| `AUDIT_REPORT.md` | Original code audit; finding IDs used throughout |
+| `docs/GETTING_STARTED.md` | How to install, run and test |
+| `docs/status/KNOWN_ISSUES.md` | Every issue found in the October 2026 review, fixed or open |
+| `docs/status/REMAINING_WORK.md` | What is incomplete, what to do next, resources needed |
+| `docs/TESTING.md` | Test layout and feature → test map |
+| `docs/design/HLD.md`, `docs/design/LLD.md` | High- and low-level design (v2) |
+| `docs/design/METRICS.md`, `docs/design/ENDPOINTS.md` | Metric definitions; every API route and caller |
+| `docs/design/DECISIONS.md` | Design decisions and why |
+| `docs/operations/RUN.md`, `docs/operations/RUNBOOK.md` | Operator guide; operations procedures |
+| `docs/status/` | Progress ledger, UAT readiness, audit report, baseline |
 
 Review every figure against its source before relying on it.

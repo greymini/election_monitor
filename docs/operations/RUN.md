@@ -1,5 +1,13 @@
 # RUN.md — How to run the Jharkhand Election Monitor
 
+> **Partly out of date (October 2026).** Paths changed: Python commands run from `backend/`,
+> the frontend is `frontend/`. Several commands and flags below do not exist
+> (`fetch_ceo --ac/--doc/--year`, `parse_roll --mother`, `db.link_roll`, `ingest.load_csv`,
+> `scripts/restore_drill.sh`, the TLS compose profile, Telegram alerts) and PostGIS is no longer
+> required. For running locally use `docs/GETTING_STARTED.md`; for each loader use
+> `python -m <module> --help`. Tracked as O-13 in `docs/status/KNOWN_ISSUES.md`.
+
+
 This is the plain-language guide: what the system is, what each part does, and every command you need in the order you need it. The `README.md` is the technical reference; this file is for getting it running and using it.
 
 ---
