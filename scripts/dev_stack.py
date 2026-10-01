@@ -80,7 +80,7 @@ DEV_USERS = [
 # crosswalk binds the older elections' PS numbers onto those booths, and the
 # roll has to be linked to an election before any turnout figure exists.
 STEPS = ["migrate", "seed", "generate", "ps_list", "form20", "crosswalk", "roll",
-         "geo", "refresh", "users"]
+         "caste", "geo", "refresh", "users"]
 
 
 # ---------------------------------------------------------------------------
@@ -338,6 +338,13 @@ def step_roll(py: str) -> None:
             run(cmd, f"parse_roll {d['path']}")
 
 
+def step_caste(py: str) -> None:
+    """Blend the surname estimates the roll loader wrote into the `blend` rows
+    the dashboard reads. Without this the Community tile said "not loaded" on a
+    stack that had 180 surname estimates in it."""
+    run([py, "-m", "analytics.caste_estimate"], "analytics.caste_estimate")
+
+
 def step_geo(py: str, args) -> None:
     """Synthetic area outlines and booth points, so the map has something to
     draw. Generated stations cannot be geocoded; see scripts/dev_geo.py."""
@@ -417,6 +424,7 @@ STEP_FUNCS = {
     "form20": lambda py, args: step_form20(py),
     "crosswalk": lambda py, args: step_crosswalk(py),
     "roll": lambda py, args: step_roll(py),
+    "caste": lambda py, args: step_caste(py),
     "geo": step_geo,
     "refresh": lambda py, args: step_refresh(py),
     "users": lambda py, args: step_users(py),

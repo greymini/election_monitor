@@ -101,7 +101,7 @@ export default function DataHealthStrip({
       detail: health.booths > 0
         ? t('health.geocoded', { done: health.booths_geocoded, total: health.booths })
         : null,
-      command: `python -m ingest.geocode --ac ${ac}`,
+      command: `python -m ingest.geocode`,
     },
     {
       label: t('health.caste'),
@@ -109,13 +109,13 @@ export default function DataHealthStrip({
       detail: health.caste_rows > 0
         ? t('health.rows', { n: health.caste_rows })
         : null,
-      command: `python -m analytics.caste_estimate --ac ${ac}`,
+      command: `python -m analytics.caste_estimate`,
     },
     {
       label: t('health.census'),
       state: state(health.census_rows > 0),
       detail: null,
-      command: `python -m ingest.load_csv area_indicator <csv>`,
+      command: `python -m ingest.load_csv demography <csv> --ac ${ac}`,
     },
     {
       label: t('health.local'),
@@ -123,7 +123,7 @@ export default function DataHealthStrip({
       detail: health.local_result_rows > 0
         ? t('health.rows', { n: health.local_result_rows })
         : null,
-      command: `python -m ingest.fetch_sec --ac ${ac} --load-csv <csv>`,
+      command: `python -m ingest.fetch_sec --ac ${ac} --election PANCHAYAT-2022 --load-csv <csv>`,
     },
   ]
 

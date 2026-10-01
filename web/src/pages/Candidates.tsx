@@ -81,7 +81,7 @@ export default function Candidates({ ac }: { ac: AcState }) {
       <h1 className="text-lg font-semibold">{t('candidates.heading')}</h1>
 
       {rows.length === 0 ? (
-        <Empty hint="No candidate profiles are loaded. Run: python -m ingest.load_csv candidate_profile <csv>" />
+        <Empty hint={`No candidate profiles are loaded. Run: python -m ingest.load_csv candidate_profile <csv> --ac ${ac.acNumber}`} />
       ) : (
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
           {rows.map((c) => (

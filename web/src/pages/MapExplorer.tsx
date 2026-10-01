@@ -463,7 +463,7 @@ export default function MapExplorer({ ac }: Props) {
               {t('map.ungeocoded', { count: query.data.meta.ungeocoded })}
               {' '}
               <code className="whitespace-pre-wrap break-all">
-                python -m ingest.geocode --ac {ac.acNumber}
+                python -m ingest.geocode
               </code>
             </li>
           )}

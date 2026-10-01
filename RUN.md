@@ -319,14 +319,14 @@ one. Without it the connection — and every booth-level figure crossing it — 
 ### 5.6 Everything else
 
 ```bash
-python -m ingest.fetch_sec --ac 32 --load-csv data/sec/giridih_panchayat_2022.csv   # local election results
-python -m ingest.load_csv candidate_profile data/candidates/2024_ac32.csv
-python -m ingest.load_csv area_indicator     data/indicators/census2011_ac32.csv
-python -m ingest.load_csv local_office_holder data/local/ac32_mukhiya_2022.csv
-python -m ingest.geocode --ac 32                                    # Nominatim, 1 req/s, cached
-python -m analytics.caste_estimate --ac 32
+python -m ingest.fetch_sec --ac 32 --election PANCHAYAT-2022 --load-csv data/sec/giridih_panchayat_2022.csv
+python -m ingest.load_csv candidate_profile   data/candidates/2024_ac32.csv --ac 32
+python -m ingest.load_csv demography          data/indicators/census2011_ac32.csv --ac 32
+python -m ingest.load_csv local_office_holder data/local/ac32_mukhiya_2022.csv --ac 32
+python -m ingest.geocode                                            # Nominatim, 1 req/s; every AC
+python -m analytics.caste_estimate                                  # blends every AC
 python -m analytics.refresh                                         # rebuild all materialized views
-python -m ingest.validate --ac 32                                   # full check report
+python -m ingest.validate --strict --verbose                        # full check report, every AC
 ```
 
 Then repeat 4.1–4.5 with `--ac 31`, `33`, `42`, `61`, `65`.
