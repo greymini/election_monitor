@@ -50,3 +50,6 @@ desktop.ini
 *~
 .idea/
 .vscode/
+
+# scripts/dev_stack.py: embedded PostgreSQL data, generated PDFs, logs
+.devstack/

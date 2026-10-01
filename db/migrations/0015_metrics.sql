@@ -423,7 +423,7 @@ WITH ranked AS (
     GROUP BY ac_id, election_id, booth_uid
 ), meta AS (
     SELECT m.ac_id, m.election_id, x.booth_uid,
-           SUM(m.electors)::INT    AS electors,
+           SUM(m.electors)::INT    AS manual_electors,
            SUM(m.rejected)::INT    AS rejected,
            SUM(m.total_valid)::INT AS printed_valid,
            string_agg(m.ps_number::TEXT, ',' ORDER BY m.ps_number) AS ps_numbers,
@@ -433,6 +433,20 @@ WITH ranked AS (
     JOIN booth_crosswalk x
       ON x.election_id = m.election_id AND x.ps_number = m.ps_number
     GROUP BY m.ac_id, m.election_id, x.booth_uid
+), roll_electors AS (
+    -- Electors per booth per election, from the roll revision that election is
+    -- linked to. Finding N5: `metric_turnout_pct` documents its denominator as
+    -- coming "from the linked roll snapshot, never from Form 20" - which is why
+    -- `election_roll_link` exists at all - but this view read
+    -- `result_booth_meta.electors`, a column no loader writes. So turnout_pct
+    -- was NULL for every booth in every AC by construction, and the comment two
+    -- screens below said the opposite. The Overview turnout tile, the booth
+    -- table column, the area rollup and the map all rendered an em dash and
+    -- there was no input that could have changed it.
+    SELECT e.ac_id, e.election_id, s.booth_uid, s.electors
+    FROM election_roll_link l
+    JOIN election e      ON e.election_id = l.election_id
+    JOIN roll_snapshot s ON s.revision_id = l.revision_id
 ), lineage AS (
     -- One row per new booth per old election, so the wide row can say that a
     -- comparison is on an aggregated group rather than a like-for-like booth.
@@ -449,7 +463,14 @@ SELECT t.ac_id,
        b.area_id,
        a.block_id,
        m.ps_numbers,
-       m.electors,
+       -- Roll first, then an operator-entered figure on result_booth_meta.
+       -- NULL when neither exists, which is the honest answer and what B4 asks
+       -- for: a booth whose electorate is unknown reports no turnout rather
+       -- than a turnout computed against zero.
+       COALESCE(re.electors, m.manual_electors) AS electors,
+       CASE WHEN re.electors IS NOT NULL        THEN 'roll'
+            WHEN m.manual_electors IS NOT NULL  THEN 'manual'
+       END AS electors_source,
        t.valid_votes,
        -- votes_polled = valid + rejected; tendered excluded by construction.
        metric_votes_polled(t.valid_votes, m.rejected)::INT AS votes_polled,
@@ -481,9 +502,9 @@ SELECT t.ac_id,
                                 pb.abbr) AS signed_margin_pct,
        pa.abbr AS contest_party_a,
        pb.abbr AS contest_party_b,
-       -- turnout: electors from the linked roll snapshot, never from Form 20.
+       -- turnout: electors from the linked roll snapshot (see roll_electors).
        metric_turnout_pct(metric_votes_polled(t.valid_votes, m.rejected),
-                          m.electors) AS turnout_pct,
+                          COALESCE(re.electors, m.manual_electors)) AS turnout_pct,
        lin.kind   AS lineage_kind,
        lin.weight AS lineage_weight,
        m.source_doc,
@@ -496,6 +517,8 @@ LEFT JOIN pivot pv  ON pv.ac_id = t.ac_id AND pv.election_id = t.election_id
                    AND pv.booth_uid = t.booth_uid
 LEFT JOIN meta m    ON m.ac_id = t.ac_id AND m.election_id = t.election_id
                    AND m.booth_uid = t.booth_uid
+LEFT JOIN roll_electors re ON re.ac_id = t.ac_id AND re.election_id = t.election_id
+                   AND re.booth_uid = t.booth_uid
 LEFT JOIN ranked w  ON w.ac_id = t.ac_id AND w.election_id = t.election_id
                    AND w.booth_uid = t.booth_uid AND w.rn = 1
 LEFT JOIN ranked ru ON ru.ac_id = t.ac_id AND ru.election_id = t.election_id

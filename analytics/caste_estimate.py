@@ -25,6 +25,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 
 from common.logging_setup import get_logger
+from common.textnorm import normalize_text
 
 log = get_logger(__name__)
 
@@ -196,15 +197,29 @@ def blend_booth(inputs: BoothInputs, communities: dict[int, CommunityRef],
 # --------------------------------------------------------------------------
 
 def load_surname_dict(cur) -> dict[str, list[tuple[int, float]]]:
-    """surname -> [(community_id, weight), ...]. Ambiguous surnames split."""
-    cur.execute("SELECT surname_hi, community_id, weight FROM surname_dict")
+    """surname -> [(community_id, weight), ...]. Ambiguous surnames split.
+
+    Keyed on both scripts, and case-folded. `surname_dict.surname_en` is seeded
+    for all 160 surnames and was read by nothing: the lookup took `surname_hi`
+    alone, so a roll printed in Latin script - which the CEO does publish, and
+    which is all `ingest/mock_documents.py` can produce - matched no surname at
+    all, wrote no `caste_estimate` rows, and reported that as a coverage of
+    zero rather than as an unreadable script. Finding N6.
+    """
+    cur.execute("SELECT surname_hi, surname_en, community_id, weight FROM surname_dict")
     out: dict[str, list[tuple[int, float]]] = {}
     for r in cur.fetchall():
-        out.setdefault(r["surname_hi"], []).append((r["community_id"], float(r["weight"])))
+        entry = (r["community_id"], float(r["weight"]))
+        for spelling in (r["surname_hi"], r["surname_en"]):
+            if not spelling:
+                continue
+            for key in {normalize_text(spelling), normalize_text(spelling).casefold()}:
+                if key and entry not in out.setdefault(key, []):
+                    out[key].append(entry)
     return out
 
 
-def write_surname_estimates(cur, surname_totals: dict[str, Counter]) -> int:
+def write_surname_estimates(cur, surname_totals: dict[str, Counter], ac_id: int) -> int:
     """Turn per-booth surname histograms into caste_estimate(source='surname').
 
     Called by parse_roll while the histogram is still in memory. The histogram
@@ -217,7 +232,7 @@ def write_surname_estimates(cur, surname_totals: dict[str, Counter]) -> int:
         matched = 0.0
         confident = 0.0
         for surname, n in histogram.items():
-            entries = lookup.get(surname)
+            entries = lookup.get(surname) or lookup.get(surname.casefold())
             if not entries:
                 continue
             matched += n
@@ -231,12 +246,13 @@ def write_surname_estimates(cur, surname_totals: dict[str, Counter]) -> int:
         grand = sum(totals.values())
         for community_id, value in totals.items():
             cur.execute(
-                "INSERT INTO caste_estimate (booth_uid, community_id, est_count, est_pct, "
-                "confidence, source, updated_at) VALUES (%s, %s, %s, %s, %s, 'surname', now()) "
+                "INSERT INTO caste_estimate (booth_uid, ac_id, community_id, est_count, est_pct, "
+                "confidence, source, updated_at) "
+                "VALUES (%s, %s, %s, %s, %s, %s, 'surname', now()) "
                 "ON CONFLICT (booth_uid, community_id, source) DO UPDATE SET "
                 "est_count = EXCLUDED.est_count, est_pct = EXCLUDED.est_pct, "
                 "confidence = EXCLUDED.confidence, updated_at = now()",
-                (booth_uid, community_id, int(round(value)),
+                (booth_uid, ac_id, community_id, int(round(value)),
                  round(100.0 * value / grand, 2) if grand else 0.0,
                  round(min(1.0, confident / matched if matched else 0.0), 3)),
             )

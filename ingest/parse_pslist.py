@@ -25,6 +25,13 @@ from pathlib import Path
 
 from common.logging_setup import get_logger
 from common.textnorm import alias_key, normalize_text, parse_int
+from ingest.acscope import (
+    AmbiguousScope,
+    ElectionScope,
+    add_ac_argument,
+    default_block,
+    resolve_election,
+)
 from ingest.documents import (
     DocumentNotFound,
     add_document_arguments,
@@ -150,37 +157,45 @@ def parse_pdf(pdf_path: Path, force: bool = False) -> list[PSEntry]:
 # Loading
 # --------------------------------------------------------------------------
 
-def store_entries(entries: list[PSEntry], election_label: str, source_doc: str) -> int:
+def store_entries(entries: list[PSEntry], scope: ElectionScope, source_doc: str) -> int:
     from common.db import connection
 
     with connection() as conn, conn.cursor() as cur:
-        cur.execute("SELECT election_id FROM election WHERE label = %s", (election_label,))
-        row = cur.fetchone()
-        if row is None:
-            raise ValueError(f"unknown election label {election_label!r}")
-        eid = row["election_id"]
         for e in entries:
             cur.execute(
-                "INSERT INTO ps_list_entry (election_id, ps_number, ps_name, building, "
+                "INSERT INTO ps_list_entry (election_id, ac_id, ps_number, ps_name, building, "
                 "village_or_locality, area_hint, roll_part, source_doc, source_page) "
-                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
                 "ON CONFLICT (election_id, ps_number) DO UPDATE SET ps_name = EXCLUDED.ps_name, "
                 "building = EXCLUDED.building, village_or_locality = EXCLUDED.village_or_locality, "
                 "area_hint = EXCLUDED.area_hint, roll_part = EXCLUDED.roll_part, "
-                "source_doc = EXCLUDED.source_doc, source_page = EXCLUDED.source_page",
-                (eid, e.ps_number, e.ps_name, e.building, e.village_or_locality,
-                 e.area_hint, e.roll_part, source_doc, e.page_no),
+                "source_doc = EXCLUDED.source_doc, source_page = EXCLUDED.source_page, "
+                "ac_id = EXCLUDED.ac_id",
+                (scope.election_id, scope.ac_id, e.ps_number, e.ps_name, e.building,
+                 e.village_or_locality, e.area_hint, e.roll_part, source_doc, e.page_no),
             )
     return len(entries)
 
 
-def resolve_area(cur, area_hint: str, default_block_id: int | None) -> int | None:
+def resolve_area(cur, area_hint: str, ac_id: int,
+                 default_block_id: int | None) -> int | None:
     """Map a printed area name to an area_id via area_alias, creating a
-    panchayat when the hint is new and a block is known."""
+    panchayat when the hint is new and a block is known.
+
+    The alias lookup is constrained to this AC. `area_alias.alias` is the
+    primary key, so a panchayat name that two constituencies share - and
+    "Bazar", "Chatro" and "Nawadih" all recur across Jharkhand - would otherwise
+    bind the second AC's stations onto the first AC's area, and every block and
+    area rollup would silently mix two constituencies.
+    """
     key = alias_key(area_hint)
     if not key:
         return None
-    cur.execute("SELECT area_id FROM area_alias WHERE alias = %s", (key,))
+    cur.execute(
+        "SELECT a.area_id FROM area_alias al JOIN area a ON a.area_id = al.area_id "
+        "WHERE al.alias = %s AND a.ac_id = %s",
+        (key, ac_id),
+    )
     hit = cur.fetchone()
     if hit:
         return hit["area_id"]
@@ -190,10 +205,11 @@ def resolve_area(cur, area_hint: str, default_block_id: int | None) -> int | Non
 
     name = normalize_text(area_hint)
     cur.execute(
-        "INSERT INTO area (block_id, kind, name_en, name_hi) VALUES (%s, 'panchayat', %s, %s) "
+        "INSERT INTO area (block_id, ac_id, kind, name_en, name_hi) "
+        "VALUES (%s, %s, 'panchayat', %s, %s) "
         "ON CONFLICT (block_id, kind, name_en) DO UPDATE SET name_hi = EXCLUDED.name_hi "
         "RETURNING area_id",
-        (default_block_id, name, name),
+        (default_block_id, ac_id, name, name),
     )
     area_id = cur.fetchone()["area_id"]
     cur.execute(
@@ -204,30 +220,38 @@ def resolve_area(cur, area_hint: str, default_block_id: int | None) -> int | Non
     return area_id
 
 
-def load_anchor(entries: list[PSEntry], election_label: str, default_block_id: int | None) -> dict[str, int]:
+def load_anchor(entries: list[PSEntry], scope: ElectionScope,
+                default_block_id: int | None) -> dict[str, int]:
     """Create booth rows and the anchor crosswalk from the newest PS list.
 
-    booth_uid is assigned as B0001... in polling-station order, and is stable
-    from then on: later lists map onto these ids via crosswalk.py.
+    `booth_uid` comes from the per-AC sequence (`next_booth_uid`), never from the
+    polling-station number. This function used to build it as `f"B{ps:04d}"`,
+    which is the defect B5 describes: re-anchoring against a newer list rebound
+    `B0147` to whatever station happened to be number 147 in the new list, and
+    every crosswalk row, roll snapshot and caste estimate keyed on that uid then
+    referred to a different physical booth.
+
+    A station that already has an anchor binding for this election keeps its
+    existing uid, so re-running the same list is idempotent rather than minting
+    a second booth for every station.
     """
     from common.db import connection
 
-    stats = {"booths": 0, "areas_created": 0, "unmatched_area": 0}
+    stats = {"booths": 0, "reused": 0, "areas_created": 0, "unmatched_area": 0}
     with connection() as conn, conn.cursor() as cur:
-        cur.execute("SELECT election_id FROM election WHERE label = %s", (election_label,))
-        eid = cur.fetchone()["election_id"]
-        cur.execute("SELECT COUNT(*) AS n FROM area")
+        cur.execute("SELECT COUNT(*) AS n FROM area WHERE ac_id = %s", (scope.ac_id,))
         areas_before = cur.fetchone()["n"]
 
         for e in sorted(entries, key=lambda x: x.ps_number):
-            booth_uid = f"B{e.ps_number:04d}"
-            area_id = resolve_area(cur, e.area_hint or e.village_or_locality, default_block_id)
+            area_id = resolve_area(cur, e.area_hint or e.village_or_locality,
+                                   scope.ac_id, default_block_id)
             if area_id is None:
                 stats["unmatched_area"] += 1
                 cur.execute(
-                    "INSERT INTO review_queue (kind, ref, payload, note) "
-                    "VALUES ('area_alias', %s, %s, %s)",
-                    (f"{election_label}#PS{e.ps_number}",
+                    "INSERT INTO review_queue (kind, ref, ac_id, payload, note) "
+                    "VALUES ('area_alias', %s, %s, %s, %s) "
+                    "ON CONFLICT (kind, ref) DO NOTHING",
+                    (f"{scope.label}#AC{scope.ac_number}#PS{e.ps_number}", scope.ac_id,
                      json.dumps({"area_hint": e.area_hint, "ps_name": e.ps_name},
                                 ensure_ascii=False),
                      f"PS {e.ps_number}: could not place {e.area_hint!r} in a panchayat or ward"),
@@ -235,24 +259,41 @@ def load_anchor(entries: list[PSEntry], election_label: str, default_block_id: i
                 continue
 
             cur.execute(
-                "INSERT INTO booth (booth_uid, area_id, ps_name_hi, building, village_or_locality, "
-                "current_ps_number) VALUES (%s, %s, %s, %s, %s, %s) "
+                "SELECT booth_uid FROM booth_crosswalk "
+                "WHERE election_id = %s AND ps_number = %s",
+                (scope.election_id, e.ps_number),
+            )
+            existing = cur.fetchone()
+            if existing:
+                booth_uid = existing["booth_uid"]
+                stats["reused"] += 1
+            else:
+                cur.execute("SELECT next_booth_uid(%s) AS uid", (scope.ac_number,))
+                booth_uid = cur.fetchone()["uid"]
+
+            cur.execute(
+                "INSERT INTO booth (booth_uid, ac_id, area_id, ps_name_hi, building, "
+                "village_or_locality, current_ps_number, roll_part) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s) "
                 "ON CONFLICT (booth_uid) DO UPDATE SET area_id = EXCLUDED.area_id, "
                 "ps_name_hi = EXCLUDED.ps_name_hi, building = EXCLUDED.building, "
                 "village_or_locality = EXCLUDED.village_or_locality, "
-                "current_ps_number = EXCLUDED.current_ps_number",
-                (booth_uid, area_id, e.ps_name, e.building, e.village_or_locality, e.ps_number),
+                "current_ps_number = EXCLUDED.current_ps_number, "
+                "roll_part = EXCLUDED.roll_part, ac_id = EXCLUDED.ac_id",
+                (booth_uid, scope.ac_id, area_id, e.ps_name, e.building,
+                 e.village_or_locality, e.ps_number, e.roll_part),
             )
             cur.execute(
-                "INSERT INTO booth_crosswalk (election_id, ps_number, booth_uid, match_method, "
-                "confidence, reviewed) VALUES (%s, %s, %s, 'anchor', 1.0, true) "
+                "INSERT INTO booth_crosswalk (election_id, ac_id, ps_number, booth_uid, "
+                "match_method, confidence, reviewed) VALUES (%s, %s, %s, %s, 'anchor', 1.0, true) "
                 "ON CONFLICT (election_id, ps_number) DO UPDATE SET booth_uid = EXCLUDED.booth_uid, "
-                "match_method = 'anchor', confidence = 1.0, reviewed = true",
-                (eid, e.ps_number, booth_uid),
+                "match_method = 'anchor', confidence = 1.0, reviewed = true, "
+                "ac_id = EXCLUDED.ac_id",
+                (scope.election_id, scope.ac_id, e.ps_number, booth_uid),
             )
             stats["booths"] += 1
 
-        cur.execute("SELECT COUNT(*) AS n FROM area")
+        cur.execute("SELECT COUNT(*) AS n FROM area WHERE ac_id = %s", (scope.ac_id,))
         stats["areas_created"] = cur.fetchone()["n"] - areas_before
     return stats
 
@@ -261,11 +302,13 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Parse a polling-station list")
     add_document_arguments(ap)
     ap.add_argument("--election", required=True, help="election label the list belongs to")
+    add_ac_argument(ap)
     ap.add_argument("--load", action="store_true", help="write ps_list_entry rows")
     ap.add_argument("--anchor", action="store_true",
                     help="also create booth rows and the anchor crosswalk from this list")
     ap.add_argument("--block", type=int, default=None,
-                    help="block_id to file new panchayats under (2 = Giridih, 3 = Pirtand)")
+                    help="block_id to file new panchayats under. Defaults to this "
+                         "AC's lowest-numbered block.")
     ap.add_argument("--force", action="store_true", help="ignore the page cache")
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args(argv)
@@ -292,16 +335,28 @@ def _run(args, path: Path, provenance: dict) -> int:
         log.info("dry run - nothing written. Re-run with --load to write.")
         return 0
 
-    n = store_entries(entries, args.election, path.name)
+    from common.db import cursor
+
+    try:
+        with cursor() as cur:
+            scope = resolve_election(cur, args.election, ac_number=args.ac)
+            block_id = args.block if args.block is not None else default_block(cur, scope.ac_id)
+    except (AmbiguousScope, ValueError) as exc:
+        log.error("%s", exc)
+        return 2
+    log.info("loading into %s", scope)
+
+    n = store_entries(entries, scope, path.name)
     log.info("stored %d ps_list_entry row(s)", n)
 
     if args.anchor:
-        if args.block is None:
-            log.warning("--anchor without --block: new panchayat names cannot be filed under a "
-                        "block and will go to review_queue instead")
-        stats = load_anchor(entries, args.election, args.block)
-        log.info("anchor load: %(booths)d booth(s), %(areas_created)d new area(s), "
-                 "%(unmatched_area)d unplaced", stats)
+        if block_id is None:
+            log.warning("AC %s has no blocks seeded and no --block was given: new panchayat "
+                        "names cannot be filed and every station will go to review_queue",
+                        scope.ac_number)
+        stats = load_anchor(entries, scope, block_id)
+        log.info("anchor load: %(booths)d booth(s) (%(reused)d existing uid(s) reused), "
+                 "%(areas_created)d new area(s), %(unmatched_area)d unplaced", stats)
         if stats["unmatched_area"]:
             log.warning("%d station(s) could not be placed - see review_queue(kind='area_alias')",
                         stats["unmatched_area"])

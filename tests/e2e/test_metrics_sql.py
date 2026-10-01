@@ -42,6 +42,42 @@ BOOTHS_PREV = {
 }
 
 
+# Rows this fixture creates, in the order they must be deleted. The session
+# connection is autocommit, so rows another module loaded into AC 32 (notably
+# tests/e2e/test_ingest_pipeline.py, which loads a whole generated dataset)
+# are still there when this module starts, and this fixture's inserts collide
+# with them on booth_crosswalk_pkey. Ported from the OneDrive copy (df1979e).
+TEST_CANDIDATE_SUFFIX = " candidate"
+
+
+def _clear(cursor, ac_id: int) -> None:
+    """Remove AC rows that the views read, leaving the seed untouched.
+
+    Only candidates whose name ends in " candidate" are deleted: the seeded
+    candidates from db/seed/ac_totals.csv carry the published AC totals that
+    `mv_ac_summary` and the Form 20 cross-check hang off.
+    """
+    cursor.execute("DELETE FROM caste_estimate    WHERE ac_id = %s", (ac_id,))
+    cursor.execute("DELETE FROM result_booth      WHERE ac_id = %s", (ac_id,))
+    cursor.execute("DELETE FROM result_booth_meta WHERE ac_id = %s", (ac_id,))
+    cursor.execute("DELETE FROM booth_crosswalk   WHERE ac_id = %s", (ac_id,))
+    cursor.execute("DELETE FROM ps_list_entry     WHERE ac_id = %s", (ac_id,))
+    cursor.execute(
+        "DELETE FROM candidate WHERE ac_id = %s AND name_en LIKE %s",
+        (ac_id, f"%{TEST_CANDIDATE_SUFFIX}"),
+    )
+    # The roll chain, link first: several assertions here are about what the
+    # views do with *no* roll (B1), so a link left by another module would make
+    # them pass or fail on test order.
+    cursor.execute(
+        "DELETE FROM election_roll_link WHERE election_id IN "
+        "(SELECT election_id FROM election WHERE ac_id = %s)", (ac_id,))
+    cursor.execute("DELETE FROM roll_snapshot WHERE ac_id = %s", (ac_id,))
+    cursor.execute("DELETE FROM roll_change   WHERE ac_id = %s", (ac_id,))
+    cursor.execute("DELETE FROM roll_revision WHERE ac_id = %s", (ac_id,))
+    cursor.execute("DELETE FROM booth         WHERE ac_id = %s", (ac_id,))
+
+
 @pytest.fixture(scope="module")
 def loaded(conn):
     """Build a minimal but complete AC: two elections, three booths, a roll.
@@ -60,6 +96,7 @@ def loaded(conn):
     with conn.cursor() as cursor:
         cursor.execute("SELECT ac_id FROM ac WHERE ac_number = 32")
         ac_id = cursor.fetchone()["ac_id"]
+        _clear(cursor, ac_id)
 
         cursor.execute(
             "SELECT election_id, label FROM election WHERE ac_id = %s AND label IN "

@@ -26,6 +26,7 @@ from pathlib import Path
 
 from common.logging_setup import get_logger
 from common.textnorm import last_token, normalize_block, normalize_digits
+from ingest.acscope import AmbiguousScope, ElectionScope, add_ac_argument, resolve_election
 from ingest.documents import (
     DocumentNotFound,
     add_document_arguments,
@@ -294,7 +295,10 @@ def scan_pdf(pdf_path: Path, supplement: bool = False, force: bool = False) -> l
     """
     from ingest.extract_pdf import extract_document
 
-    pages = extract_document(pdf_path, force=force, cache=False)
+    # tables=False: a roll has no ruling lines, so the lattice pass returns
+    # nothing and roughly doubles the time. scan_mother_roll and scan_supplement
+    # read page.text and nothing else.
+    pages = extract_document(pdf_path, force=force, cache=False, tables=False)
     groups: dict[int | None, list[str]] = {}
     current: int | None = None
     for page in pages:
@@ -318,77 +322,126 @@ def scan_pdf(pdf_path: Path, supplement: bool = False, force: bool = False) -> l
 # Loading - aggregates only
 # --------------------------------------------------------------------------
 
-def _booth_for_ps(cur, election_label: str, ps_number: int) -> str | None:
+def _booth_for_ps(cur, scope: ElectionScope, ps_number: int) -> str | None:
+    """The booth a polling-station number maps to, within this AC.
+
+    Both lookups were AC-blind: the crosswalk join matched on `election.label`,
+    which six constituencies share, and the fallback matched
+    `current_ps_number` across the whole `booth` table. Either could return
+    another constituency's booth, and a roll snapshot written against it would
+    put one AC's electorate on another AC's booth with no constraint to stop it.
+    """
     cur.execute(
-        "SELECT x.booth_uid FROM booth_crosswalk x JOIN election e ON e.election_id = x.election_id "
-        "WHERE e.label = %s AND x.ps_number = %s",
-        (election_label, ps_number),
+        "SELECT booth_uid FROM booth_crosswalk WHERE election_id = %s AND ps_number = %s",
+        (scope.election_id, ps_number),
     )
     row = cur.fetchone()
     if row:
         return row["booth_uid"]
-    cur.execute("SELECT booth_uid FROM booth WHERE current_ps_number = %s", (ps_number,))
+    cur.execute(
+        "SELECT booth_uid FROM booth WHERE ac_id = %s AND current_ps_number = %s",
+        (scope.ac_id, ps_number),
+    )
     row = cur.fetchone()
     return row["booth_uid"] if row else None
 
 
 def load(results: list[RollCounts], revision_label: str, revision_date: str,
-         supplement: bool, election_label: str = "VS-2024",
-         is_post_sir: bool = False, write_surnames: bool = True) -> dict:
+         supplement: bool, scope: ElectionScope,
+         is_post_sir: bool = False, write_surnames: bool = True,
+         source_doc: str | None = None, link_election: str | None = None) -> dict:
+    """Write per-booth counts for one roll revision. One transaction.
+
+    `ac_id` is written on `roll_revision`, `roll_snapshot` and `roll_change`,
+    all three of which 0014 made NOT NULL, and the revision upsert now targets
+    `(ac_id, label)`. The old `ON CONFLICT (label)` named a constraint 0014
+    dropped, so this function raised `InvalidColumnReference` on its first
+    statement against the current schema - B11 was fixed in the migration and
+    not in the loader.
+    """
     from common.db import connection
 
     stats = {"snapshots": 0, "changes": 0, "surname_rows": 0, "unmatched_ps": 0}
     with connection() as conn, conn.cursor() as cur:
         cur.execute(
-            "INSERT INTO roll_revision (revision_date, label, is_post_sir, is_mother) "
-            "VALUES (%s, %s, %s, %s) ON CONFLICT (label) DO UPDATE SET "
-            "revision_date = EXCLUDED.revision_date, is_post_sir = EXCLUDED.is_post_sir "
+            "INSERT INTO roll_revision (ac_id, revision_date, label, is_post_sir, is_mother, "
+            "source_doc) VALUES (%s, %s, %s, %s, %s, %s) "
+            "ON CONFLICT (ac_id, label) DO UPDATE SET "
+            "revision_date = EXCLUDED.revision_date, is_post_sir = EXCLUDED.is_post_sir, "
+            "source_doc = EXCLUDED.source_doc "
             "RETURNING revision_id",
-            (revision_date, revision_label, is_post_sir, not supplement),
+            (scope.ac_id, revision_date, revision_label, is_post_sir, not supplement,
+             source_doc),
         )
         revision_id = cur.fetchone()["revision_id"]
+
+        if link_election and not supplement:
+            # B1, the half that was never closed. `election_roll_link` is what
+            # tells the metrics layer which roll revision an election was fought
+            # on: `mv_result_booth_wide` takes its turnout denominator from the
+            # linked revision's snapshot, and `mv_new_voter_share` takes both
+            # ends of its window from the link. Nothing in this repository ever
+            # inserted a row into it - the audit noted the consequence (0
+            # additions everywhere) and the table stayed empty because it had no
+            # writer at all. The operator loading a mother roll is the only one
+            # who knows which contest it is the roll for, so that is where the
+            # link belongs.
+            link_scope = resolve_election(cur, link_election, ac_number=scope.ac_number)
+            cur.execute(
+                "INSERT INTO election_roll_link (election_id, revision_id) VALUES (%s, %s) "
+                "ON CONFLICT (election_id) DO UPDATE SET revision_id = EXCLUDED.revision_id",
+                (link_scope.election_id, revision_id),
+            )
+            log.info("linked roll revision %s to %s", revision_label, link_scope)
 
         surname_totals: dict[str, Counter] = {}
 
         for c in results:
-            booth_uid = _booth_for_ps(cur, election_label, c.ps_number) if c.ps_number else None
+            booth_uid = _booth_for_ps(cur, scope, c.ps_number) if c.ps_number else None
             if booth_uid is None:
                 stats["unmatched_ps"] += 1
                 cur.execute(
-                    "INSERT INTO review_queue (kind, ref, payload, note) VALUES "
-                    "('roll_section', %s, %s, %s)",
-                    (f"{revision_label}#PS{c.ps_number}", "{}",
+                    "INSERT INTO review_queue (kind, ref, ac_id, payload, note) VALUES "
+                    "('roll_section', %s, %s, %s, %s) "
+                    "ON CONFLICT (kind, ref) DO NOTHING",
+                    (f"{revision_label}#AC{scope.ac_number}#PS{c.ps_number}", scope.ac_id,
+                     "{}",
                      f"roll section for PS {c.ps_number} has no booth in the crosswalk"),
                 )
                 continue
 
             if supplement:
                 cur.execute(
-                    "INSERT INTO roll_change (revision_id, booth_uid, additions, deletions, "
-                    "modifications, add_18_19, add_female, add_male, del_death, del_shifted, del_other) "
-                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
+                    "INSERT INTO roll_change (revision_id, ac_id, booth_uid, additions, deletions, "
+                    "modifications, add_18_19, add_female, add_male, del_death, del_shifted, "
+                    "del_other, source_doc) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
                     "ON CONFLICT (revision_id, booth_uid) DO UPDATE SET "
                     "additions = EXCLUDED.additions, deletions = EXCLUDED.deletions, "
                     "modifications = EXCLUDED.modifications, add_18_19 = EXCLUDED.add_18_19, "
                     "add_female = EXCLUDED.add_female, add_male = EXCLUDED.add_male, "
                     "del_death = EXCLUDED.del_death, del_shifted = EXCLUDED.del_shifted, "
-                    "del_other = EXCLUDED.del_other",
-                    (revision_id, booth_uid, c.additions, c.deletions, c.modifications,
-                     c.add_18_19, c.add_female, c.add_male, c.del_death, c.del_shifted, c.del_other),
+                    "del_other = EXCLUDED.del_other, source_doc = EXCLUDED.source_doc",
+                    (revision_id, scope.ac_id, booth_uid, c.additions, c.deletions,
+                     c.modifications, c.add_18_19, c.add_female, c.add_male, c.del_death,
+                     c.del_shifted, c.del_other, source_doc),
                 )
                 stats["changes"] += 1
             else:
                 cur.execute(
-                    "INSERT INTO roll_snapshot (revision_id, booth_uid, electors, male, female, other, "
-                    "age_18_19, age_20_29, age_30_39, age_40_49, age_50_59, age_60p) "
-                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
+                    "INSERT INTO roll_snapshot (revision_id, ac_id, booth_uid, electors, male, "
+                    "female, other, age_18_19, age_20_29, age_30_39, age_40_49, age_50_59, "
+                    "age_60p, source_doc) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
                     "ON CONFLICT (revision_id, booth_uid) DO UPDATE SET electors = EXCLUDED.electors, "
                     "male = EXCLUDED.male, female = EXCLUDED.female, other = EXCLUDED.other, "
                     "age_18_19 = EXCLUDED.age_18_19, age_20_29 = EXCLUDED.age_20_29, "
                     "age_30_39 = EXCLUDED.age_30_39, age_40_49 = EXCLUDED.age_40_49, "
-                    "age_50_59 = EXCLUDED.age_50_59, age_60p = EXCLUDED.age_60p",
-                    (revision_id, booth_uid, c.electors, c.male, c.female, c.other,
-                     c.age_18_19, c.age_20_29, c.age_30_39, c.age_40_49, c.age_50_59, c.age_60p),
+                    "age_50_59 = EXCLUDED.age_50_59, age_60p = EXCLUDED.age_60p, "
+                    "source_doc = EXCLUDED.source_doc",
+                    (revision_id, scope.ac_id, booth_uid, c.electors, c.male, c.female,
+                     c.other, c.age_18_19, c.age_20_29, c.age_30_39, c.age_40_49,
+                     c.age_50_59, c.age_60p, source_doc),
                 )
                 stats["snapshots"] += 1
                 if write_surnames and c.surnames:
@@ -397,7 +450,7 @@ def load(results: list[RollCounts], revision_label: str, revision_date: str,
         if write_surnames and surname_totals:
             from analytics.caste_estimate import write_surname_estimates
 
-            stats["surname_rows"] = write_surname_estimates(cur, surname_totals)
+            stats["surname_rows"] = write_surname_estimates(cur, surname_totals, scope.ac_id)
 
     return stats
 
@@ -456,6 +509,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--post-sir", action="store_true", help="revision follows a Special Intensive Revision")
     ap.add_argument("--election", default="VS-2024",
                     help="election whose crosswalk maps PS numbers to booths")
+    add_ac_argument(ap)
+    ap.add_argument("--link-election", metavar="LABEL",
+                    help="record this revision as the roll the named election was "
+                         "fought on (election_roll_link). Turnout and new-voter share "
+                         "are NULL until a mother roll is linked. Mother rolls only.")
     ap.add_argument("--no-surnames", action="store_true", help="skip surname aggregation")
     ap.add_argument("--load", action="store_true")
     ap.add_argument("--force", action="store_true")
@@ -509,9 +567,24 @@ def _run(args, path: Path, provenance: dict, kind: str) -> int:
             log.error("Run scripts/purge_roll_cache.py --delete, then retry.")
             return 3
 
-    stats = load(results, args.revision, args.date, args.supplement,
-                 election_label=args.election, is_post_sir=args.post_sir,
-                 write_surnames=not args.no_surnames)
+    from common.db import cursor
+
+    try:
+        with cursor() as cur:
+            scope = resolve_election(cur, args.election, ac_number=args.ac)
+    except (AmbiguousScope, ValueError) as exc:
+        log.error("%s", exc)
+        return 2
+    log.info("loading into %s", scope)
+
+    if args.link_election and args.supplement:
+        log.error("--link-election names the roll an election was fought on, which is a "
+                  "mother roll. A supplement cannot be that roll.")
+        return 2
+
+    stats = load(results, args.revision, args.date, args.supplement, scope,
+                 is_post_sir=args.post_sir, write_surnames=not args.no_surnames,
+                 source_doc=path.name, link_election=args.link_election)
     log.info("loaded: %(snapshots)d snapshot(s), %(changes)d change row(s), "
              "%(surname_rows)d surname estimate row(s), %(unmatched_ps)d unmatched section(s)", stats)
     if provenance.get("sha256"):
