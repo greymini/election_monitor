@@ -252,6 +252,12 @@ def to_latin(text: str | None) -> str:
         from indic_transliteration.sanscript import transliterate
 
         latin = transliterate(t, sanscript.DEVANAGARI, sanscript.ITRANS)
+        # ITRANS writes anusvara as `M`, so आनंद came out "anamd" and अंसारी
+        # "amsari" - while the fallback, every test and every Latin roll print
+        # "anand" and "ansari". The tests only passed because the library was
+        # missing from the dev environment and the fallback ran instead (A7's
+        # shape). Names are romanised with n, so the library path is too.
+        latin = latin.replace("M", "n")
         latin = re.sub(r"[~^\.]", "", latin)
         return _WS_RE.sub(" ", latin).strip().lower()
     except Exception:

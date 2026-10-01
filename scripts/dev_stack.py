@@ -22,8 +22,9 @@ views refresh, the loaders run, and the API answers from real rows.
 The wheel's PostgreSQL is minimal - plpgsql and pgvector, no PostGIS, no
 pg_trgm, no unaccent - which is what finding N4 and the header of
 0001_extensions.sql are about. The schema detects what it has and declares its
-two geometry columns accordingly, so this stack is the same schema as the
-deployment, not a reduced one.
+two geometry columns accordingly - in this repository there are none: D-006
+stores lon/lat and GeoJSON, so the schema needs only pgvector and this stack is
+the same schema as the deployment, not a reduced one.
 
 **The data is synthetic.** Only the published AC totals are real, and they come
 from the seed, which labels them as secondary and needing verification. The
@@ -79,7 +80,7 @@ DEV_USERS = [
 # crosswalk binds the older elections' PS numbers onto those booths, and the
 # roll has to be linked to an election before any turnout figure exists.
 STEPS = ["migrate", "seed", "generate", "ps_list", "form20", "crosswalk", "roll",
-         "refresh", "users"]
+         "geo", "refresh", "users"]
 
 
 # ---------------------------------------------------------------------------
@@ -231,23 +232,21 @@ def step_migrate(py: str) -> None:
 
 
 def report_capabilities() -> None:
-    """Say out loud which optional extensions this cluster has (N4)."""
+    """Say which extensions this cluster has.
+
+    The OneDrive copy recorded optional extensions in a `schema_capability`
+    table and declared `booth.geom` with whichever geometry type existed. This
+    repository removed PostGIS differently (DECISIONS.md D-006: lon/lat columns
+    and GeoJSON boundaries), so there is nothing to detect: `vector` is the one
+    requirement, and this reports what is installed.
+    """
     import psycopg
 
     with psycopg.connect(os.environ["DATABASE_URL"], row_factory=psycopg.rows.dict_row) as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT name, present FROM schema_capability ORDER BY name")
+            cur.execute("SELECT extname, extversion FROM pg_extension ORDER BY extname")
             rows = cur.fetchall()
-            cur.execute("SELECT pg_typeof(geom)::TEXT AS t FROM booth LIMIT 1")
-            sample = cur.fetchone()
-            if sample is None:
-                cur.execute(
-                    "SELECT format_type(atttypid, atttypmod) AS t FROM pg_attribute "
-                    "WHERE attrelid = 'booth'::regclass AND attname = 'geom'")
-                sample = cur.fetchone()
-    have = ", ".join(f"{r['name']}={'yes' if r['present'] else 'no'}" for r in rows)
-    log(f"optional capabilities: {have}")
-    log(f"booth.geom is {sample['t'] if sample else 'unknown'}")
+    log("extensions: " + ", ".join(f"{r['extname']} {r['extversion']}" for r in rows))
 
 
 def step_seed(py: str) -> None:
@@ -339,6 +338,13 @@ def step_roll(py: str) -> None:
             run(cmd, f"parse_roll {d['path']}")
 
 
+def step_geo(py: str, args) -> None:
+    """Synthetic area outlines and booth points, so the map has something to
+    draw. Generated stations cannot be geocoded; see scripts/dev_geo.py."""
+    run([py, "-m", "scripts.dev_geo", "--ac", str(args.ac), "--seed", str(args.seed)],
+        "scripts.dev_geo")
+
+
 def step_refresh(py: str) -> None:
     # --blocking: REFRESH ... CONCURRENTLY cannot run on a view that has never
     # been populated, which is every view in a freshly built stack. refresh.py
@@ -411,6 +417,7 @@ STEP_FUNCS = {
     "form20": lambda py, args: step_form20(py),
     "crosswalk": lambda py, args: step_crosswalk(py),
     "roll": lambda py, args: step_roll(py),
+    "geo": step_geo,
     "refresh": lambda py, args: step_refresh(py),
     "users": lambda py, args: step_users(py),
 }
@@ -513,6 +520,11 @@ def serve() -> None:
         f"API and PostgreSQL)")
     import uvicorn
 
+    # uvicorn imports the app in this process, where sys.path[0] is scripts/ -
+    # build_env's PYTHONPATH only reaches child processes. Without this the
+    # API dies on "No module named 'api'" after a build that succeeded.
+    if str(APP_ROOT) not in sys.path:
+        sys.path.insert(0, str(APP_ROOT))
     uvicorn.run("api.main:app", host="127.0.0.1", port=API_PORT, log_level="info")
 
 

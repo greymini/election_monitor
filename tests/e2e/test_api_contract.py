@@ -85,25 +85,12 @@ BODIES = {
 # not `skip`: a skip says nothing, whereas a strict xfail fails the moment the
 # endpoint starts working and so forces this entry to be removed with the fix.
 #
-# N15 is one defect with a long tail. `0015_metrics.sql` rebuilt the metric
-# views and renamed columns - `votes_counted` to `votes_polled`, `total_valid`
-# to `valid_votes` - and the handlers were never updated. Three references are
-# fixed; these two handlers select several more stale names each
-# (`electors_now` in the booth card's roll block, and more behind it in
-# `/summary`), and getting them right means reconciling each SELECT list
-# against the view it reads, not renaming by sight. That is the rest of
-# FRONTEND_HARDENING.md section 2 and is not started.
-#
-# Both have returned 500 since 0015 was written. Neither page has ever loaded
-# against a database, which is why nothing noticed.
-KNOWN_BROKEN = {
-    ("GET", "/acs/{ac_number}/summary"):
-        "N15: selects stale metric-view columns renamed by 0015 (total_valid, "
-        "and more behind it). The Overview page cannot load.",
-    ("GET", "/acs/{ac_number}/booths/{booth_uid}/card"):
-        "N15: api/booth_card.py selects electors_now and other names the roll "
-        "and metric views no longer have. The booth card cannot load.",
-}
+# Empty since 1 Oct 2026. The two N15 entries - /summary and the booth card,
+# both 500 since 0015 renamed the metric-view columns - were cleared when the
+# OneDrive patches were ported: /summary had already been reconciled against
+# the view in this repository, and api/booth_card.py was reconciled against
+# mv_new_voter_share and the drawer's contract then.
+KNOWN_BROKEN: dict[tuple[str, str], str] = {}
 
 
 def known_broken(endpoint: Endpoint, broken: dict | None = None):
@@ -223,8 +210,18 @@ def ids(loaded_dataset, db_url):
         with conn.cursor() as cur:
             cur.execute("SELECT ac_number FROM ac WHERE ac_number = 32")
             ac_number = cur.fetchone()["ac_number"]
-            cur.execute("SELECT booth_uid FROM booth WHERE ac_id = "
-                        "(SELECT ac_id FROM ac WHERE ac_number = 32) ORDER BY booth_uid LIMIT 1")
+            cur.execute("SELECT block_id FROM block b JOIN ac a USING (ac_id) "
+                        "WHERE a.ac_number = 32 ORDER BY block_id")
+            blocks = [r["block_id"] for r in cur.fetchall()]
+            # One booth is used for every role, so it has to be one every role
+            # may see: in the block user's block (the second, see `users`).
+            # This took the AC's first booth, which is in the first block, and
+            # the block user correctly got 403 - unnoticed while the card route
+            # was a recorded 500 and the sweep never reached a real answer.
+            block_of_block_user = blocks[1] if len(blocks) > 1 else blocks[0]
+            cur.execute("SELECT b.booth_uid FROM booth b JOIN area a ON a.area_id = b.area_id "
+                        "WHERE a.block_id = %s AND b.is_active ORDER BY b.booth_uid LIMIT 1",
+                        (block_of_block_user,))
             booth_uid = cur.fetchone()["booth_uid"]
             # `review_queue.id`, not `item_id`: the POST path parameter is
             # named `item_id` and the listing returns `id`. Worth a note rather
@@ -233,9 +230,6 @@ def ids(loaded_dataset, db_url):
                         "ORDER BY id LIMIT 1")
             row = cur.fetchone()
             review_item_id = row["id"] if row else 1
-            cur.execute("SELECT block_id FROM block b JOIN ac a USING (ac_id) "
-                        "WHERE a.ac_number = 32 ORDER BY block_id")
-            blocks = [r["block_id"] for r in cur.fetchall()]
             # The booth PS 1 already maps to, so the POST /admin/crosswalk the
             # sweep sends is provably a no-op. The sweep has to call every
             # route, and this one rewrites a crosswalk binding - pointing it at

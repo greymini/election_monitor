@@ -78,7 +78,12 @@ def db_url() -> str:
                 "like a throwaway. These tests drop and rebuild the schema; "
                 "refusing to run."
             )
-        return url
+        # `yield`, not `return`: the in-process branch below makes this a
+        # generator, and a generator fixture that returns without yielding is
+        # "db_url did not yield a value" - every e2e test errored the moment a
+        # URL was supplied, which is the documented way to run them.
+        yield url
+        return
 
     if not pgserver_available():
         pytest.skip(SKIP_REASON)

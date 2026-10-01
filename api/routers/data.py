@@ -297,8 +297,17 @@ def booths_geojson(
                                         AND {election_join}
         LEFT JOIN mv_booth_priority p ON p.booth_uid = b.booth_uid
                                      AND p.election_id = w.election_id
-        LEFT JOIN booth_crosswalk x ON x.booth_uid = b.booth_uid
-                                   AND x.ps_number = b.current_ps_number
+        -- One crosswalk verdict per booth, for the selected election. This
+        -- joined on (booth_uid, current_ps_number) alone, but the crosswalk
+        -- holds a row per *election*, so a booth whose number recurred in older
+        -- elections came back two or three times - 150 features for 124 booths
+        -- on the dev stack, each duplicate drawn on top of the first. The
+        -- weakest link and "all reviewed" are what a merged booth can claim.
+        LEFT JOIN LATERAL (
+            SELECT MIN(cx.confidence) AS confidence, BOOL_AND(cx.reviewed) AS reviewed
+            FROM booth_crosswalk cx
+            WHERE cx.booth_uid = b.booth_uid AND cx.election_id = w.election_id
+        ) x ON TRUE
         WHERE {where}
         ORDER BY b.booth_uid
         """,
@@ -888,8 +897,16 @@ def boundaries(user: CurrentUser, ac: CurrentAC) -> dict:
         "blocks": {"type": "FeatureCollection", "features": blocks},
         "areas": {"type": "FeatureCollection", "features": areas_},
         "sources": built.get("sources", {}),
-        "warnings": [w for w in built.get("warnings", [])
-                     if w["ac_number"] == ac.ac_number],
+        # A "no shape for this block" warning is about the source file; once a
+        # shape has been loaded for that block some other way (the dev stack's
+        # synthetic ULB, or a hand-digitised one) it is no longer true here.
+        "warnings": [
+            w for w in built.get("warnings", [])
+            if w["ac_number"] == ac.ac_number
+            and not (w["code"] == "seed_block_without_shape"
+                     and w.get("params", {}).get("block")
+                     in {b["properties"].get("name_en") for b in blocks})
+        ],
     }
 
 

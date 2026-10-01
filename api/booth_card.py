@@ -32,17 +32,22 @@ def build_booth_card(booth_uid: str, include_caste: bool = True,
         raise LookupError(booth_uid)
 
     results = query(
-        "SELECT election_label, election_type, election_year, electors, votes_polled, "
-        "jmm, bjp, ajsu, jlkm, inc, rjd, jvm, others, nota, winner_party, runner_party, "
-        "margin_votes, margin_pct, turnout_pct, source_doc, source_page, ps_numbers "
+        "SELECT election_label, election_type, election_year, electors, valid_votes, "
+        "votes_polled, jmm, bjp, ajsu, jlkm, inc, rjd, jvm, others, nota, winner_party, "
+        "runner_party, margin_votes, margin_pct, signed_margin_pct, turnout_pct, "
+        "source_doc, source_page, ps_numbers "
         "FROM mv_result_booth_wide WHERE booth_uid = %s "
         "ORDER BY election_year DESC, election_type",
         (booth_uid,),
     )
 
+    # `revision` and the source pair are what the drawer reads; the names here
+    # were `label` with no provenance, so the drawer's roll tab could never
+    # say which document a count came from.
     rolls = query(
-        "SELECT r.label, r.revision_date, s.electors, s.male, s.female, s.other, "
-        "s.age_18_19, s.age_20_29, s.age_30_39, s.age_40_49, s.age_50_59, s.age_60p "
+        "SELECT r.label AS revision, r.revision_date, s.electors, s.male, s.female, "
+        "s.other, s.age_18_19, s.age_20_29, s.age_30_39, s.age_40_49, s.age_50_59, "
+        "s.age_60p, s.source_doc, s.source_page "
         "FROM roll_snapshot s JOIN roll_revision r ON r.revision_id = s.revision_id "
         "WHERE s.booth_uid = %s ORDER BY r.revision_date DESC LIMIT 6",
         (booth_uid,),
@@ -56,21 +61,36 @@ def build_booth_card(booth_uid: str, include_caste: bool = True,
         (booth_uid,),
     )
 
+    # The baseline election's window. These selected electors_now, net_change,
+    # add_18_19, add_female and deleted_pct - columns of the view before 0015
+    # rebuilt it - so every booth card was a 500 and the map drawer could never
+    # open (the xfail NEXT_STEPS Step 1 names). Always an object, with the
+    # reason when it is empty, because the drawer renders "—" plus a reason
+    # rather than guessing why a figure is missing.
     new_voters = query_one(
-        "SELECT electors_now, additions, deletions, net_change, add_18_19, add_female, "
-        "new_voter_pct, deleted_pct FROM mv_new_voter_share WHERE booth_uid = %s",
+        "SELECT n.additions, n.deletions, n.modifications, n.electors, "
+        "n.electors_start, n.new_voter_pct, n.net_roll_change_pct "
+        "FROM mv_new_voter_share n JOIN election e ON e.election_id = n.election_id "
+        "WHERE n.booth_uid = %s AND e.is_baseline",
         (booth_uid,),
+    ) or {"additions": None, "new_voter_pct": None}
+    new_voters["null_reason"] = (
+        None if new_voters.get("new_voter_pct") is not None
+        else "no roll revision is linked to both ends of the window"
     )
 
     priority = query_one(
         "SELECT margin_pct, margin_votes, new_voter_pct, margin_stddev, floating_pct, "
-        "priority_score, priority_quartile, winner_party, runner_party "
+        "priority_score, priority_quartile, winner_party, runner_party, "
+        "inputs_used, weight_used "
         "FROM mv_booth_priority WHERE booth_uid = %s",
         (booth_uid,),
-    )
+    ) or {"priority_score": None, "priority_quartile": None,
+          "inputs_used": [], "weight_used": None}
 
     crosswalk = query(
-        "SELECT e.label, x.ps_number, x.match_method, x.confidence, x.reviewed "
+        "SELECT e.label AS election_label, x.ps_number, x.match_method, x.confidence, "
+        "x.reviewed "
         "FROM booth_crosswalk x JOIN election e ON e.election_id = x.election_id "
         "WHERE x.booth_uid = %s ORDER BY e.year DESC",
         (booth_uid,),
@@ -79,7 +99,7 @@ def build_booth_card(booth_uid: str, include_caste: bool = True,
     card = {
         "booth": booth,
         "results": results,
-        "roll_snapshots": rolls,
+        "roll": rolls,
         "roll_changes": changes,
         "new_voters": new_voters,
         "priority": priority,
@@ -109,7 +129,7 @@ def _caveats(crosswalk: list[dict]) -> list[str]:
     notes: list[str] = []
     weak = [c for c in crosswalk if (c["confidence"] or 0) < 0.85 and not c["reviewed"]]
     if weak:
-        years = ", ".join(str(c["label"]) for c in weak)
+        years = ", ".join(str(c["election_label"]) for c in weak)
         notes.append(
             f"Cross-year matching is unconfirmed for {years} "
             f"(confidence below 0.85, not yet reviewed). Treat swing against those years as provisional."

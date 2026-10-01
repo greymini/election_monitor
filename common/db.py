@@ -24,13 +24,34 @@ _pool: ConnectionPool | None = None
 _ro_pool: ConnectionPool | None = None
 
 
+def _configure(conn: psycopg.Connection) -> None:
+    """Load NUMERIC as float on every pooled connection.
+
+    psycopg returns NUMERIC as `decimal.Decimal`, and every route is annotated
+    `-> dict`, so FastAPI serialises through pydantic v2 - which writes a
+    Decimal as a JSON *string*. Every percentage, margin, swing and score in the
+    API therefore reached the browser as "-25.29" rather than -25.29, and the
+    frontend's `typeof value === 'number'` checks treated all of them as
+    missing: the map coloured every booth grey. It was invisible until the API
+    first ran against a real database; fixtures are typed as numbers.
+
+    Nothing in the Python code relies on Decimal arithmetic over these values -
+    they are rounded display figures, and vote counts are INTEGER - so float is
+    the right type at this boundary.
+    """
+    from psycopg.types.numeric import FloatLoader
+
+    conn.adapters.register_loader("numeric", FloatLoader)
+
+
 def get_pool() -> ConnectionPool:
     global _pool
     if _pool is None:
         s = get_settings()
         if not s.database_url:
             raise RuntimeError("DATABASE_URL is not set")
-        _pool = ConnectionPool(s.database_url, min_size=1, max_size=8, kwargs={"row_factory": dict_row})
+        _pool = ConnectionPool(s.database_url, min_size=1, max_size=8, kwargs={"row_factory": dict_row},
+                               configure=_configure)
     return _pool
 
 
@@ -41,7 +62,8 @@ def get_readonly_pool() -> ConnectionPool:
         url = s.readonly_db_url or s.database_url
         if not url:
             raise RuntimeError("READONLY_DB_URL / DATABASE_URL is not set")
-        _ro_pool = ConnectionPool(url, min_size=0, max_size=4, kwargs={"row_factory": dict_row})
+        _ro_pool = ConnectionPool(url, min_size=0, max_size=4, kwargs={"row_factory": dict_row},
+                                   configure=_configure)
     return _ro_pool
 
 
