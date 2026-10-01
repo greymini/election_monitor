@@ -203,7 +203,8 @@
     "confidenceBand": "Confidence: {{band}}",
     "pageUnknown": "Read from {{doc}}, but the page was not recorded.",
     "fixtureLabel": "fixture",
-    "fixtureSource": "Fixture data. {{doc}} is an example, not a loaded document."
+    "fixtureSource": "Fixture data. {{doc}} is an example, not a loaded document.",
+    "sourceNotServed": "{{doc}}, page {{page}}. Source documents are not served by this deployment; open the file from the document store."
   },
   "health": {
     "heading": "Data health",

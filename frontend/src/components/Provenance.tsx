@@ -119,10 +119,20 @@ export function SourceLink({
     )
   }
 
-  // The raw/ tree is served read-only by nginx at /raw. #page= is honoured by
-  // every embedded PDF viewer, so a figure is one click from the page it was
-  // read off.
-  const href = `/raw/${doc}#page=${page}`
+  // Linked only where something serves the documents. This pointed at /raw/,
+  // which neither nginx nor the API serves, so every source link opened the
+  // dashboard itself. VITE_SOURCE_DOCS_URL names wherever they are published
+  // (a bucket, a file server); #page= is honoured by every PDF viewer.
+  const base = import.meta.env.VITE_SOURCE_DOCS_URL
+  if (!base) {
+    return (
+      <span className="text-2xs" style={{ color: 'var(--text-muted)' }}
+            title={t('prov.sourceNotServed', { doc, page })}>
+        {compact ? `p${page}` : `${doc} p${page}`}
+      </span>
+    )
+  }
+  const href = `${base.replace(/\/$/, '')}/${encodeURIComponent(doc)}#page=${page}`
   return (
     <a
       className="text-2xs underline decoration-dotted"
