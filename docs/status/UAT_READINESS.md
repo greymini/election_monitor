@@ -139,7 +139,7 @@ There are two implementations that must agree, so there are four suites.
 | `tests/e2e/test_metrics_sql.py` (14 tests) | the same fixtures through the **views** in `db/migrations/0015_metrics.sql` | **RUN — 14 passed** |
 | `tests/e2e/test_metric_parity_sql.py` (79 tests) | the cases again against the full schema, plus a row-by-row recomputation of `mv_result_booth_wide` and the N2 check that the AC winner equals the booth-table sum | **RUN — 76 passed, 3 skipped** (the 3 need booth results the seed does not load — a data gap, not an environment one) |
 | `tests/e2e/test_api_routes_run.py` (14 tests) | every read route executed against the real schema, for a real logged-in user: no 5xx, the response shape present, and no number reported where nothing is loaded | **RUN — 14 passed.** Found N7 and N11, two endpoints that returned 500 on every request, and N12, which meant nobody could log in at all |
-| `tests/test_fixture_parity.py` (24 tests) | that the frontend fixture and `tests/metric_cases.py` come from one source and have not drifted; that 305 booths of 800–1,500 electors reconcile exactly to the published AC totals; and that the derived metrics are the product's own, not the fixture's arithmetic | **RUN — 24 passed** |
+| `tests/test_fixture_parity.py` (24 tests) | that the frontend fixture and `tests/metric_cases.py` come from one source and have not drifted; that the 367 real Form 20 polling stations reconcile exactly to the Form 20 EVM row and, with postal ballots, to the declared result (electorates are synthetic, 800–1,500); and that the derived metrics are the product's own, not the fixture's arithmetic | **RUN — 24 passed** |
 
 ### The schema has now been applied, and everything runs
 
@@ -216,9 +216,9 @@ and 9, and the three remaining skips are exactly it.
 
 | Metric | Hand-computed check | NULL rules covered |
 |---|---|---|
-| `valid_votes` | Giridih 2024 = 207,598 including NOTA | no result; all-None votes; a real zero is counted |
+| `valid_votes` | Giridih 2024 = 207,682 including NOTA (Form 20) | no result; all-None votes; a real zero is counted |
 | `votes_polled` | 1,000 + 12 = 1,012 | no result; missing `rejected` is zero, missing `valid` is NULL |
-| `turnout_pct` | 1,012 / 1,500 = 67.47; Giridih 2024 = 68.09 | electors unknown or zero (B4) |
+| `turnout_pct` | 1,012 / 1,500 = 67.47; Giridih 2024 = 68.16 (207,821 / 304,898) | electors unknown or zero (B4) |
 | `share_pct` | JMM 45.3, BJP 43.45, JLKM 5.2 vs published | no result |
 | `margin_votes` | 3,838 for Giridih 2024 | fewer than two candidates (not zero) |
 | `margin_pct` | **1.85%**, and 1.87% with the wrong denominator | as above (D1) |
@@ -323,7 +323,7 @@ Then two genuine defects:
   volatility happened to be missing, so every booth in the constituency showed
   one of two scores and the "which inputs contributed" line was decoration. It
   is computed by `analytics.metrics.priority_score` over real percentile ranks
-  now; 102 of the 305 booths score on partial weight, which is what makes that
+  now; some booths score on partial weight (re-count after the Form 20 load: 367 booths), which is what makes that
   line worth reading.
 
 ### Bundle size, N9

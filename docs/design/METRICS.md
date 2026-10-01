@@ -176,8 +176,8 @@ A zero and a NULL mean different things and the distinction is load-bearing:
 ### One denominator: valid votes including NOTA
 
 The ECI's published margin percentage divides by total valid votes with NOTA
-among them. Giridih 2024: a 3,838-vote margin over 207,598 valid votes is the
-published **1.85%**. Excluding NOTA's 2,004 votes gives 1.87%.
+among them. Giridih 2024 (Form 20): a 3,838-vote margin over 2,07,682 valid votes
+is the published **1.85%**. Excluding NOTA's 2,004 votes gives 1.87%.
 
 The audited views divided by a NOTA-excluding total while displaying a
 NOTA-including one in the same row, so the headline margin was wrong in the
@@ -275,15 +275,21 @@ denominator gives a percentage that is quietly wrong rather than visibly absent.
 
 ## Checking a figure by hand
 
-Giridih VS-2024, from the published result:
+Giridih VS-2024, from the Form 20 "Total Votes Polled" row (EVM + postal;
+`db/seed/form20/giridih_vs2024_form20.xlsx`):
 
 ```
-JMM   94,042        valid_votes = 94,042 + 90,204 + 10,787 + 2,004 (NOTA) + 10,561 (others)
-BJP   90,204                    = 207,598
+JMM   94,042        valid_votes  = 94,042 + 90,204 + 10,787 + 10,645 (11 others) + 2,004 (NOTA)
+BJP   90,204                     = 2,07,682      (EVM 2,05,777 + postal 1,905)
 JLKM  10,787        margin_votes = 94,042 − 90,204 = 3,838
-NOTA   2,004        margin_pct   = 100 × 3,838 / 207,598 = 1.849% → 1.85
-electors 3,04,898   turnout_pct  = 100 × 207,598 / 304,898 = 68.09%
+NOTA   2,004        margin_pct   = 100 × 3,838 / 2,07,682 = 1.848% → 1.85
+rejected 139        votes_polled = 2,07,682 + 139 = 2,07,821
+electors 3,04,898   turnout_pct  = 100 × 2,07,821 / 3,04,898 = 68.16%   (electors: published)
 ```
+
+Booth rows are EVM votes only: Form 20 reports postal ballots for the whole
+constituency, so a sum over booths is 2,05,777, and `mv_ac_summary` adds the
+postal rows from `result_ac_total` to reach the declared result.
 
 `python -m ingest.validate --ac 32 --strict` recomputes these from the base
 tables and asserts they equal both the view values and the published figures. If

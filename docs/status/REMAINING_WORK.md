@@ -45,13 +45,18 @@ This pass was stopped partway through Phase 4. Each item lists what is not yet w
 
 ## 3. Real data (the most important item)
 
-Nothing real is loaded. Every booth figure in the dashboard is mock data until these
-steps are done.
+**Giridih's VS-2024 and VS-2019 Form 20s are loaded** (2 Oct 2026, from the
+extracted tables in `backend/db/seed/form20/`, via `ingest.load_form20_tables`).
+Every result figure for those two elections is now the ECI's. What is still
+missing is everything a Form 20 does not contain: where each station is, who is
+on its roll, and the parties of eleven 2024 candidates.
 
 | # | Task | Resources needed |
 |---|---|---|
-| 3.1 | Giridih (32) VS-2024 Form 20 and polling-station list. Load them, then check the result: the margin must be 3,838 votes (1.85%), and one booth must match its PDF page by hand. | ECI Form 20 PDF (ceo.jharkhand.gov.in / Giridih district election office); 2024 polling-station list. |
-| 3.2 | VS-2019 and LS-2024 (AC segment) for Giridih, then the crosswalk review. | The same sources. **Someone to clear the crosswalk review queue** (a few dozen booths, about an afternoon). |
+| 3.1 | ~~Giridih VS-2024 Form 20.~~ **Done**: margin 3,838 (1.85%), 367 stations, reconciled to the printed EVM, postal and total rows. **Still needed:** the 2024 polling-station list (names, buildings, locations, wards/panchayats). Until then the 367 booths sit in a placeholder block "PS list not loaded" (3299) and have no map position. A person should also check one booth against the original Form 20 PDF page, because the xlsx is an extraction. | 2024 PS list (CEO Jharkhand / DEO Giridih). Original Form 20 PDFs for the hand check. |
+| 3.2 | ~~VS-2019 Form 20.~~ **Done**: margin 15,884, mapped to 2024 by PS number (r = 0.96; 367 crosswalk rows at 0.95, unreviewed, evidence in `crosswalk_audit`). **Still needed:** review that mapping against the 2019 and 2024 PS lists, and load LS-2024 for the AC segment. | 2019 PS list; LS-2024 Form 20 (Giridih segment). Someone to review the crosswalk. |
+| 3.1a | Party affiliation for the 11 VS-2024 and 10 VS-2019 candidates shown as "party not in source". Add rows to `backend/db/seed/form20/candidate_parties.csv` with a source, then re-run `python scripts/build_form20_seeds.py` and reload. | ECI candidate list / Form 7A, or the affidavits on MyNeta. |
+| 3.1b | Electors per AC: the 3,04,898 (2024) and 2,64,814 (2019) figures are secondary. Turnout depends on them. | ECI statistical report for the two elections. |
 | 3.3 | Electoral roll counts (mother roll and supplements), linked to elections with `parse_roll --link-election`. | CEO Jharkhand roll PDFs (Hindi, often scanned). **Tesseract with `hin` + `eng` traineddata and poppler (`pdftoppm`)** on the machine that parses. |
 | 3.4 | The five other ACs (31, 33, 42, 61, 65): verify the seeded totals against ECI and clear `verified=false`; then load their Form 20s and PS lists. | ECI results pages; a person to check each figure. |
 | 3.5 | Panchayat names (`db/seed/areas_panchayats.csv` is header-only for every AC). These come from the PS lists. | The PS lists from 3.1 / 3.4. |

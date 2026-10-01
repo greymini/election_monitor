@@ -97,6 +97,13 @@ that passes both branches' tests (see the merge commit). His additional work:
 | R-62 | `ingest/validate.py` | `form20_row_arithmetic` added the printed NOTA on top of a candidate sum that already included the NOTA row (since OD-N7), so every row failed. | same |
 | R-63 | `ingest/validate.py` | `--privacy`, which RUN.md says must report clean, could never pass: it flagged staff login phones and a migration checksum (hex digits matching the Aadhaar pattern). Exact `(table, column)` exemptions with reasons; a real leak is still found. | same |
 | R-64 | Docs | `docs/operations/RUN.md` rewritten. Every flag shown comes from the loader's own `--help`, and the run steps were executed on this branch. Closes O-13. | — |
+| R-66 | Data | Giridih booth results were synthetic, and the seeded totals carried invented figures: 2024 valid votes 207,598 (actually 207,682), "others" 10,561 (actually 10,645), and 2019 valid 168,000 / NOTA 2,100 / "JVM 14,000". The real VS-2024 and VS-2019 Form 20s are now loaded and every seeded figure is regenerated from them. | `tests/test_form20_tables.py`, `tests/e2e/test_form20_real.py` |
+| R-67 | Views | Postal ballots were in no view, so every constituency total was EVM-only. `mv_ac_summary` (0023) adds the per-candidate postal rows, and ranks the winner on EVM + postal as declared. The Form 20 gate checks booth sum + postal = published. | `tests/e2e/test_form20_real.py`, `tests/e2e/test_ingest_pipeline.py` |
+| R-68 | Views | Candidates with no recorded party would have merged into one bucket. Party `UNK` ("party not in source") is keyed per candidate, like IND. | `test_candidates_without_a_recorded_party_are_kept_apart` |
+| R-69 | API / UI | Only party codes were shown, never names; 11 of 14 candidates were invisible as "others". `/summary` names winner and runner-up, `GET /elections/{label}/candidates` lists everyone, and the booth card and table name candidates. | `tests/e2e/test_form20_real.py`, `form20Real.test.tsx` |
+| R-70 | UI | The Overview's margin chart used a hardcoded `PUBLISHED_MARGINS` list for unloaded years; the map said "no booths loaded" for 367 booths without locations. Both now come from the API. | `form20Real.test.tsx`, live smoke |
+| R-71 | Data | `candidate.is_winner` had no writer. The Form 20 loader sets it. | `test_the_winner_is_flagged` |
+| R-72 | Tests | The repo's `data/` ignore rule silently excluded `frontend/src/test/data/`, so the Vitest suites that import recorded responses failed on a clean checkout. The files are now tracked. | — |
 | R-65 | Tests | Live Playwright suite against the real API: every page for every role on a loaded and an empty constituency, URL gating, drawer tabs, map boundaries, scenario, CSV export, review-queue resolve. | `frontend/e2e/live/smoke.spec.ts` |
 
 ---
@@ -109,7 +116,10 @@ feature broken or misleading. Low = polish.
 | ID | Sev | Area | Issue | Why open / what is needed |
 |---|---|---|---|---|
 | O-01 | High | Auth | No rate limit or lockout on `/auth/login` and `/auth/otp`. Each new OTP allows 5 more guesses (audit E4). | Needs a design choice: in-process or Redis. See `REMAINING_WORK.md` §2. |
-| O-02 | High | Data | No real Form 20, PS list or roll has been loaded. All booth-level figures are synthetic. | Needs the documents (`REMAINING_WORK.md` §3). |
+| O-02 | High | Data | ~~No real Form 20 loaded.~~ Giridih VS-2024/VS-2019 Form 20 loaded (R-66). Still no PS list, roll or locations, so per-booth electors, turnout, new voters, map positions and community estimates are unavailable for real booths. | PS list and rolls (`REMAINING_WORK.md` §3). |
+| O-20 | Medium | Data | 11 of 14 VS-2024 candidates (and 10 of 12 in 2019) have no party in the loaded sources ("party not in source"). | `REMAINING_WORK.md` §3.1a. |
+| O-21 | Medium | Crosswalk | The 2019 -> 2024 booth mapping is by PS number, backed by vote correlation, but unreviewed (0.95). | Review against the PS lists (§3.2). |
+| O-22 | Low | Source | The Form 20 is an xlsx extraction of the PDF; the 2019 file had a page stamp interleaved in the last row of pages 1–11, which the parser recovers and the row arithmetic verifies. | Hand-check one booth per page against the PDF (§3.1). |
 | O-03 | High | Data | Five constituencies' seed figures are unverified (`verified=false`). | A person must check them against ECI results. |
 | O-04 | Medium | `ingest/parse_form20.py` | An unreadable cell still loads as 0 (audit C4). It is caught only by the constituency-total gate. | Send unreadable cells to the review queue, never to 0. |
 | O-05 | Medium | Loaders | No unique index on `(election_id, column_index)` for candidates (audit C6). This is closed in practice by the unresolved-column abort. | Add a migration. |

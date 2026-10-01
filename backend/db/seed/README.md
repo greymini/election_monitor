@@ -11,7 +11,8 @@ Loaded by `python -m db.seed.load_seed` (or `python -m db.apply_migrations --see
 | `communities.csv` | Community taxonomy for caste estimation | HLD §5 |
 | `surname_dict.csv` | Surname → community inference dictionary | Derived heuristic, see caveat below |
 | `elections.csv` | Election rows 2005–2024 | HLD §1.1 |
-| `ac_totals.csv` | AC-level headline totals used as the Form 20 validation target | HLD §1.1, **secondary sources — re-verify against ECI/CEO Form 20 before relying on them** |
+| `ac_totals.csv` | AC-level totals used as the Form 20 validation target | Giridih VS-2024 and VS-2019: generated from the ECI Form 20 in `form20/` by `scripts/build_form20_seeds.py` (votes incl. postal, postal, NOTA, rejected, polled). Electors and every other row: HLD §1.1, **secondary sources; re-verify against ECI before relying on them** |
+| `form20/` | The Giridih VS-2019 and VS-2024 Form 20 as extracted tables (xlsx, SHA-256 in its README), plus `candidate_parties.csv` | ECI Form 20; party affiliations each carry their own source |
 | `news_sources.csv` | Crawl list | HLD §4 |
 | `knowledge_cards/` | Curated cards for the chatbot | Written by the analyst team |
 

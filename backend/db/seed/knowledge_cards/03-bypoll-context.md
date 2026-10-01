@@ -9,7 +9,8 @@ last_reviewed: 2026-09-20
 in_prompt: true
 ---
 
-The sitting MLA, Sudivya Kumar "Sonu" (JMM), elected in 2019 and again in 2024,
+The sitting MLA, Sudivya Kumar "Sonu" (JMM), elected in 2019 (margin 15,884) and
+again in 2024 (margin 3,838, per the Form 20s; see the result cards),
 died on 6 September 2026. The seat is vacant and the Election Commission must
 hold a by-election within six months of the vacancy, so roughly by early
 March 2027.

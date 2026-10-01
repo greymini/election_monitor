@@ -12,7 +12,8 @@ from tests.e2e.conftest import requires_db
 
 pytestmark = requires_db
 
-GIRIDIH_CARDS = {"baseline-2024", "ls-vs-split-2024", "bypoll-context", "geography"}
+GIRIDIH_CARDS = {"baseline-2024", "result-2019", "ls-vs-split-2024", "bypoll-context",
+                 "geography"}
 GENERAL_CARDS = {"caste-guardrails", "data-provenance"}
 
 
