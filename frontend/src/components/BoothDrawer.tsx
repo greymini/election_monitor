@@ -3,11 +3,12 @@ import { createPortal } from 'react-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 
+import PartyChip from './PartyChip'
 import { Estimate, FixtureBanner, Missing, SourceLink, Value } from './Provenance'
 import { ErrorState, Loading } from './States'
 import type { AcState } from '../lib/ac'
 import { api } from '../lib/api'
-import { num, pct } from '../lib/format'
+import { num, pct, signed } from '../lib/format'
 import { partyColor } from '../lib/tokens'
 
 /**
@@ -36,13 +37,40 @@ interface ResultRow {
   others: number | null
   nota: number | null
   winner_party: string | null
+  winner_candidate?: string | null
   runner_party: string | null
+  contestants?: number | null
+  rejected?: number | null
+  tendered?: number | null
+  /** Every candidate at this booth, by name (0023). */
+  candidates?: BoothCandidate[]
   margin_votes: number | null
   margin_pct: number | null
   signed_margin_pct: number | null
   source_doc: string | null
   source_page: number | null
   ps_numbers: string | null
+}
+
+interface BoothCandidate {
+  candidate: string
+  party: string | null
+  contestant: string | null
+  votes: number
+  share_pct: number | null
+}
+
+/** Share change for a candidate who also stood in the next older election
+ *  loaded for this booth, in percentage points. Matched by name: the two
+ *  main Giridih candidates contested both 2019 and 2024. */
+export function shareChange(results: ResultRow[], index: number,
+                            candidate: string): number | null {
+  const current = results[index]
+  const older = results.slice(index + 1).find((r) => r.election_type === current.election_type)
+  const now = current.candidates?.find((c) => c.candidate === candidate)
+  const then = older?.candidates?.find((c) => c.candidate === candidate)
+  if (now?.share_pct == null || then?.share_pct == null) return null
+  return Math.round(100 * (Number(now.share_pct) - Number(then.share_pct))) / 100
 }
 
 interface BoothCard {
@@ -248,34 +276,66 @@ export default function BoothDrawer(
                   </p>
                 : (
                   <div className="space-y-2">
-                    {card.results.map((r) => (
+                    {card.results.map((r, index) => (
                       <section key={r.election_label} className="card px-3 py-2">
                         <div className="flex items-baseline justify-between gap-2">
                           <strong className="text-sm">{r.election_label}</strong>
                           <SourceLink doc={r.source_doc} page={r.source_page} compact />
                         </div>
-                        <table className="mt-1 w-full text-2xs">
-                          <tbody>
-                            {([['JMM', r.jmm], ['BJP', r.bjp], ['JLKM', r.jlkm],
-                               ['OTH', r.others], ['NOTA', r.nota]] as const).map(
-                              ([party, votes]) => (
-                                <tr key={party}>
-                                  <td style={{ color: partyColor(party) }}>{party}</td>
-                                  <td className="tnum text-right">
-                                    <Value value={votes} reason={t('card.notInThisPoll')}
-                                           render={(v) => num(v)} />
-                                  </td>
-                                  <td className="tnum text-right"
-                                      style={{ color: 'var(--text-muted)' }}>
-                                    {votes !== null && r.valid_votes
-                                      ? pct(Math.round((1000 * votes) / r.valid_votes) / 10)
-                                      : ''}
-                                  </td>
-                                </tr>
-                              ),
-                            )}
-                          </tbody>
-                        </table>
+                        {r.candidates?.length ? (
+                          <table className="mt-1 w-full text-2xs" data-testid="booth-candidates">
+                            <tbody>
+                              {r.candidates.map((c) => {
+                                const change = c.party === 'NOTA' ? null
+                                  : shareChange(card.results, index, c.candidate)
+                                return (
+                                  <tr key={c.candidate}>
+                                    <td className="pr-1">
+                                      <span className={c.candidate === r.winner_candidate ? 'font-semibold' : undefined}>
+                                        {c.candidate}
+                                      </span>
+                                      {c.party !== 'NOTA' && (
+                                        <span className="ml-1"><PartyChip abbr={c.party} /></span>
+                                      )}
+                                    </td>
+                                    <td className="tnum text-right">{num(c.votes)}</td>
+                                    <td className="tnum text-right" style={{ color: 'var(--text-muted)' }}>
+                                      {pct(c.share_pct == null ? null : Number(c.share_pct))}
+                                    </td>
+                                    <td className="tnum w-12 text-right text-3xs"
+                                        style={{ color: 'var(--text-muted)' }}
+                                        title={change == null ? undefined : t('card.shareChangeHelp')}>
+                                      {change == null ? '' : `${signed(change)} pt`}
+                                    </td>
+                                  </tr>
+                                )
+                              })}
+                            </tbody>
+                          </table>
+                        ) : (
+                          <table className="mt-1 w-full text-2xs">
+                            <tbody>
+                              {([['JMM', r.jmm], ['BJP', r.bjp], ['JLKM', r.jlkm],
+                                 ['OTH', r.others], ['NOTA', r.nota]] as const).map(
+                                ([party, votes]) => (
+                                  <tr key={party}>
+                                    <td style={{ color: partyColor(party) }}>{party}</td>
+                                    <td className="tnum text-right">
+                                      <Value value={votes} reason={t('card.notInThisPoll')}
+                                             render={(v) => num(v)} />
+                                    </td>
+                                    <td className="tnum text-right"
+                                        style={{ color: 'var(--text-muted)' }}>
+                                      {votes !== null && r.valid_votes
+                                        ? pct(Math.round((1000 * votes) / r.valid_votes) / 10)
+                                        : ''}
+                                    </td>
+                                  </tr>
+                                ),
+                              )}
+                            </tbody>
+                          </table>
+                        )}
                         <dl className="mt-1.5 grid grid-cols-2 gap-x-2 gap-y-0.5 text-2xs">
                           <dt style={{ color: 'var(--text-muted)' }}>{t('common.margin')}</dt>
                           <dd className="tnum text-right">
@@ -291,6 +351,12 @@ export default function BoothDrawer(
                           <dd className="tnum text-right">
                             <Value value={r.turnout_pct} reason={t('overview.noRollLinked')}
                                    render={(v) => pct(v)} />
+                          </dd>
+                          <dt style={{ color: 'var(--text-muted)' }}>{t('card.validVotes')}</dt>
+                          <dd className="tnum text-right">{num(r.valid_votes)}</dd>
+                          <dt style={{ color: 'var(--text-muted)' }}>{t('card.rejectedTendered')}</dt>
+                          <dd className="tnum text-right">
+                            {num(r.rejected ?? null)} / {num(r.tendered ?? null)}
                           </dd>
                           <dt style={{ color: 'var(--text-muted)' }}>PS</dt>
                           <dd className="text-right">{r.ps_numbers ?? '—'}</dd>
@@ -402,12 +468,14 @@ export default function BoothDrawer(
                 <section className="card px-3 py-2">
                   <strong className="text-sm">{t('card.documents')}</strong>
                   <ul className="mt-1 space-y-0.5 text-2xs">
-                    {[...new Set(card.results.map((r) => r.source_doc).filter(Boolean))]
-                      .map((doc) => (
-                        <li key={doc as string}>
-                          <SourceLink doc={doc as string} page={null} />
-                        </li>
-                      ))}
+                    {/* One line per election: the Form 20 file and the page this
+                        booth's row is printed on. */}
+                    {card.results.filter((r) => r.source_doc).map((r) => (
+                      <li key={r.election_label}>
+                        <span style={{ color: 'var(--text-muted)' }}>{r.election_label}: </span>
+                        <SourceLink doc={r.source_doc} page={r.source_page} />
+                      </li>
+                    ))}
                     {card.roll.map((r) => (
                       <li key={r.revision}>
                         <SourceLink doc={r.source_doc} page={r.source_page} />

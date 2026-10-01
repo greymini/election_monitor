@@ -92,7 +92,24 @@
     "daysLeft_one": "{{formatted}} दिन शेष",
     "daysLeft_other": "{{formatted}} दिन शेष",
     "fixtureSource": "नमूना आँकड़े — किसी दस्तावेज़ से नहीं",
-    "marginSubline": "{{runner}} पर {{pct}}"
+    "marginSubline": "{{runner}} पर {{pct}}",
+    "syntheticSource": "जनरेट किए गए परीक्षण दस्तावेज़, वास्तविक परिणाम नहीं",
+    "mixedSource": "जहाँ लोड है वहाँ फ़ॉर्म 20; बाकी वर्षों के प्रकाशित योग (हल्के बार)",
+    "publishedBarsNote": "हल्के बार प्रकाशित योग हैं, लोड किया गया फ़ॉर्म 20 नहीं।",
+    "turnoutPublishedElectors": "{{label}} · मतदाता संख्या प्रकाशित आँकड़ों से, कोई सूची लिंक नहीं",
+    "published": "प्रकाशित",
+    "syntheticDoc": "कृत्रिम",
+    "resultHeading": "घोषित परिणाम, {{label}}",
+    "resultLine": "{{winner}} ने {{winnerVotes}} मत पाकर {{runner}} ({{runnerVotes}}) को हराया: अंतर {{margin}} (वैध मतों का {{pct}})।",
+    "validVotes": "वैध (NOTA सहित)",
+    "evmVotes": "EVM",
+    "postalVotes": "डाक",
+    "notaVotes": "NOTA",
+    "rejectedVotes": "अस्वीकृत",
+    "boothUpset": "{{leader}} {{leaderBooths}} मतदान केंद्रों पर आगे रहे, {{winner}} {{winnerBooths}} पर, फिर भी {{margin}} मतों से हारे: विजेता की बढ़त जहाँ थी वहाँ बड़ी थी।",
+    "boothsLedLine": "आगे रहे मतदान केंद्र (EVM मत): {{list}}",
+    "resultSource": "स्रोत: ECI फ़ॉर्म 20, {{doc}} ({{pages}} पृष्ठ, sha256 {{sha}}…)।",
+    "postalNote": "डाक मतपत्र केवल पूरे निर्वाचन क्षेत्र के लिए गिने जाते हैं, इसलिए बूथ आँकड़े EVM मत हैं।"
   },
   "map": {
     "heading": "बूथ मानचित्र",
@@ -132,11 +149,29 @@
     "syntheticNote": "पंचायत और वार्ड की सीमाएँ कृत्रिम हैं, नमूना आँकड़ों के लिए बनाई गई; वास्तविक सीमाएँ अभी लोड नहीं हैं।",
     "noAreaShapes": "इस निर्वाचन क्षेत्र के लिए पंचायत या वार्ड की सीमाएँ लोड नहीं हैं।",
     "warn_anchor_outside": "{{label}} इस निर्वाचन क्षेत्र की स्रोत सीमा से {{km}} किमी बाहर है, अतः यहाँ सीमा संभवतः गलत खींची गई है। CEO झारखंड के मानचित्र से जाँचें।",
-    "warn_seed_block_without_shape": "{{block}} की सीमा स्रोत आँकड़ों में नहीं है, इसलिए वह नहीं दिखाया गया।"
+    "warn_seed_block_without_shape": "{{block}} की सीमा स्रोत आँकड़ों में नहीं है, इसलिए वह नहीं दिखाया गया।",
+    "noLocations_one": "{{count}} बूथ के परिणाम हैं पर स्थान नहीं: पते वाली मतदान-केंद्र सूची लोड नहीं है, इसलिए कुछ नहीं दिखाया जा सकता।",
+    "noLocations_other": "{{count}} बूथों के परिणाम हैं पर स्थान नहीं: पते वाली मतदान-केंद्र सूची लोड नहीं है, इसलिए कुछ नहीं दिखाया जा सकता।",
+    "openBoothTable": "बूथ तालिका खोलें"
   },
   "results": {
     "heading": "बूथवार परिणाम",
-    "sourceNote": "प्रत्येक आंकड़ा फॉर्म 20 से; स्रोत पृष्ठ तालिका में दिया है"
+    "sourceNote": "प्रत्येक आंकड़ा फॉर्म 20 से; स्रोत पृष्ठ तालिका में दिया है",
+    "partyNotInSource": "दल स्रोत में नहीं",
+    "partyNotInSourceHelp": "फ़ॉर्म 20 में केवल प्रत्याशियों के नाम छपते हैं। इस प्रत्याशी का दल लोड की गई सूची (db/seed/form20/candidate_parties.csv) में नहीं है।",
+    "candidatesHeading": "सभी प्रत्याशी, {{election}}",
+    "candidatesForm20": "ECI फ़ॉर्म 20, कुल मतदान पंक्ति: EVM मत और डाक मतपत्र। {{doc}} · sha256 {{sha}}…",
+    "candidatesPublished": "इस चुनाव का फ़ॉर्म 20 लोड नहीं है: प्रकाशित निर्वाचन-क्षेत्र योग, हर पंक्ति के स्रोत सहित।",
+    "candidate": "प्रत्याशी",
+    "evm": "EVM",
+    "postal": "डाक",
+    "share": "वैध मतों में हिस्सा",
+    "boothsLed": "आगे रहे बूथ",
+    "deposit": "ज़मानत",
+    "elected": "निर्वाचित",
+    "validTotal": "वैध मत, NOTA सहित",
+    "others": "अन्य",
+    "boothTable": "बूथवार (EVM मत)"
   },
   "voters": {
     "heading": "नए और हटाए गए मतदाता",
@@ -218,7 +253,8 @@
     "pageUnknown": "{{doc}} से लिया गया, परंतु पृष्ठ संख्या दर्ज नहीं है।",
     "fixtureLabel": "नमूना",
     "fixtureSource": "नमूना आँकड़े। {{doc}} एक उदाहरण है, कोई लोड किया गया दस्तावेज़ नहीं।",
-    "sourceNotServed": "{{doc}}, पृष्ठ {{page}}। यह डिप्लॉयमेंट स्रोत दस्तावेज़ नहीं दिखाता; फ़ाइल दस्तावेज़ भंडार से खोलें।"
+    "sourceNotServed": "{{doc}}, पृष्ठ {{page}}। यह डिप्लॉयमेंट स्रोत दस्तावेज़ नहीं दिखाता; फ़ाइल दस्तावेज़ भंडार से खोलें।",
+    "syntheticBanner": "कृत्रिम डेटा: लोड किए गए दस्तावेज़ परीक्षण के लिए बनाए गए हैं (dev_stack.py --synthetic)। इस पृष्ठ का कोई आँकड़ा वास्तविक परिणाम नहीं है।"
   },
   "health": {
     "heading": "डेटा स्थिति",
@@ -293,7 +329,9 @@
     "cases": "आपराधिक मामले",
     "noneDeclared": "कोई घोषित नहीं",
     "affidavit": "शपथपत्र",
-    "turncoatFrom": "पहले {{party}} से लड़े"
+    "turncoatFrom": "पहले {{party}} से लड़े",
+    "electionHeading_one": "{{election}} · {{count}} प्रत्याशी",
+    "electionHeading_other": "{{election}} · {{count}} प्रत्याशी"
   },
   "localPolitics": {
     "heading": "स्थानीय राजनीति",
@@ -342,7 +380,10 @@
     "noPriority": "कोई प्राथमिकता स्कोर नहीं: इस बूथ के सभी इनपुट अनुपस्थित हैं।",
     "newsPending": "इस बूथ हेतु क्षेत्र-टैग समाचार समाचार-परत के साथ आएंगे (ट्रैक B)।",
     "groundPending": "ग्राउंड रिपोर्ट फील्ड फॉर्म के साथ आएंगी (ट्रैक B)।",
-    "heading": "बूथ {{booth}}"
+    "heading": "बूथ {{booth}}",
+    "shareChangeHelp": "इस बूथ पर पिछले विधानसभा चुनाव से इस प्रत्याशी के हिस्से में बदलाव, प्रतिशत अंकों में।",
+    "validVotes": "वैध मत",
+    "rejectedTendered": "अस्वीकृत / निविदत्त"
   },
   "theme": {
     "system": "सिस्टम",
@@ -360,7 +401,9 @@
     "notLoaded": "{{datasets}} लोड नहीं",
     "unplaced_one": "{{count}} बूथ का स्थान नहीं",
     "unplaced_other": "{{count}} बूथों का स्थान नहीं",
-    "manage": "आँकड़ा स्रोत प्रबंधित करें"
+    "manage": "आँकड़ा स्रोत प्रबंधित करें",
+    "form20Real_one": "ECI दस्तावेज़ों से फ़ॉर्म 20 लोड ({{count}} चुनाव, {{rows}} बूथ पंक्तियाँ)",
+    "form20Real_other": "ECI दस्तावेज़ों से फ़ॉर्म 20 लोड ({{count}} चुनाव, {{rows}} बूथ पंक्तियाँ)"
   },
   "insights": {
     "priority": "सर्वोच्च प्राथमिकता वाले बूथ",

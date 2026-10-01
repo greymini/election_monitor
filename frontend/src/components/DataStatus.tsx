@@ -34,10 +34,17 @@ export default function DataStatus({
   const parts: string[] = []
 
   // Results first: everything else on the page is derived from them.
+  // Saying which kind of Form 20 is loaded matters as much as whether one is:
+  // real ECI documents and the generated test set look identical otherwise.
   parts.push(
-    health.elections_with_results > 0
-      ? t('status.form20Loaded', { count: health.elections_with_results })
-      : t('status.form20Missing'),
+    health.elections_with_results === 0
+      ? t('status.form20Missing')
+      : (health.form20_real_docs ?? 0) > 0
+        ? t('status.form20Real', {
+          count: health.elections_with_results,
+          rows: (health.form20_booth_rows ?? 0).toLocaleString('en-IN'),
+        })
+        : t('status.form20Loaded', { count: health.elections_with_results }),
   )
 
   if (health.weak_crosswalks > 0) {

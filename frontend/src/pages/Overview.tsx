@@ -8,12 +8,16 @@ import {
 import type { DataHealth } from '../components/DataHealth'
 import DataStatus from '../components/DataStatus'
 import OverviewInsights from '../components/OverviewInsights'
-import { FixtureBanner, Missing, SourceLink, Value } from '../components/Provenance'
+import PartyChip from '../components/PartyChip'
+import { FixtureBanner, Missing, SourceLink, SyntheticBanner, Value } from '../components/Provenance'
 import StatTile from '../components/StatTile'
 import { Empty, ErrorState, Loading } from '../components/States'
 import type { AcState } from '../lib/ac'
 import { api, isFixtureMode } from '../lib/api'
 import { dateShort, num, pct } from '../lib/format'
+import {
+  boothLeaderUpset, candidateLabel, partyCode, type ElectionRow,
+} from '../lib/results'
 import { chartInk, partyColor } from '../lib/tokens'
 
 /**
@@ -32,31 +36,6 @@ import { chartInk, partyColor } from '../lib/tokens'
  * moved after a Form 20 load and only the caption changed. The constant's own
  * comment said the fallback was "no longer used" at that point. It is now.
  */
-
-interface ElectionRow {
-  label: string
-  type: string
-  year: number
-  is_baseline: boolean
-  booths: number | null
-  votes: number | null
-  electors: number | null
-  total_valid: number | null
-  nota: number | null
-  winner_party: string | null
-  winner_votes: number | null
-  runner_party: string | null
-  runner_votes: number | null
-  margin_votes: number | null
-  /** From metric_margin_pct on the server. Not derived here: the formula is
-   *  defined once, in analytics/metric_sql.py. */
-  margin_pct: number | null
-  /** From metric_turnout_pct on the server, for the same reason. */
-  turnout_pct: number | null
-  has_results?: boolean
-  source_doc?: string | null
-  source_page?: number | null
-}
 
 interface Summary {
   constituency: {
@@ -80,15 +59,9 @@ interface Summary {
   } | null
   data_health: DataHealth
   fixture?: string | null
+  /** True while any loaded document is generated test data. */
+  synthetic?: boolean
 }
-
-/** Published assembly margins (HLD §1.1), from public reporting. Shown only
- *  while no Form 20 is loaded, and captioned as such. */
-const PUBLISHED_MARGINS = [
-  { year: '2014', margin: 9933, winner: 'BJP' },
-  { year: '2019', margin: 15884, winner: 'JMM' },
-  { year: '2024', margin: 3838, winner: 'JMM' },
-]
 
 export default function Overview({ ac, isAdmin = false, seesCaste = false }: {
   ac: AcState
@@ -115,12 +88,11 @@ export default function Overview({ ac, isAdmin = false, seesCaste = false }: {
   const loaded = data.elections.filter((e) => (e.booths ?? 0) > 0)
   const assembly = loaded.filter((e) => e.type === 'VS').sort((a, b) => a.year - b.year)
 
+  // Server-computed (metric_turnout_pct), so it agrees with the table below
+  // and uses the published electorate, labelled, when no roll is linked.
   const turnoutSeries = assembly
-    .filter((e) => e.electors && e.votes)
-    .map((e) => ({
-      year: String(e.year),
-      turnout: Math.round((1000 * (e.votes ?? 0)) / (e.electors ?? 1)) / 10,
-    }))
+    .filter((e) => e.turnout_pct != null)
+    .map((e) => ({ year: String(e.year), turnout: Number(e.turnout_pct) }))
 
   /** Electors growth across the loaded assembly elections, not a stated 15%. */
   const electorPoints = assembly.filter((e) => (e.electors ?? 0) > 0)
@@ -136,15 +108,24 @@ export default function Overview({ ac, isAdmin = false, seesCaste = false }: {
     ? (100 * (electorSpan.last - electorSpan.first)) / electorSpan.first
     : null
 
-  const loadedMargins = assembly
-    .filter((e) => e.margin_votes != null && e.winner_party)
-    .map((e) => ({
-      year: String(e.year),
-      margin: e.margin_votes as number,
-      winner: e.winner_party as string,
-    }))
-  const usingPublished = loadedMargins.length === 0
-  const marginSeries = usingPublished ? PUBLISHED_MARGINS : loadedMargins
+  // Loaded elections use the Form 20; the rest use the published result the
+  // server returns with its source. This used to be a constant compiled into
+  // the page (PUBLISHED_MARGINS) that no data load could correct.
+  const vs = data.elections.filter((e) => e.type === 'VS').sort((a, b) => a.year - b.year)
+  const marginSeries = vs.flatMap((e) => {
+    if (e.has_results !== false && e.margin_votes != null && e.winner_party) {
+      return [{ year: String(e.year), margin: e.margin_votes,
+                winner: partyCode(e.winner_party) as string, published: false }]
+    }
+    const p = e.published
+    if (p?.margin_votes != null && p.winner_party) {
+      return [{ year: String(e.year), margin: p.margin_votes, winner: p.winner_party,
+                published: true }]
+    }
+    return []
+  })
+  const anyPublished = marginSeries.some((r) => r.published)
+  const anyLoaded = marginSeries.some((r) => !r.published)
 
   // Where the figures on this page came from. Fixture mode is checked first
   // because it is true regardless of what the payload says, and captioning
@@ -152,9 +133,13 @@ export default function Overview({ ac, isAdmin = false, seesCaste = false }: {
   // single most misleading thing it could do.
   const sourceCaption = isFixtureMode()
     ? t('overview.fixtureSource')
-    : usingPublished
-      ? t('overview.publishedFallback')
-      : t('overview.fromLoaded')
+    : data.synthetic
+      ? t('overview.syntheticSource')
+      : anyLoaded && anyPublished
+        ? t('overview.mixedSource')
+        : anyPublished
+          ? t('overview.publishedFallback')
+          : t('overview.fromLoaded')
   const tightest = marginSeries.reduce<{ year: string; margin: number } | null>(
     (best, row) => (best === null || row.margin < best.margin ? row : best),
     null,
@@ -165,6 +150,7 @@ export default function Overview({ ac, isAdmin = false, seesCaste = false }: {
   return (
     <div className="space-y-4">
       <FixtureBanner note={data.fixture} />
+      {data.synthetic && !isFixtureMode() && <SyntheticBanner />}
 
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h1 className="text-lg font-semibold">
@@ -204,7 +190,7 @@ export default function Overview({ ac, isAdmin = false, seesCaste = false }: {
               // rendered by SourceLink.
               render={(v) => (
                 baselineRow?.winner_party
-                  ? `${baselineRow.winner_party} +${num(v)}`
+                  ? `${partyCode(baselineRow.winner_party)} +${num(v)}`
                   : num(v)
               )}
             />
@@ -217,7 +203,9 @@ export default function Overview({ ac, isAdmin = false, seesCaste = false }: {
                     pct: baselineRow.margin_pct == null
                       ? '—'
                       : pct(baselineRow.margin_pct, 2),
-                    runner: baselineRow.runner_party ?? t('common.noRunnerUp'),
+                    runner: baselineRow.runner_party
+                      ? candidateLabel(baselineRow.runner_candidate, baselineRow.runner_party)
+                      : t('common.noRunnerUp'),
                   })}
                 </span>
               ) : (
@@ -262,7 +250,9 @@ export default function Overview({ ac, isAdmin = false, seesCaste = false }: {
               render={(v) => pct(v)}
             />
           }
-          sub={baselineRow?.label ?? ''}
+          sub={baselineRow?.electors_source === 'published'
+            ? t('overview.turnoutPublishedElectors', { label: baselineRow.label })
+            : baselineRow?.label ?? ''}
         />
         <StatTile
           label={t('overview.bypollIn')}
@@ -293,6 +283,10 @@ export default function Overview({ ac, isAdmin = false, seesCaste = false }: {
           sources, admin only; this is the same facts in a sentence. */}
       <DataStatus health={data.data_health} isAdmin={isAdmin} />
 
+      {baselineRow?.has_results && baselineRow.winner_candidate && (
+        <ResultHeadline row={baselineRow} />
+      )}
+
       <div className="grid gap-4 lg:grid-cols-2">
         <section className="card px-4 py-3">
           <h2 className="text-sm font-semibold">{t('overview.marginTrend')}</h2>
@@ -321,7 +315,8 @@ export default function Overview({ ac, isAdmin = false, seesCaste = false }: {
                 />
                 <Bar dataKey="margin" radius={[4, 4, 0, 0]} maxBarSize={52}>
                   {marginSeries.map((row) => (
-                    <Cell key={row.year} fill={partyColor(row.winner)} />
+                    <Cell key={row.year} fill={partyColor(row.winner)}
+                          fillOpacity={row.published ? 0.55 : 1} />
                   ))}
                   <LabelList dataKey="margin" position="top"
                              formatter={(v: number) => num(v)}
@@ -334,6 +329,7 @@ export default function Overview({ ac, isAdmin = false, seesCaste = false }: {
             {tightest
               ? t('overview.marginCaption', { year: tightest.year, votes: num(tightest.margin) })
               : t('overview.marginCaptionPlain')}
+            {anyPublished && anyLoaded && ` ${t('overview.publishedBarsNote')}`}
           </p>
         </section>
 
@@ -420,13 +416,28 @@ export default function Overview({ ac, isAdmin = false, seesCaste = false }: {
                   )}
                 </td>
                 <td className="px-3 py-2">
-                  <Value value={e.winner_party} reason={t('overview.noResultsYet')}
-                         render={(v) => (
-                           <span style={{ color: partyColor(v) }}>{v}</span>
-                         )} />
+                  {e.winner_party ? (
+                    <span className="inline-flex flex-col">
+                      <span>{e.winner_candidate ?? partyCode(e.winner_party)}</span>
+                      <PartyChip abbr={e.winner_party} />
+                    </span>
+                  ) : e.published?.winner_party ? (
+                    <span className="inline-flex flex-col">
+                      <span>
+                        {e.published.winner_candidate ?? e.published.winner_party}
+                        <span className="ml-1 text-3xs" style={{ color: 'var(--text-muted)' }}>
+                          {t('overview.published')}
+                        </span>
+                      </span>
+                      <PartyChip abbr={e.published.winner_party} />
+                    </span>
+                  ) : (
+                    <Missing reason={t('overview.noResultsYet')} />
+                  )}
                 </td>
                 <td className="px-3 py-2 text-right">
-                  <Value value={e.margin_votes} reason={t('overview.noResultsYet')}
+                  <Value value={e.margin_votes ?? e.published?.margin_votes ?? null}
+                         reason={t('overview.noResultsYet')}
                          render={(v) => num(v)} />
                 </td>
                 <td className="px-3 py-2 text-right">
@@ -439,16 +450,24 @@ export default function Overview({ ac, isAdmin = false, seesCaste = false }: {
                 </td>
                 <td className="px-3 py-2 text-right">
                   <Value
-                    value={e.electors && e.votes
-                      ? Math.round((1000 * e.votes) / e.electors) / 10 : null}
+                    value={e.turnout_pct ?? null}
                     reason={t('overview.noRollLinked')}
                     render={(v) => pct(v)}
                   />
                 </td>
                 <td className="px-3 py-2">
-                  {e.source_doc
-                    ? <SourceLink doc={e.source_doc} page={null} />
-                    : <Missing reason={t('prov.noSource')} />}
+                  {e.source_doc ? (
+                    <span className="text-2xs" style={{ color: 'var(--text-muted)' }}
+                          title={e.sources?.[0]?.sha256 ? `sha256 ${e.sources[0].sha256}` : undefined}>
+                      {isFixtureMode()
+                        ? <SourceLink doc={e.source_doc} page={null} />
+                        : `${e.synthetic ? t('overview.syntheticDoc') : 'Form 20'} · ${e.source_doc}`}
+                    </span>
+                  ) : e.published?.source ? (
+                    <span className="text-2xs" style={{ color: 'var(--text-muted)' }}>
+                      {e.published.source}
+                    </span>
+                  ) : <Missing reason={t('prov.noSource')} />}
                 </td>
               </tr>
             ))}
@@ -460,5 +479,75 @@ export default function Overview({ ac, isAdmin = false, seesCaste = false }: {
         {t('overview.reviewNote')}
       </p>
     </div>
+  )
+}
+
+/**
+ * The declared result in one block: who won, by how much, how the votes
+ * divide between EVM and postal ballots, and where the booths went. Every
+ * figure is the Form 20's own; the one inference (booths led vs result) is
+ * stated as a count, not as a cause.
+ */
+function ResultHeadline({ row }: { row: ElectionRow }) {
+  const { t } = useTranslation()
+  const upset = boothLeaderUpset(row)
+  const doc = row.sources?.[0]
+  return (
+    <section className="card px-4 py-3" data-testid="result-headline">
+      <h2 className="text-sm font-semibold">{t('overview.resultHeading', { label: row.label })}</h2>
+      <p className="mt-1 text-sm">
+        {t('overview.resultLine', {
+          winner: candidateLabel(row.winner_candidate, row.winner_party),
+          winnerVotes: num(row.winner_votes),
+          runner: candidateLabel(row.runner_candidate, row.runner_party),
+          runnerVotes: num(row.runner_votes),
+          margin: num(row.margin_votes),
+          pct: pct(row.margin_pct, 2),
+        })}
+      </p>
+      <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-2xs sm:grid-cols-5">
+        {([
+          ['overview.validVotes', row.total_valid],
+          ['overview.evmVotes', row.evm_votes],
+          ['overview.postalVotes', row.postal_votes],
+          ['overview.notaVotes', row.nota],
+          ['overview.rejectedVotes', row.rejected],
+        ] as const).map(([key, value]) => (
+          <div key={key}>
+            <dt style={{ color: 'var(--text-muted)' }}>{t(key)}</dt>
+            <dd className="tabular-nums">{num(value)}</dd>
+          </div>
+        ))}
+      </dl>
+      {upset && (
+        <p className="mt-2 text-2xs" data-testid="booth-upset">
+          {t('overview.boothUpset', {
+            leader: upset.leader.candidate,
+            leaderBooths: num(upset.leader.booths),
+            winner: row.winner_candidate,
+            winnerBooths: num(upset.winner?.booths ?? 0),
+            margin: num(row.margin_votes),
+          })}
+        </p>
+      )}
+      {(row.booths_led?.length ?? 0) > 0 && (
+        <p className="mt-1 text-2xs" style={{ color: 'var(--text-muted)' }}>
+          {t('overview.boothsLedLine', {
+            list: (row.booths_led ?? [])
+              .map((r) => `${r.candidate} ${num(r.booths)}`).join(' · '),
+          })}
+        </p>
+      )}
+      <p className="mt-1 text-3xs" style={{ color: 'var(--text-muted)' }}>
+        {doc
+          ? t('overview.resultSource', {
+            doc: doc.source_doc,
+            pages: doc.last_page ?? '—',
+            sha: doc.sha256 ? doc.sha256.slice(0, 12) : '—',
+          })
+          : t('prov.noSource')}
+        {' '}{t('overview.postalNote')}
+      </p>
+    </section>
   )
 }

@@ -87,7 +87,7 @@ test('block user cannot reach strategist pages by typing the URL', async ({ page
   }
 })
 
-test('booth drawer: every tab, from the map, with boundaries toggled', async ({ page }) => {
+test('map: boundaries toggle, and the booths without locations are explained', async ({ page }) => {
   const problems = watch(page)
   await signIn(page, 'admin')
   await page.goto('/map?ac=32')
@@ -95,16 +95,49 @@ test('booth drawer: every tab, from the map, with boundaries toggled', async ({ 
   const toggle = page.getByRole('button', { name: /Boundaries (on|off)/ })
   await toggle.click()
   await toggle.click()
-  const marker = page.locator('.leaflet-overlay-pane path.leaflet-interactive').last()
-  await marker.click()
+  // The real Form 20 load has no polling-station list, so nothing is placed.
+  await expect(page.getByTestId('map-no-locations')).toContainText('367 booths have results')
+  expect(problems).toEqual([])
+})
+
+// From the booth table: the real load places no markers on the map.
+test('booth drawer: every tab, from the results table', async ({ page }) => {
+  const problems = watch(page)
+  await signIn(page, 'admin')
+  await page.goto('/results?ac=32')
+  await settle(page)
+  await page.getByRole('row').filter({ hasText: '32-B0001' }).first().click()
   const drawer = page.getByRole('dialog')
   await expect(drawer).toBeVisible()
+  await expect(drawer.getByTestId('booth-candidates')).toHaveCount(2)
+  await expect(drawer).toContainText('Sudivya Kumar')
   for (const tab of ['Results', 'Voters', 'Community', 'News', 'Ground', 'Sources']) {
     await drawer.getByRole('button', { name: tab, exact: true }).click()
     await expect(drawer).not.toContainText(/something went wrong/i)
     expect(await drawer.innerText()).not.toMatch(BAD_TEXT)
   }
+  await drawer.getByRole('button', { name: 'Sources', exact: true }).click()
+  await expect(drawer).toContainText('giridih_vs2024_form20.xlsx')
   expect(problems).toEqual([])
+})
+
+test('overview states the real declared result', async ({ page }) => {
+  await signIn(page, 'strategist')
+  await page.goto('/?ac=32')
+  await settle(page)
+  const headline = page.getByTestId('result-headline')
+  await expect(headline).toContainText('Sudivya Kumar (JMM) won with 94,042 votes')
+  await expect(headline).toContainText('3,838')
+  await expect(page.getByTestId('synthetic-banner')).toHaveCount(0)
+})
+
+test('results lists every 2024 candidate', async ({ page }) => {
+  await signIn(page, 'strategist')
+  await page.goto('/results/VS-2024?ac=32')
+  await settle(page)
+  const table = page.getByTestId('candidate-table')
+  await expect(table.getByRole('row')).toHaveCount(17)
+  await expect(table).toContainText('Arundhati Mishra')
 })
 
 test('scenario projects a margin', async ({ page }) => {

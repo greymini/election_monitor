@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
+import { Link } from 'react-router-dom'
 import { CircleMarker, MapContainer, Tooltip as LeafletTooltip } from 'react-leaflet'
 import type { LatLngTuple } from 'leaflet'
 
@@ -340,7 +341,16 @@ export default function MapExplorer({ ac }: Props) {
 
       {/* A constituency with no booths loaded is said to be empty, rather than
           showing a blank base map that looks like a loading failure. */}
-      {features.length === 0 && (
+      {/* Booths with results but no location (the real Form 20 load, before a
+          PS list with addresses is geocoded) are not "no booths": say how many
+          there are and where to read them instead. */}
+      {features.length > 0 && placed.length === 0 && (
+        <p className="card px-4 py-3 text-sm" role="status" data-testid="map-no-locations">
+          {t('map.noLocations', { count: query.data?.meta.ungeocoded ?? 0 })}{' '}
+          <Link className="underline" to={`/booths?ac=${ac.acNumber}`}>{t('map.openBoothTable')}</Link>
+        </p>
+      )}
+      {features.length === 0 && (query.data?.meta.ungeocoded ?? 0) === 0 && (
         <p className="card px-4 py-3 text-sm" role="status">{t('overview.noBoothsLoaded')}</p>
       )}
 

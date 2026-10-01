@@ -31,6 +31,9 @@ export interface DataHealth {
   census_rows: number
   local_result_rows: number
   source_docs: number
+  /** Form 20 documents loaded from real ECI files (not generated). */
+  form20_real_docs?: number
+  form20_booth_rows?: number
 }
 
 type State = 'loaded' | 'partial' | 'missing'

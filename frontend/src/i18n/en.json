@@ -86,13 +86,30 @@
     "noResultsYet": "No Form 20 is loaded for this election yet.",
     "noRollLinked": "No roll snapshot is linked to this election, so the electorate is unknown.",
     "noBoothsLoaded": "No booths are loaded for this election.",
-    "publishedFallback": "Published figures from public reporting — no Form 20 is loaded, so re-verify before use",
+    "publishedFallback": "Published figures from public reporting: no Form 20 is loaded, so re-verify before use",
     "fromLoaded": "From loaded Form 20 data",
     "reviewNote": "Every figure here should be checked against its source page before it is used in a decision.",
     "daysLeft_one": "{{formatted}} day left",
     "daysLeft_other": "{{formatted}} days left",
     "fixtureSource": "Fixture data — not from any document",
-    "marginSubline": "{{pct}} over {{runner}}"
+    "marginSubline": "{{pct}} over {{runner}}",
+    "syntheticSource": "Generated test documents, not a real result",
+    "mixedSource": "Form 20 where loaded; published totals for the other years (lighter bars)",
+    "publishedBarsNote": "Lighter bars are published totals, not a loaded Form 20.",
+    "turnoutPublishedElectors": "{{label}} · electors from published figures, no roll linked",
+    "published": "published",
+    "syntheticDoc": "Synthetic",
+    "resultHeading": "Declared result, {{label}}",
+    "resultLine": "{{winner}} won with {{winnerVotes}} votes to {{runner}}'s {{runnerVotes}}: a margin of {{margin}} ({{pct}} of valid votes).",
+    "validVotes": "Valid (incl. NOTA)",
+    "evmVotes": "EVM",
+    "postalVotes": "Postal",
+    "notaVotes": "NOTA",
+    "rejectedVotes": "Rejected",
+    "boothUpset": "{{leader}} led {{leaderBooths}} polling stations to {{winner}}'s {{winnerBooths}}, and still lost by {{margin}}: the winner's leads were larger where they came.",
+    "boothsLedLine": "Polling stations led (EVM votes): {{list}}",
+    "resultSource": "Source: ECI Form 20, {{doc}} ({{pages}} pages, sha256 {{sha}}…).",
+    "postalNote": "Postal ballots are counted for the whole constituency only, so booth figures are EVM votes."
   },
   "map": {
     "heading": "Booth map",
@@ -132,11 +149,29 @@
     "syntheticNote": "Panchayat and ward outlines are synthetic, cut for the fixture; real ones are not loaded yet.",
     "noAreaShapes": "No panchayat or ward outlines are loaded for this constituency.",
     "warn_anchor_outside": "{{label}} lies {{km}} km outside this constituency's source outline, so the outline is probably misdrawn here. Verify it against the CEO Jharkhand AC map.",
-    "warn_seed_block_without_shape": "{{block}} has no boundary in the source data, so it is not drawn."
+    "warn_seed_block_without_shape": "{{block}} has no boundary in the source data, so it is not drawn.",
+    "noLocations_one": "{{count}} booth has results but no location yet: the polling-station list with addresses is not loaded, so nothing can be drawn.",
+    "noLocations_other": "{{count}} booths have results but no location yet: the polling-station list with addresses is not loaded, so nothing can be drawn.",
+    "openBoothTable": "Open the booth table"
   },
   "results": {
     "heading": "Booth-wise results",
-    "sourceNote": "Every figure comes from Form 20; the source page is in the table"
+    "sourceNote": "Every figure comes from Form 20; the source page is in the table",
+    "partyNotInSource": "party not in source",
+    "partyNotInSourceHelp": "Form 20 prints candidate names only. This candidate's party is not in the loaded affiliation list (db/seed/form20/candidate_parties.csv).",
+    "candidatesHeading": "All candidates, {{election}}",
+    "candidatesForm20": "ECI Form 20, Total Votes Polled row: EVM votes plus postal ballots. {{doc}} · sha256 {{sha}}…",
+    "candidatesPublished": "No Form 20 is loaded for this election: published constituency totals, with the source on each row.",
+    "candidate": "Candidate",
+    "evm": "EVM",
+    "postal": "Postal",
+    "share": "Share of valid",
+    "boothsLed": "Booths led",
+    "deposit": "Deposit",
+    "elected": "elected",
+    "validTotal": "Valid votes, NOTA included",
+    "others": "Others",
+    "boothTable": "Booth by booth (EVM votes)"
   },
   "voters": {
     "heading": "Additions and deletions",
@@ -218,7 +253,8 @@
     "pageUnknown": "Read from {{doc}}, but the page was not recorded.",
     "fixtureLabel": "fixture",
     "fixtureSource": "Fixture data. {{doc}} is an example, not a loaded document.",
-    "sourceNotServed": "{{doc}}, page {{page}}. Source documents are not served by this deployment; open the file from the document store."
+    "sourceNotServed": "{{doc}}, page {{page}}. Source documents are not served by this deployment; open the file from the document store.",
+    "syntheticBanner": "Synthetic data: the loaded documents were generated for testing (dev_stack.py --synthetic). No figure on this page is a real result."
   },
   "health": {
     "heading": "Data health",
@@ -293,7 +329,9 @@
     "cases": "Criminal cases",
     "noneDeclared": "none declared",
     "affidavit": "affidavit",
-    "turncoatFrom": "Previously stood for {{party}}"
+    "turncoatFrom": "Previously stood for {{party}}",
+    "electionHeading_one": "{{election}} · {{count}} candidate",
+    "electionHeading_other": "{{election}} · {{count}} candidates"
   },
   "localPolitics": {
     "heading": "Local politics",
@@ -342,7 +380,10 @@
     "noPriority": "No priority score: every input is missing for this booth.",
     "newsPending": "Area-tagged news for this booth arrives with the news layer (Track B).",
     "groundPending": "Ground reports arrive with the field form (Track B).",
-    "heading": "Booth {{booth}}"
+    "heading": "Booth {{booth}}",
+    "shareChangeHelp": "Change in this candidate's share since the previous assembly election at this booth, in percentage points.",
+    "validVotes": "Valid votes",
+    "rejectedTendered": "Rejected / tendered"
   },
   "theme": {
     "system": "system",
@@ -360,7 +401,9 @@
     "notLoaded": "{{datasets}} not loaded",
     "unplaced_one": "{{count}} booth unplaced",
     "unplaced_other": "{{count}} booths unplaced",
-    "manage": "Manage data sources"
+    "manage": "Manage data sources",
+    "form20Real_one": "Form 20 loaded from ECI documents ({{count}} election, {{rows}} booth rows)",
+    "form20Real_other": "Form 20 loaded from ECI documents ({{count}} elections, {{rows}} booth rows)"
   },
   "insights": {
     "priority": "Highest-priority booths",

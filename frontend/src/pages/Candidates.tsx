@@ -1,12 +1,12 @@
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 
-import { FixtureBanner, Missing, Value } from '../components/Provenance'
+import PartyChip from '../components/PartyChip'
+import { FixtureBanner, Value } from '../components/Provenance'
 import { Empty, ErrorState, Loading } from '../components/States'
 import type { AcState } from '../lib/ac'
 import { api } from '../lib/api'
 import { num, pct } from '../lib/format'
-import { partyColor } from '../lib/tokens'
 
 /**
  * Candidate profiles (spec §7.9), side by side for one contest.
@@ -74,6 +74,15 @@ export default function Candidates({ ac }: { ac: AcState }) {
   if (query.isError) return <ErrorState error={query.error} onRetry={() => void query.refetch()} />
 
   const rows = query.data?.rows ?? []
+  // One section per election, newest first, in the order the API ranks them
+  // (votes, descending): fourteen candidates stood in 2024 and a flat grid
+  // mixed them with 2019's twelve.
+  const groups = rows.reduce<Array<{ label: string; rows: Candidate[] }>>((out, row) => {
+    const last = out[out.length - 1]
+    if (last && last.label === row.election_label) last.rows.push(row)
+    else out.push({ label: row.election_label, rows: [row] })
+    return out
+  }, [])
 
   return (
     <div className="space-y-3">
@@ -83,14 +92,19 @@ export default function Candidates({ ac }: { ac: AcState }) {
       {rows.length === 0 ? (
         <Empty hint={`No candidate profiles are loaded. Run: python -m ingest.load_csv candidate_profile <csv> --ac ${ac.acNumber}`} />
       ) : (
+        groups.map((group) => (
+        <section key={group.label} className="space-y-2" data-testid={`candidates-${group.label}`}>
+        <h2 className="text-sm font-semibold">
+          {t('candidates.electionHeading', { election: group.label, count: group.rows.length })}
+        </h2>
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-          {rows.map((c) => (
+          {group.rows.map((c) => (
             <article key={c.candidate_id} className="card px-4 py-3">
               <div className="flex items-start justify-between gap-2">
                 <div>
                   <h2 className="text-sm font-semibold">{hi && c.name_hi ? c.name_hi : c.name_en}</h2>
-                  <p className="text-2xs" style={{ color: partyColor(c.party ?? 'OTH') }}>
-                    {c.party ?? <Missing reason={t('candidates.noParty')} />}
+                  <p className="text-2xs">
+                    <PartyChip abbr={c.party ?? 'UNK'} />
                     <span style={{ color: 'var(--text-muted)' }}> · {c.election_label}</span>
                   </p>
                 </div>
@@ -137,7 +151,7 @@ export default function Candidates({ ac }: { ac: AcState }) {
                   <Value value={c.votes} reason={t('overview.noResultsYet')}
                          render={(v) => num(v)} />
                 </dd>
-                <dt style={{ color: 'var(--text-muted)' }}>{t('common.party')} %</dt>
+                <dt style={{ color: 'var(--text-muted)' }}>{t('results.share')}</dt>
                 <dd className="tnum text-right">
                   <Value value={c.share_pct} reason={t('overview.noResultsYet')}
                          render={(v) => pct(v)} />
@@ -187,6 +201,8 @@ export default function Candidates({ ac }: { ac: AcState }) {
             </article>
           ))}
         </div>
+        </section>
+        ))
       )}
 
       <p className="text-2xs" style={{ color: 'var(--text-muted)' }}>

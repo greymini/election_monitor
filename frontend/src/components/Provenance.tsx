@@ -257,6 +257,29 @@ export function FixtureBanner({ note }: { note?: string | null }) {
 }
 
 /**
+ * Shown on every page while the server reports generated documents among the
+ * loaded data (source_doc.is_synthetic). Distinct from FixtureBanner: this is
+ * a live API serving mock Form 20s, which `dev_stack.py --synthetic` builds.
+ */
+export function SyntheticBanner() {
+  const { t } = useTranslation()
+  return (
+    <div
+      className="rounded px-3 py-2 text-2xs"
+      style={{
+        background: 'var(--status-warn-bg, var(--surface-2))',
+        color: 'var(--status-warn, var(--text-secondary))',
+        border: '1px solid var(--status-warn, var(--text-muted))',
+      }}
+      role="status"
+      data-testid="synthetic-banner"
+    >
+      {t('prov.syntheticBanner')}
+    </div>
+  )
+}
+
+/**
  * Copy a shell command to the clipboard.
  *
  * The commands in the data-health strip exist so an operator can run them, and

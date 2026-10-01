@@ -4,6 +4,7 @@ import { useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 
 import BoothDrawer from '../components/BoothDrawer'
+import CandidateTable from '../components/CandidateTable'
 import DataTable, { type Column } from '../components/DataTable'
 import PartyChip from '../components/PartyChip'
 import { ErrorState, Loading } from '../components/States'
@@ -18,6 +19,8 @@ interface Row {
   turnout_pct: number | null
   jmm: number; bjp: number; ajsu: number; jlkm: number; others: number; nota: number
   winner_party: string | null; runner_party: string | null
+  winner_candidate?: string | null; runner_candidate?: string | null
+  contestants?: number | null; tendered?: number | null
   margin_votes: number | null; margin_pct: number | null
   source_doc: string | null; source_page: number | null
   [key: string]: unknown
@@ -65,10 +68,26 @@ export default function Results({ ac }: { ac: AcState }) {
     { key: 'bjp', header: 'BJP', numeric: true, render: (row) => num(row.bjp) },
     { key: 'jlkm', header: 'JLKM', numeric: true, render: (row) => num(row.jlkm) },
     { key: 'ajsu', header: 'AJSU', numeric: true, render: (row) => num(row.ajsu) },
-    { key: 'others', header: 'Other', numeric: true, render: (row) => num(row.others) },
+    { key: 'others', header: t('results.others'), numeric: true, render: (row) => num(row.others) },
     { key: 'nota', header: 'NOTA', numeric: true, render: (row) => num(row.nota) },
-    { key: 'winner_party', header: t('common.winner'),
-      render: (row) => <PartyChip abbr={row.winner_party} /> },
+    // By name: most Form 20 candidates have no recorded party, so a party
+    // chip alone could not say who led the booth.
+    { key: 'winner_candidate', header: t('common.winner'),
+      render: (row) => (
+        <span className="inline-flex flex-col">
+          <span>{row.winner_candidate ?? '—'}</span>
+          <PartyChip abbr={row.winner_party} />
+        </span>
+      ),
+      value: (row) => row.winner_candidate ?? '' },
+    { key: 'runner_candidate', header: t('common.runnerUp'),
+      render: (row) => (
+        <span className="inline-flex flex-col">
+          <span>{row.runner_candidate ?? '—'}</span>
+          <PartyChip abbr={row.runner_party} />
+        </span>
+      ),
+      value: (row) => row.runner_candidate ?? '' },
     { key: 'margin_votes', header: t('common.margin'), numeric: true,
       render: (row) => `${num(row.margin_votes)} (${pct(row.margin_pct)})` },
     { key: 'source', header: t('common.source'),
@@ -106,6 +125,9 @@ export default function Results({ ac }: { ac: AcState }) {
         {t('results.sourceNote')}
       </p>
 
+      {chosen && <CandidateTable ac={ac} election={chosen} />}
+
+      <h2 className="pt-1 text-sm font-semibold">{t('results.boothTable')}</h2>
       {query.isLoading && <Loading />}
       {query.isError && <ErrorState error={query.error} onRetry={() => void query.refetch()} />}
       {query.data && (
