@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { CircleMarker, MapContainer, Tooltip as LeafletTooltip } from 'react-leaflet'
 import type { LatLngTuple } from 'leaflet'
@@ -140,6 +140,10 @@ export default function MapExplorer({ ac }: Props) {
       return api.get(ac.path(`/booths?${params.toString()}`))
     },
     enabled: ac.acNumber !== null,
+    // Keep the markers on screen while a filter change loads. Without this
+    // every new key flipped isLoading, the whole page became a spinner, and
+    // the Leaflet map unmounted and lost the user's zoom and position.
+    placeholderData: keepPreviousData,
   })
 
   const spec = METRICS[metric]
@@ -182,7 +186,7 @@ export default function MapExplorer({ ac }: Props) {
     (f) => typeof f.properties[metric] !== 'number',
   ).length
 
-  if (ac.acNumber === null || query.isLoading) return <Loading />
+  if (ac.acNumber === null || (query.isLoading && !query.data)) return <Loading />
   if (query.isError) return <ErrorState error={query.error} onRetry={() => void query.refetch()} />
 
   return (
@@ -245,6 +249,12 @@ export default function MapExplorer({ ac }: Props) {
             {t('common.dismiss')}
           </button>
         </div>
+      )}
+
+      {/* A constituency with no booths loaded is said to be empty, rather than
+          showing a blank base map that looks like a loading failure. */}
+      {features.length === 0 && (
+        <p className="card px-4 py-3 text-sm" role="status">{t('overview.noBoothsLoaded')}</p>
       )}
 
       <div className="card map-isolate overflow-hidden px-0 py-0">

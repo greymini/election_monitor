@@ -144,21 +144,58 @@ export const api = {
     request<T>(path, { method: 'POST', body: JSON.stringify(body ?? {}) }),
 }
 
-/** CSV export hits the same endpoint with format=csv and streams to a download. */
-export async function downloadCsv(path: string, filename: string) {
-  const token = getToken()
-  const joiner = path.includes('?') ? '&' : '?'
-  const response = await fetch(`${BASE}${path}${joiner}format=csv`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  })
-  if (!response.ok) throw new ApiError(response.status, 'Export failed')
-  const blob = await response.blob()
-  const url = URL.createObjectURL(blob)
-  const anchor = document.createElement('a')
-  anchor.href = url
-  anchor.download = filename
-  anchor.click()
-  URL.revokeObjectURL(url)
+/** Rows as CSV text: a header from the first row's keys, RFC 4180 quoting. */
+export function toCsv(rows: Array<Record<string, unknown>>): string {
+  if (rows.length === 0) return ''
+  const keys = Object.keys(rows[0])
+  const cell = (v: unknown) => {
+    if (v === null || v === undefined) return ''
+    const text = Array.isArray(v) ? v.join('; ') : String(v)
+    return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text
+  }
+  return [keys.join(','), ...rows.map((r) => keys.map((k) => cell(r[k])).join(','))].join('\r\n')
+}
+
+/**
+ * CSV export: the same endpoint with format=csv, saved as a download.
+ *
+ * Failures are shown, not swallowed. Every caller fired this with `void`, so an
+ * export that failed - a 403, a 500, an expired session - did nothing at all.
+ * A 401 ends the session like any other request. In fixture mode the CSV is
+ * built from the fixture rows instead of calling an API that is not there.
+ */
+export async function downloadCsv(path: string, filename: string): Promise<void> {
+  try {
+    let blob: Blob
+    if (USE_FIXTURES) {
+      const fixtureFor = await loadFixtures()
+      const data = fixtureFor(path) as { rows?: Array<Record<string, unknown>> } | undefined
+      blob = new Blob([toCsv(data?.rows ?? [])], { type: 'text/csv' })
+    } else {
+      const token = getToken()
+      const joiner = path.includes('?') ? '&' : '?'
+      const response = await fetch(`${BASE}${path}${joiner}format=csv`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+      if (response.status === 401) {
+        setSession(null)
+        window.dispatchEvent(new CustomEvent('giridih:unauthorised'))
+        throw new ApiError(401, 'Session expired. Please sign in again.')
+      }
+      if (!response.ok) throw new ApiError(response.status, `Export failed (${response.status})`)
+      blob = await response.blob()
+    }
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = filename
+    anchor.click()
+    // Revoked on the next tick: revoking synchronously after click() can cancel
+    // the download before the browser has started reading the blob.
+    setTimeout(() => URL.revokeObjectURL(url), 0)
+  } catch (error) {
+    window.alert(error instanceof Error ? error.message : 'Export failed')
+  }
 }
 
 export async function login(phone: string, password: string): Promise<Session> {

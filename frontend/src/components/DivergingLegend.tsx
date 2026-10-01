@@ -1,12 +1,17 @@
 import { useTranslation } from 'react-i18next'
 
-import { divergingPartySteps, partyColor } from '../lib/tokens'
+import { divergingColor, divergingPartySteps, partyColor } from '../lib/tokens'
 
 interface Props {
   saturateAt?: number
   leftParty?: string
   rightParty?: string
   title?: string
+  /** A non-party scale (e.g. LS-to-VS change): the neutral blue/red ramp that
+   *  `divergingColor` paints, with these end labels instead of party chips.
+   *  The Transfer page coloured its cells with that ramp while this legend
+   *  showed the JMM/BJP party ramp, so the key did not match the table. */
+  neutral?: { left: string; right: string }
 }
 
 /**
@@ -28,10 +33,34 @@ interface Props {
  * means the magnitude is readable without any colour.
  */
 export default function DivergingLegend({
-  saturateAt = 20, leftParty = 'JMM', rightParty = 'BJP', title,
+  saturateAt = 20, leftParty = 'JMM', rightParty = 'BJP', title, neutral,
 }: Props) {
   const { t } = useTranslation()
-  const steps = divergingPartySteps(saturateAt, leftParty, rightParty)
+  const steps = neutral
+    ? Array.from({ length: 11 }, (_, i) => divergingColor(-saturateAt + (i * saturateAt) / 5, saturateAt))
+    : divergingPartySteps(saturateAt, leftParty, rightParty)
+  if (neutral) {
+    return (
+      <div className="card px-3 py-2">
+        <div className="text-2xs font-medium uppercase tracking-wide"
+             style={{ color: 'var(--text-muted)' }}>
+          {title}
+        </div>
+        <div className="mt-1.5 flex h-3 overflow-hidden rounded" role="img"
+             aria-label={`${neutral.left} – ${neutral.right}`}>
+          {steps.map((colour, index) => (
+            <span key={index} className="flex-1" style={{ background: colour }} />
+          ))}
+        </div>
+        <div className="tnum mt-0.5 flex justify-between gap-2 text-2xs"
+             style={{ color: 'var(--text-muted)' }}>
+          <span>{neutral.left} +{saturateAt}</span>
+          <span>0</span>
+          <span>{neutral.right} +{saturateAt}</span>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="card px-3 py-2">

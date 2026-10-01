@@ -70,6 +70,12 @@
   --status-warning: #fab219;
   --status-serious: #ec835a;
   --status-critical: #d03b3b;
+
+  /* Short names the components use. They were never defined, so every
+     unverified badge, warning chip and the fixture banner fell back to grey. */
+  --status-ok: var(--status-good);
+  --status-warn: var(--status-warning);
+  --status-warn-bg: color-mix(in srgb, var(--status-warning) 16%, transparent);
 }
 
 @media (prefers-color-scheme: dark) {

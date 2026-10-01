@@ -119,6 +119,14 @@ export default function Booths({ ac }: { ac: AcState }) {
   const [sorts, setSorts] = useState<Array<{ key: string; dir: 1 | -1 }>>([])
   const [selected, setSelected] = useState<string | null>(null)
   const [election, setElection] = useState('VS-2024')
+  // The elections this AC actually has results for, from /areas. The list was
+  // hardcoded to three Giridih labels, offering elections other ACs do not have.
+  const meta = useQuery<{ elections: Array<{ label: string; has_results: boolean; is_baseline: boolean }> }>({
+    queryKey: ['areas', ac.acNumber],
+    queryFn: () => api.get(ac.path('/areas')),
+    enabled: ac.acNumber !== null,
+  })
+  const electionOptions = (meta.data?.elections ?? []).filter((e) => e.has_results).map((e) => e.label)
 
   const query = useQuery<Response>({
     queryKey: ['booth-table', ac.acNumber, election],
@@ -331,7 +339,7 @@ export default function Booths({ ac }: { ac: AcState }) {
           <select className="select text-2xs" value={election}
                   onChange={(e) => setElection(e.target.value)}
                   aria-label={t('common.election')}>
-            {['VS-2024', 'VS-2019', 'LS-2024'].map((label) => (
+            {(electionOptions.length ? electionOptions : [election]).map((label) => (
               <option key={label} value={label}>{label}</option>
             ))}
           </select>

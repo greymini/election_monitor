@@ -54,7 +54,10 @@
     background: var(--surface-2);
     color: var(--text-secondary);
   }
-  .field {
+  /* .select and .input are used by the map filters, the booth table, the AC
+     switcher and the scatter's party picker, and were never defined, so those
+     controls rendered as unstyled browser defaults. Same look as .field. */
+  .field, .select, .input {
     @apply rounded-lg border px-2.5 py-1.5 text-sm;
     border-color: var(--gridline);
     background: var(--surface-1);

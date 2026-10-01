@@ -75,7 +75,9 @@ export default function Transfer({ ac }: { ac: AcState }) {
 
       <p className="text-2xs" style={{ color: 'var(--text-muted)' }}>{t('transfer.note')}</p>
 
-      <DivergingLegend saturateAt={20} title="Change in share, LS to VS" />
+      {/* Cells are divergingColor(-delta): higher in VS is the left end. */}
+      <DivergingLegend saturateAt={20} title={t('transfer.legendTitle')}
+                       neutral={{ left: t('transfer.vsHigher'), right: t('transfer.lsHigher') }} />
 
       {query.isLoading && <Loading />}
       {query.isError && <ErrorState error={query.error} onRetry={() => void query.refetch()} />}

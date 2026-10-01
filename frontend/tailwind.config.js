@@ -35,7 +35,12 @@ export default {
         hi: ['Noto Sans Devanagari', 'Inter', 'system-ui', 'sans-serif'],
         mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
       },
-      fontSize: { '2xs': ['0.6875rem', { lineHeight: '1rem' }] },
+      // 3xs is used across the dashboard for captions and was never defined,
+      // so those 36 elements silently rendered at the inherited size.
+      fontSize: {
+        '2xs': ['0.6875rem', { lineHeight: '1rem' }],
+        '3xs': ['0.625rem', { lineHeight: '0.875rem' }],
+      },
     },
   },
   plugins: [],

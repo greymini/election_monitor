@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { getToken } from '../lib/api'
+import { formatDetail, getToken, setSession } from '../lib/api'
+import { parseSse } from '../lib/sse'
 
 interface ToolEvent { name: string; is_error: boolean; seconds: number; preview: string }
 interface Turn {
@@ -49,6 +50,22 @@ export default function ChatPanel({ isAdmin, onClose }: { isAdmin?: boolean; onC
         },
         body: JSON.stringify({ message, history }),
       })
+      // A JSON error body is not a stream: without this check a 401, 403 or
+      // 500 was parsed as SSE, nothing was shown and the session never ended.
+      if (response.status === 401) {
+        setSession(null)
+        window.dispatchEvent(new CustomEvent('giridih:unauthorised'))
+        throw new Error('Session expired. Please sign in again.')
+      }
+      if (!response.ok) {
+        let detail = `Request failed (${response.status})`
+        try {
+          detail = formatDetail((await response.json()).detail) ?? detail
+        } catch {
+          /* non-JSON body */
+        }
+        throw new Error(detail)
+      }
       if (!response.body) throw new Error('No response stream')
 
       const reader = response.body.getReader()
@@ -57,20 +74,15 @@ export default function ChatPanel({ isAdmin, onClose }: { isAdmin?: boolean; onC
 
       while (true) {
         const { done, value } = await reader.read()
-        if (done) break
-        buffer += decoder.decode(value, { stream: true })
-
-        // SSE frames are separated by a blank line.
-        const frames = buffer.split('\n\n')
-        buffer = frames.pop() ?? ''
-        for (const frame of frames) {
-          const eventLine = frame.split('\n').find((l) => l.startsWith('event:'))
-          const dataLine = frame.split('\n').find((l) => l.startsWith('data:'))
-          if (!dataLine) continue
-          const event = eventLine?.slice(6).trim() ?? 'message'
+        // On the last read, flush the decoder and terminate any final frame
+        // that arrived without its blank line, rather than dropping it.
+        buffer += done ? `${decoder.decode()}\n\n` : decoder.decode(value, { stream: true })
+        const parsed = parseSse(buffer)
+        buffer = parsed.rest
+        for (const { event, data } of parsed.events) {
           let payload: Record<string, unknown> = {}
           try {
-            payload = JSON.parse(dataLine.slice(5).trim())
+            payload = JSON.parse(data)
           } catch {
             continue
           }
@@ -94,6 +106,7 @@ export default function ChatPanel({ isAdmin, onClose }: { isAdmin?: boolean; onC
             }])
           }
         }
+        if (done) break
       }
     } catch (error) {
       setTurns((prev) => [...prev, {

@@ -103,6 +103,9 @@ export default function App() {
   // resolved, matched nothing, and bounced to the Overview. It looked like the
   // page did not exist. Holding the route table until the role is known is
   // enough; the query is already in flight and takes one round trip.
+  // Admin and strategist only, matching the API's role checks.
+  const analyst = me.data?.role === 'admin' || me.data?.role === 'strategist'
+
   if (me.isLoading) {
     return (
       <Layout me={undefined} config={config.data} ac={ac} onSignOut={signOut}>
@@ -130,11 +133,11 @@ export default function App() {
         <Route path="/results/:electionLabel" element={<Results ac={ac} />} />
         <Route path="/voters" element={<Voters ac={ac} />} />
         {me.data?.sees_caste && <Route path="/caste" element={<Caste ac={ac} />} />}
-        <Route path="/transfer" element={<Transfer ac={ac} />} />
+        {analyst && <Route path="/transfer" element={<Transfer ac={ac} />} />}
         <Route path="/local" element={<LocalPolls ac={ac} />} />
         <Route path="/news" element={<News ac={ac} />} />
         <Route path="/factors" element={<Factors ac={ac} />} />
-        <Route path="/scenario" element={<Scenario ac={ac} />} />
+        {analyst && <Route path="/scenario" element={<Scenario ac={ac} />} />}
         <Route path="/compare" element={<Compare />} />
         <Route path="/candidates" element={<Candidates ac={ac} />} />
         <Route path="/local-politics" element={<LocalPolitics ac={ac} />} />

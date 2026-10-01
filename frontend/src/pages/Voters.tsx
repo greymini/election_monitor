@@ -96,7 +96,10 @@ export default function Voters({ ac }: { ac: AcState }) {
           ))}
         </select>
         <button className="btn" disabled={!rows.length}
-                onClick={() => void downloadCsv(ac.path('/rolls/changes'), 'roll_changes.csv')}>
+                onClick={() => void downloadCsv(
+                  // The export is of the revision on screen, not every revision.
+                  ac.path(`/rolls/changes${revision ? `?revision_label=${encodeURIComponent(revision)}` : ''}`),
+                  `roll_changes${revision ? `_${revision}` : ''}.csv`)}>
           {t('common.export')}
         </button>
       </div>

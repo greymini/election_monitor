@@ -37,6 +37,7 @@ export default function Layout({ me, config, ac, onSignOut, children }: Props) {
   // The caste pages are still gated on `sees_caste` and Admin on the admin
   // role: a group whose every item is hidden renders nothing at all, rather
   // than an empty menu that opens onto a blank panel.
+  const analyst = me?.role === 'admin' || me?.role === 'strategist'
   const groups: Array<{ id: string; key: string; items: NavItem[] }> = [
     {
       id: 'nav-results',
@@ -71,10 +72,12 @@ export default function Layout({ me, config, ac, onSignOut, children }: Props) {
       id: 'nav-analysis',
       key: 'groupAnalysis',
       items: [
-        { to: '/transfer', key: 'transfer' },
+        // Transfer and Scenario are admin/strategist routes in the API; a
+        // block user who followed these links got a 403 page.
+        ...(analyst ? [{ to: '/transfer', key: 'transfer' }] : []),
         { to: '/factors', key: 'factors' },
         { to: '/compare', key: 'compare' },
-        { to: '/scenario', key: 'scenario' },
+        ...(analyst ? [{ to: '/scenario', key: 'scenario' }] : []),
       ],
     },
     ...(me?.role === 'admin'

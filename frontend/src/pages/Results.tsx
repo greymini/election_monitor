@@ -37,8 +37,9 @@ export default function Results({ ac }: { ac: AcState }) {
   })
   const elections = meta.data?.elections ?? []
   const [election, setElection] = useState<string>('')
-  const active = params.electionLabel ?? election
-    ?? elections.find((e) => e.is_baseline)?.label ?? ''
+  // A choice made in the dropdown wins over the URL. It was the other way
+  // round, so on /results/VS-2019 the dropdown changed nothing.
+  const active = election || params.electionLabel || ''
   const chosen = active || elections.find((e) => e.is_baseline)?.label || elections[0]?.label || ''
 
   const query = useQuery<{ rows: Row[] }>({
@@ -83,7 +84,7 @@ export default function Results({ ac }: { ac: AcState }) {
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
         <h1 className="text-lg font-semibold">{t('results.heading')}</h1>
-        <select className="field ml-auto" value={chosen}
+        <select className="field ml-auto" value={chosen} aria-label={t('common.election')}
                 onChange={(e) => setElection(e.target.value)}>
           {elections.map((e) => (
             <option key={e.label} value={e.label}>{e.label}</option>

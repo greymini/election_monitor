@@ -36,7 +36,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.paths import FRONTEND_SRC, REPO_ROOT  # noqa: E402
+from tests.paths import FRONTEND_SRC, REPO_ROOT, frontend_sources  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 WEB_SRC = FRONTEND_SRC
@@ -138,7 +138,7 @@ def frontend_endpoints() -> dict[str, set[str]]:
         r"(ac\.path\s*\(\s*)?[`'\"]([^`'\"]*)[`'\"]",
         re.DOTALL,
     )
-    for source in sorted(WEB_SRC.rglob("*.ts*")):
+    for source in frontend_sources("*.ts*"):
         if source.name == "api.ts":
             continue  # the client itself; its own paths are tested via callers
         text = source.read_text(encoding="utf-8")
@@ -451,7 +451,7 @@ def test_no_page_hardcodes_election_results():
     # e.g. 94,042 / 1,33,499 - at least two comma groups, so years and small
     # integers do not trip it.
     vote_like = re.compile(r"\b\d{1,2},\d{2,3}(?:,\d{3})*\b")
-    for source in sorted(WEB_SRC.rglob("*.tsx")):
+    for source in frontend_sources("*.tsx"):
         for lineno, line in enumerate(source.read_text(encoding="utf-8").splitlines(), 1):
             if vote_like.search(line) and "t(" not in line:
                 offenders.append(f"{source.relative_to(REPO_ROOT).as_posix()}:{lineno}: {line.strip()}")
@@ -595,7 +595,7 @@ def test_the_frontend_never_builds_an_unscoped_data_path():
         r"(?:api\.(?:get|post)\s*(?:<[^>]*>)?\s*\(|downloadCsv\s*\()\s*"
         r"(ac\.path\s*\(\s*)?[`'\"]([^`'\"]*)[`'\"]"
     )
-    for source in sorted(WEB_SRC.rglob("*.tsx")):
+    for source in frontend_sources("*.tsx"):
         for lineno, line in enumerate(source.read_text(encoding="utf-8").splitlines(), 1):
             for match in pattern.finditer(line):
                 if match.group(1) is not None:

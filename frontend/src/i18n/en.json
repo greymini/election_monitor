@@ -140,7 +140,10 @@
   },
   "transfer": {
     "heading": "Lok Sabha to Vidhan Sabha transfer",
-    "note": "Lok Sabha figures are the Giridih assembly segment, not the whole parliamentary seat"
+    "note": "Lok Sabha figures are the Giridih assembly segment, not the whole parliamentary seat",
+    "legendTitle": "Change in share, LS to VS",
+    "vsHigher": "Higher in VS",
+    "lsHigher": "Higher in LS"
   },
   "factors": {
     "intro": "Curated by the analyst team and read by the assistant from the same table, so the dashboard and the chat answer from one set of notes.",

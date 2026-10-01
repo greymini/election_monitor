@@ -214,7 +214,11 @@ def collect_call_sites() -> list[CallSite]:
     sites: list[CallSite] = []
     if not WEB_SRC.exists():
         return sites
-    for file in sorted(WEB_SRC.rglob("*.ts")) + sorted(WEB_SRC.rglob("*.tsx")):
+    files = sorted(WEB_SRC.rglob("*.ts")) + sorted(WEB_SRC.rglob("*.tsx"))
+    # Application code only: unit tests call made-up endpoints on purpose.
+    files = [f for f in files if not ({"__tests__", "test"} & set(f.relative_to(WEB_SRC).parts))
+             and ".test." not in f.name]
+    for file in files:
         text = file.read_text(encoding="utf-8")
         for number, line in enumerate(text.splitlines(), start=1):
             match = CALL_RE.search(line)
