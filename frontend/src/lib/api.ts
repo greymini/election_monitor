@@ -15,7 +15,7 @@
  * `request` runs per API call and re-importing per call would serialise them
  * behind a module fetch.
  */
-type FixtureLookup = (path: string) => unknown
+type FixtureLookup = (path: string, method?: string, body?: unknown) => unknown
 
 let fixtureLookup: FixtureLookup | null = null
 
@@ -77,7 +77,13 @@ export class ApiError extends Error {
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (USE_FIXTURES) {
     const fixtureFor = await loadFixtures()
-    const canned = fixtureFor(path)
+    let parsed: unknown
+    try {
+      parsed = init.body ? JSON.parse(String(init.body)) : undefined
+    } catch {
+      parsed = undefined
+    }
+    const canned = fixtureFor(path, init.method ?? 'GET', parsed)
     if (canned === undefined) {
       throw new ApiError(404, `No fixture for ${path}. Add one to src/fixtures/responses.ts.`)
     }

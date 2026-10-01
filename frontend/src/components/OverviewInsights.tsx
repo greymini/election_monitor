@@ -111,7 +111,9 @@ function BoothList({
   )
 }
 
-export default function OverviewInsights({ ac }: { ac: AcState }) {
+export default function OverviewInsights(
+  { ac, seesCaste }: { ac: AcState; seesCaste: boolean },
+) {
   const { t, i18n } = useTranslation()
   const hi = i18n.language === 'hi'
 
@@ -123,15 +125,20 @@ export default function OverviewInsights({ ac }: { ac: AcState }) {
     enabled: ac.acNumber !== null,
   })
 
+  // Block users may not see community estimates: the API answers 403, so the
+  // request is not made and the panel is not shown.
   const caste = useQuery<{ rows: CasteRow[] }>({
     queryKey: ['caste', ac.acNumber, 'overview'],
     queryFn: () => api.get(ac.path('/caste')),
-    enabled: ac.acNumber !== null,
+    enabled: ac.acNumber !== null && seesCaste,
   })
 
-  const news = useQuery<{ items: NewsItem[] }>({
+  // The API returns `rows` (this read `items`, so the panel was always empty).
+  // Unlabelled items are included: without an Anthropic key nothing is ever
+  // labelled, and the crawl's place-name tagging is enough for "latest news".
+  const news = useQuery<{ rows: NewsItem[] }>({
     queryKey: ['news', ac.acNumber, 'overview'],
-    queryFn: () => api.get(ac.path('/news')),
+    queryFn: () => api.get(ac.path('/news?include_unlabelled=true&limit=5')),
     enabled: ac.acNumber !== null,
   })
 
@@ -156,22 +163,37 @@ export default function OverviewInsights({ ac }: { ac: AcState }) {
       .slice(0, TOP_N)
 
   const priority = useMemo(() => rank('priority_score'), [features, hi])
-  const swings = useMemo(() => rank('jmm_swing_pct', true, true), [features, hi])
+  // Swing of the AC's contest party A (the API's `swing_pct`).
+  const swings = useMemo(() => rank('swing_pct', true, true), [features, hi])
   const newVoters = useMemo(() => rank('new_voter_pct'), [features, hi])
 
-  const communities = (caste.data?.rows ?? [])
-    .filter((r) => r.est_pct !== null)
-    .sort((a, b) => (b.est_pct ?? 0) - (a.est_pct ?? 0))
-    .slice(0, 8)
+  // /caste is one row per booth per community. Taking the top eight rows
+  // showed eight copies of the same community; this averages each
+  // community's estimate and confidence over the booths that have one.
+  const communities = useMemo(() => {
+    const by = new Map<string, { row: CasteRow; pct: number; conf: number; n: number }>()
+    for (const r of caste.data?.rows ?? []) {
+      if (r.est_pct === null) continue
+      const acc = by.get(r.community_en) ?? { row: r, pct: 0, conf: 0, n: 0 }
+      acc.pct += r.est_pct
+      acc.conf += r.confidence ?? 0
+      acc.n += 1
+      by.set(r.community_en, acc)
+    }
+    return [...by.values()]
+      .map(({ row, pct: total, conf, n }) => ({ ...row, est_pct: total / n, confidence: conf / n }))
+      .sort((a, b) => (b.est_pct ?? 0) - (a.est_pct ?? 0))
+      .slice(0, 8)
+  }, [caste.data])
 
-  const items = (news.data?.items ?? []).slice(0, 5)
+  const items = (news.data?.rows ?? []).slice(0, 5)
 
   const loading = booths.isLoading
   const noBooths = !loading && features.length === 0
 
   return (
     <div className="grid gap-4 lg:grid-cols-2">
-      <Panel title={t('insights.priority')} to="/factors" linkLabel={t('insights.allBooths')}>
+      <Panel title={t('insights.priority')} to="/booths" linkLabel={t('insights.allBooths')}>
         <p className="mb-1.5 text-3xs" style={{ color: 'var(--text-muted)' }}>
           {t('insights.priorityNote')}
         </p>
@@ -216,42 +238,44 @@ export default function OverviewInsights({ ac }: { ac: AcState }) {
           )}
       </Panel>
 
-      <Panel title={t('insights.community')} to="/caste" linkLabel={t('insights.allCommunity')}>
-        <p className="mb-1.5 text-3xs" style={{ color: 'var(--text-muted)' }}>
-          {t('insights.communityNote')}
-        </p>
-        {communities.length === 0
-          ? <Missing reason={t('insights.noCommunity')} />
-          : (
-            <ul className="divide-y text-2xs" style={{ borderColor: 'var(--gridline)' }}>
-              {communities.map((row) => (
-                <li key={row.community_en} className="flex items-baseline gap-2 py-1">
-                  <span className="min-w-0 flex-1 truncate font-medium">
-                    {hi ? row.community_hi : row.community_en}
-                  </span>
-                  <span className="shrink-0 text-3xs" style={{ color: 'var(--text-muted)' }}>
-                    {row.category}
-                  </span>
-                  <span className="tnum shrink-0 font-medium">{pct(row.est_pct, 1)}</span>
-                  {/* An estimate without its confidence is a number pretending
-                      to be a count. Below 0.4 the figure is greyed rather than
-                      hidden, matching the caste pages. */}
-                  <span
-                    className="tnum w-14 shrink-0 text-right text-3xs"
-                    style={{
-                      color: (row.confidence ?? 0) < 0.4
-                        ? 'var(--status-critical, #d03b3b)'
-                        : 'var(--text-muted)',
-                    }}
-                    title={t('insights.confidenceTitle')}
-                  >
-                    {row.confidence === null ? '—' : `±${((1 - row.confidence) * 100).toFixed(0)}`}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-      </Panel>
+      {seesCaste && (
+        <Panel title={t('insights.community')} to="/caste" linkLabel={t('insights.allCommunity')}>
+          <p className="mb-1.5 text-3xs" style={{ color: 'var(--text-muted)' }}>
+            {t('insights.communityNote')}
+          </p>
+          {communities.length === 0
+            ? <Missing reason={t('insights.noCommunity')} />
+            : (
+              <ul className="divide-y text-2xs" style={{ borderColor: 'var(--gridline)' }}>
+                {communities.map((row) => (
+                  <li key={row.community_en} className="flex items-baseline gap-2 py-1">
+                    <span className="min-w-0 flex-1 truncate font-medium">
+                      {hi ? row.community_hi : row.community_en}
+                    </span>
+                    <span className="shrink-0 text-3xs" style={{ color: 'var(--text-muted)' }}>
+                      {row.category}
+                    </span>
+                    <span className="tnum shrink-0 font-medium">{pct(row.est_pct, 1)}</span>
+                    {/* An estimate without its confidence is a number pretending
+                        to be a count. Below 0.4 the figure is greyed rather than
+                        hidden, matching the caste pages. */}
+                    <span
+                      className="tnum w-14 shrink-0 text-right text-3xs"
+                      style={{
+                        color: (row.confidence ?? 0) < 0.4
+                          ? 'var(--status-critical, #d03b3b)'
+                          : 'var(--text-muted)',
+                      }}
+                      title={t('insights.confidenceTitle')}
+                    >
+                      {row.confidence === null ? '—' : `±${((1 - row.confidence) * 100).toFixed(0)}`}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+        </Panel>
+      )}
 
       <Panel title={t('insights.news')} to="/news" linkLabel={t('insights.allNews')}>
         {items.length === 0

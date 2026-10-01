@@ -27,7 +27,8 @@
     "groupVoters": "Voters & community",
     "groupPolitics": "Politics & news",
     "groupAnalysis": "Analysis",
-    "groupAdmin": "Admin"
+    "groupAdmin": "Admin",
+    "menu": "Menu"
   },
   "common": {
     "loading": "Loading…",
@@ -368,5 +369,8 @@
   "admin": {
     "data": "Data sources",
     "dataNote": "A count of zero reads as not loaded, not as a measured zero. Run the command shown to fill a gap."
+  },
+  "news": {
+    "match": "{{pct}}% match"
   }
 }

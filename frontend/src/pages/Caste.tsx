@@ -26,7 +26,7 @@ export default function Caste({ ac }: { ac: AcState }) {
   const ink = chartInk()
 
   const query = useQuery<{ rows: Row[]; disclaimer: string }>({
-    queryKey: ['caste', minConf],
+    queryKey: ['caste', ac.acNumber, minConf],
     queryFn: () => api.get(ac.path(`/caste?min_conf=${minConf}`)),
     enabled: ac.acNumber !== null,
   })

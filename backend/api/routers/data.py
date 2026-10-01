@@ -278,6 +278,7 @@ def booths_geojson(
                w.margin_pct, w.signed_margin_pct, w.turnout_pct, p.new_voter_pct,
                p.priority_score, p.floating_pct, p.margin_stddev, w.electors,
                w.winner_party, w.runner_party,
+               sw.swing_pct, w.contest_party_a AS swing_party,
                CASE WHEN w.booth_uid IS NOT NULL THEN sel.label END AS election_label,
                x.confidence AS crosswalk_confidence, x.reviewed AS crosswalk_reviewed
         FROM booth b
@@ -287,6 +288,10 @@ def booths_geojson(
                                         AND w.election_id = sel.election_id
         LEFT JOIN mv_booth_priority p ON p.booth_uid = b.booth_uid
                                      AND p.election_id = sel.election_id
+        -- Swing of this AC's contest party A, not a hardcoded JMM.
+        LEFT JOIN mv_swing sw ON sw.booth_uid = b.booth_uid
+                             AND sw.election_id = sel.election_id
+                             AND sw.party = w.contest_party_a
         LEFT JOIN LATERAL (
             SELECT MIN(confidence) AS confidence, BOOL_AND(reviewed) AS reviewed
             FROM booth_crosswalk
@@ -363,6 +368,10 @@ def results_by_booth(election_label: str, user: CurrentUser, ac: CurrentAC,
                w.winner_party, w.runner_party, w.margin_votes, w.margin_pct,
                w.signed_margin_pct, w.rejected, w.lineage_kind,
                x.confidence AS crosswalk_confidence, x.reviewed AS crosswalk_reviewed,
+               -- The Booths page's swing / voters / priority presets read these;
+               -- without them every one of those columns was a dash.
+               sw.swing_pct, w.contest_party_a AS swing_party,
+               nv.new_voter_pct, nv.additions, fl.floating_pct, vo.margin_stddev,
                w.source_doc, w.source_page
         FROM mv_result_booth_wide w
         JOIN booth b ON b.booth_uid = w.booth_uid
@@ -377,6 +386,14 @@ def results_by_booth(election_label: str, user: CurrentUser, ac: CurrentAC,
             FROM booth_crosswalk
             WHERE booth_uid = w.booth_uid AND election_id = w.election_id
         ) x ON true
+        LEFT JOIN mv_swing sw ON sw.booth_uid = w.booth_uid
+                             AND sw.election_id = w.election_id
+                             AND sw.party = w.contest_party_a
+        LEFT JOIN mv_new_voter_share nv ON nv.booth_uid = w.booth_uid
+                                       AND nv.election_id = w.election_id
+        LEFT JOIN mv_floating_vote fl ON fl.ac_id = w.ac_id AND fl.booth_uid = w.booth_uid
+                                     AND fl.year = w.election_year
+        LEFT JOIN mv_volatility vo ON vo.ac_id = w.ac_id AND vo.booth_uid = w.booth_uid
         WHERE {' AND '.join(clauses)}
         ORDER BY w.booth_uid
         """,

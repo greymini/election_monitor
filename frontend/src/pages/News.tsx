@@ -37,7 +37,8 @@ export default function News({ ac }: { ac: AcState }) {
     enabled: ac.acNumber !== null,
   })
   const query = useQuery<{ rows: Item[]; issues: string[] }>({
-    queryKey: ['news', submitted, issue],
+    queryKey: ['news', ac.acNumber, submitted, issue],
+    enabled: ac.acNumber !== null,
     queryFn: () => {
       const params = new URLSearchParams()
       if (submitted) params.set('q', submitted)
@@ -108,7 +109,10 @@ export default function News({ ac }: { ac: AcState }) {
               </a>
               <span className="text-2xs" style={{ color: 'var(--text-muted)' }}>
                 {item.source} · {dateShort(item.published, i18n.language)}
-                {item.similarity !== null && ` · ${(item.similarity * 100).toFixed(0)}% match`}
+                {/* typeof, not !== null: an item without the field (fixture
+                    mode, or a date-ranked list) rendered "NaN% match". */}
+                {typeof item.similarity === 'number'
+                  && ` · ${t('news.match', { pct: (item.similarity * 100).toFixed(0) })}`}
               </span>
             </div>
             <p className="mt-1 text-sm" style={{ color: 'var(--text-secondary)' }}>

@@ -136,7 +136,7 @@ test.describe('chart captions name the real source', () => {
 test.describe('the Overview is analytical', () => {
   // Item 5, each section with the page it links to.
   const sections: Array<[RegExp, string]> = [
-    [/highest-priority booths/i, '/factors'],
+    [/highest-priority booths/i, '/booths'],
     [/largest swings/i, '/results'],
     [/new-voter hotspots/i, '/voters'],
     [/community snapshot/i, '/caste'],
@@ -158,6 +158,9 @@ test.describe('the Overview is analytical', () => {
       .filter({ hasText: /highest-priority booths/i }).first()
     await expect(panel).toBeVisible()
     const items = panel.locator('li')
+    // Wait for the list: counting before the panel's query resolved read 0
+    // about one run in three.
+    await expect(items.first()).toBeVisible()
     const count = await items.count()
     expect(count).toBeGreaterThan(0)
     expect(count).toBeLessThanOrEqual(10)

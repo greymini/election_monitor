@@ -59,3 +59,21 @@ def test_a_merged_booth_is_one_row_in_the_results_table(client, tokens, ids, con
         with conn.cursor() as cur:
             cur.execute("DELETE FROM booth_crosswalk WHERE ps_number = 9999 AND booth_uid = %s",
                         (ids["booth_uid"],))
+
+
+def test_the_booth_table_carries_every_preset_column(client, tokens, ids):
+    """The Booths page's swing, voters and priority presets read these fields;
+    the live endpoint sent none of them, so those presets were all dashes."""
+    rows = _get(client, tokens, "/acs/32/results/VS-2024/booths")["rows"]
+    for key in ("swing_pct", "swing_party", "new_voter_pct", "additions",
+                "floating_pct", "margin_stddev"):
+        assert key in rows[0], key
+    with_swing = [r for r in rows if r["swing_pct"] is not None]
+    assert with_swing, "VS-2024 has VS-2019 to swing against"
+    assert {r["swing_party"] for r in with_swing} == {"JMM"}   # AC 32's party A
+
+
+def test_the_map_carries_the_swing_too(client, tokens, ids):
+    features = _get(client, tokens, "/acs/32/booths")["features"]
+    assert "swing_pct" in features[0]["properties"]
+    assert any(f["properties"]["swing_pct"] is not None for f in features)

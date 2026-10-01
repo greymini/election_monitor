@@ -62,8 +62,8 @@ export interface AcState {
 }
 
 /**
- * Resolution order: `?ac=` in the URL, then localStorage, then the first AC
- * `/config` lists. The URL wins so a shared link always shows what the sender
+ * Resolution order: `?ac=` in the URL, then localStorage, then `/config`'s
+ * `default_ac`, then the first AC it lists. The URL wins so a shared link always shows what the sender
  * saw, whatever the recipient last looked at.
  */
 export function useAc(config: AppConfig | undefined): AcState {
@@ -78,7 +78,11 @@ export function useAc(config: AppConfig | undefined): AcState {
     acNumber = fromUrl
   } else {
     const stored = remembered()
+    const fallback = config?.default_ac
     if (stored !== null && valid(stored)) acNumber = stored
+    // The server's default (the first AC with data), not simply the first
+    // listed: that was 31, Gandey, with nothing loaded.
+    else if (fallback != null && valid(fallback)) acNumber = fallback
     else if (all.length > 0) acNumber = all[0].ac_number
   }
 

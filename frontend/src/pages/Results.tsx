@@ -42,9 +42,9 @@ export default function Results({ ac }: { ac: AcState }) {
   const chosen = active || elections.find((e) => e.is_baseline)?.label || elections[0]?.label || ''
 
   const query = useQuery<{ rows: Row[] }>({
-    queryKey: ['results', chosen],
+    queryKey: ['results', ac.acNumber, chosen],
     queryFn: () => api.get(ac.path(`/results/${encodeURIComponent(chosen)}/booths`)),
-    enabled: Boolean(chosen),
+    enabled: ac.acNumber !== null && Boolean(chosen),
   })
 
   const columns = useMemo<Column<Row>[]>(() => [

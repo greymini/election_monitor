@@ -101,7 +101,7 @@ export default function Layout({ me, config, ac, onSignOut, children }: Props) {
           <button
             className="btn px-2 py-1 md:hidden"
             onClick={() => setNavOpen((v) => !v)}
-            aria-label="Menu"
+            aria-label={t('nav.menu')}
             aria-expanded={navOpen}
           >
             ☰
@@ -157,16 +157,18 @@ export default function Layout({ me, config, ac, onSignOut, children }: Props) {
                 {t('chat.title')}
               </button>
             )}
-            {me && (
-              <div className="hidden items-center gap-1.5 sm:flex">
+            {/* Sign-out does not depend on /auth/me: if that failed, the user
+                still needs a way out. */}
+            <div className="hidden items-center gap-1.5 sm:flex">
+              {me && (
                 <span className="chip" title={me.role}>
                   {me.name}
                 </span>
-                <button className="btn px-2 py-1 text-2xs" onClick={onSignOut}>
-                  {t('common.signOut')}
-                </button>
-              </div>
-            )}
+              )}
+              <button className="btn px-2 py-1 text-2xs" onClick={onSignOut}>
+                {t('common.signOut')}
+              </button>
+            </div>
           </div>
         </div>
 
@@ -185,6 +187,12 @@ export default function Layout({ me, config, ac, onSignOut, children }: Props) {
                 {t(`nav.${link.key}`)}
               </NavLink>
             ))}
+            {/* The header's sign-out is hidden below 640 px, which is the
+                width block in-charges use on their phones - so there was no
+                way to sign out on a phone at all. */}
+            <button className="btn ml-auto px-2.5 py-1.5 text-sm" onClick={onSignOut}>
+              {t('common.signOut')}
+            </button>
           </nav>
         )}
       </header>

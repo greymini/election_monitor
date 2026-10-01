@@ -34,7 +34,8 @@ export default function Voters({ ac }: { ac: AcState }) {
     enabled: ac.acNumber !== null,
   })
   const query = useQuery<{ rows: Row[] }>({
-    queryKey: ['roll-changes', revision],
+    queryKey: ['roll-changes', ac.acNumber, revision],
+    enabled: ac.acNumber !== null,
     queryFn: () =>
       api.get(ac.path(`/rolls/changes${revision ? `?revision_label=${encodeURIComponent(revision)}` : ''}`)),
   })

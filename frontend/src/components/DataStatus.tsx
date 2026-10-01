@@ -49,7 +49,7 @@ export default function DataStatus({
   const missing: string[] = []
   if (health.census_rows === 0) missing.push(t('health.census'))
   if (health.caste_rows === 0) missing.push(t('health.caste'))
-  if (health.roll_revisions === 0) missing.push(t('health.roll'))
+  if (health.roll_revisions === 0) missing.push(t('health.rolls'))
   if (health.local_result_rows === 0) missing.push(t('health.local'))
   if (missing.length) {
     parts.push(t('status.notLoaded', { datasets: missing.join(', ') }))

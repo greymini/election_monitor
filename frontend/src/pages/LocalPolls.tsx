@@ -24,7 +24,7 @@ export default function LocalPolls({ ac }: { ac: AcState }) {
   const [seatType, setSeatType] = useState('')
 
   const query = useQuery<{ rows: Row[]; note: string }>({
-    queryKey: ['local', seatType],
+    queryKey: ['local', ac.acNumber, seatType],
     queryFn: () => api.get(ac.path(`/local-results${seatType ? `?seat_type=${seatType}` : ''}`)),
     enabled: ac.acNumber !== null,
   })

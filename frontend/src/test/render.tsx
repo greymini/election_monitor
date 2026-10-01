@@ -1,4 +1,4 @@
-import type { ReactElement } from 'react'
+import type { ReactElement, ReactNode } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router-dom'
 import { render } from '@testing-library/react'
@@ -14,11 +14,13 @@ export function renderWithProviders(
   ui: ReactElement,
   { route = '/', client = testQueryClient() }: { route?: string; client?: QueryClient } = {},
 ) {
-  const result = render(
+  // As a `wrapper`, so rerender() keeps the providers (and the same cache).
+  const Wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={[route]}>{ui}</MemoryRouter>
-    </QueryClientProvider>,
+      <MemoryRouter initialEntries={[route]}>{children}</MemoryRouter>
+    </QueryClientProvider>
   )
+  const result = render(ui, { wrapper: Wrapper })
   return { ...result, client }
 }
 

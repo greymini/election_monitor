@@ -82,7 +82,9 @@ function boothRow(b: (typeof BOOTHS)[number]) {
     turnout_null_reason: b.turnout_pct === null
       ? 'no roll snapshot is linked to this election, so the electorate is unknown'
       : null,
-    jmm_swing_pct: jmmSwing,
+    // Same field names as the live API: the swing of the AC's contest party A.
+    swing_pct: jmmSwing,
+    swing_party: 'JMM',
     swing_null_reason: swingWithheld,
     new_voter_pct: b.new_voter_pct,
     new_voter_null_reason: b.new_voter_pct === null
@@ -313,9 +315,26 @@ export const FIXTURES: Record<string, unknown> = {
   },
 }
 
-/** Resolve a path, including the `/acs/{n}/...` scoped ones. */
-export function fixtureFor(path: string): unknown | undefined {
-  const clean = path.split('?')[0]
+/**
+ * Resolve a request: method, path (with its query string) and body.
+ *
+ * GET honours the query parameters the pages send - map block/area filters,
+ * the caste confidence floor, news search and issue, the results election -
+ * where it used to ignore everything after the `?` and answer every variant
+ * with the same rows (so a filter looked broken, and VS-2019 showed 2024's
+ * figures under a 2019 heading). POST answers the three writes the UI makes,
+ * which used to fall through to "No fixture".
+ */
+export function fixtureFor(path: string, method = 'GET', body?: unknown): unknown | undefined {
+  const [clean, search = ''] = path.split('?')
+  const query = new URLSearchParams(search)
+  if (method.toUpperCase() !== 'GET') return postFixture(clean, body)
+  const answer = getFixture(clean)
+  return answer === undefined ? undefined : applyQuery(clean, query, answer)
+}
+
+/** The unfiltered GET answer for a path. */
+function getFixture(clean: string): unknown | undefined {
   if (clean in FIXTURES) return FIXTURES[clean]
 
   const scoped = clean.match(/^\/acs\/(\d+)(\/.*)?$/)
@@ -785,5 +804,131 @@ export function fixtureFor(path: string): unknown | undefined {
       }
     default:
       return undefined
+  }
+}
+
+
+// ---------------------------------------------------------------------------
+// Query parameters and writes
+// ---------------------------------------------------------------------------
+
+/** Area id -> block id, as the /areas fixture assigns them. */
+function areaBlock(): Map<string, { areaId: number; blockId: number }> {
+  const names = [...new Set(BOOTHS.map((b) => b.area_en))]
+  return new Map(names.map((name, i) => [name, { areaId: i + 1, blockId: 3201 + (i % 3) }]))
+}
+
+type Obj = Record<string, unknown>
+
+function applyQuery(clean: string, query: URLSearchParams, answer: unknown): unknown {
+  const rest = clean.replace(/^\/acs\/\d+/, '')
+  const data = answer as Obj
+  const areas = areaBlock()
+  const inArea = (areaEn: unknown) => {
+    const hit = areas.get(String(areaEn))
+    const block = query.get('block_id')
+    const area = query.get('area_id')
+    if (block && hit?.blockId !== Number(block)) return false
+    if (area && hit?.areaId !== Number(area)) return false
+    return true
+  }
+
+  if (rest === '/booths') {
+    const features = (data.features as Array<{ properties: Obj }>)
+      .filter((f) => inArea(f.properties.area_en))
+    const label = query.get('election_label')
+    // Only VS-2024 has booth figures in the fixture set; another election's
+    // map is honest about that (grey markers) instead of relabelling 2024.
+    const shown: Array<{ properties: Obj }> = label && label !== 'VS-2024'
+      ? features.map((f) => ({ ...f, properties: { ...f.properties,
+        margin_pct: null, signed_margin_pct: null, turnout_pct: null, swing_pct: null,
+        priority_score: null, new_voter_pct: null, winner_party: null, runner_party: null,
+        election_label: null } }))
+      : features
+    const metric = query.get('metric')
+    return { ...data, features: metric
+      ? shown.map((f) => ({ ...f, properties: { ...f.properties,
+        metric: f.properties[metric] ?? null, metric_name: metric } }))
+      : shown,
+    meta: { ...(data.meta as Obj), count: shown.length, election_label: label } }
+  }
+  if (rest.startsWith('/results/') && rest.endsWith('/booths')) {
+    const label = decodeURIComponent(rest.split('/')[2])
+    const rows = label === 'VS-2024'
+      ? (data.rows as Obj[]).filter((r) => inArea(r.area_en)) : []
+    return { ...data, rows, count: rows.length }
+  }
+  if (rest === '/caste') {
+    const floor = Number(query.get('min_conf') ?? 0)
+    const rows = (data.rows as Obj[]).filter((r) => (Number(r.confidence) || 0) >= floor)
+    return { ...data, rows, count: rows.length, min_conf: floor }
+  }
+  if (rest === '/news') {
+    const q = (query.get('q') ?? '').toLowerCase()
+    const issue = query.get('issue')
+    const rows = (data.rows as Obj[]).filter((r) =>
+      (!q || String(r.title).toLowerCase().includes(q))
+      && (!issue || ((r.issues as string[] | null) ?? []).includes(issue)))
+    return { ...data, rows, count: rows.length }
+  }
+  if (rest === '/local-results') {
+    const seat = query.get('seat_type')
+    const rows = ((data.rows as Obj[]) ?? []).filter((r) => !seat || r.seat_type === seat)
+    return { ...data, rows }
+  }
+  if (rest === '/rolls/changes') {
+    const revision = query.get('revision_label')
+    const rows = (data.rows as Obj[]).filter((r) => !revision || r.revision === revision)
+    return { ...data, rows, count: rows.length }
+  }
+  return answer
+}
+
+function postFixture(clean: string, body: unknown): unknown | undefined {
+  const scoped = clean.match(/^\/acs\/(\d+)(\/.*)$/)
+  if (!scoped) return undefined
+  const acNumber = Number(scoped[1])
+  const rest = scoped[2]
+  if (/^\/admin\/review-queue\/\d+$/.test(rest)) return { updated: 1 }
+  if (rest === '/ground-reports') return { saved: true }
+  if (rest === '/scenario') return scenarioFixture(acNumber, (body ?? {}) as Obj)
+  return undefined
+}
+
+/** Arithmetic on the fixture booths with the same inputs the real engine takes,
+ *  deterministic and without noise, so the Scenario page can be reviewed. */
+function scenarioFixture(acNumber: number, body: Obj) {
+  const rows = acNumber === 32 ? ROWS : []
+  const sum = (k: 'jmm' | 'bjp' | 'jlkm' | 'others' | 'nota') =>
+    rows.reduce((s, r) => s + (r[k] ?? 0), 0)
+  const turnout = Number(body.turnout_multiplier ?? 1)
+  const swing = Number(body.sympathy_swing ?? 0)
+  const jlkmToBjp = body.jlkm_to_bjp == null ? null : Number(body.jlkm_to_bjp)
+  let jmm = sum('jmm')
+  let bjp = sum('bjp')
+  let jlkm = sum('jlkm')
+  if (jlkmToBjp !== null) {
+    bjp += jlkm * jlkmToBjp
+    jmm += jlkm * (1 - jlkmToBjp)
+    jlkm = 0
+  }
+  const moved = swing > 0 ? bjp * swing : jmm * Math.abs(swing)
+  if (swing > 0) { bjp -= moved; jmm += moved } else { jmm -= moved; bjp += moved }
+  const votes = { JMM: Math.round(jmm * turnout), BJP: Math.round(bjp * turnout),
+    JLKM: Math.round(jlkm * turnout), OTH: Math.round(sum('others') * turnout),
+    NOTA: Math.round(sum('nota') * turnout) }
+  const point = votes.JMM - votes.BJP
+  const band = Math.round(Math.abs(point) * 0.1) + 200
+  return {
+    booths: rows.length, votes,
+    margin: { point, p10: point - band, p50: point, p90: point + band },
+    winner: point >= 0 ? 'JMM' : 'BJP', runner_up: point >= 0 ? 'BJP' : 'JMM',
+    contest: ['JMM', 'BJP'], contest_margin: point,
+    total_votes: Object.values(votes).reduce((a, b) => a + b, 0),
+    high_variance_booths: [], draws: Number(body.draws ?? 500),
+    assumptions: body, band_label: 'fixture: fixed band, no noise',
+    baseline_source: 'VS-2024', ac_verified: acNumber === 32,
+    disclaimer: 'Fixture arithmetic for review only - not the real engine and not a forecast.',
+    fixture: FIXTURE_BANNER,
   }
 }

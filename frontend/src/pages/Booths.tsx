@@ -57,7 +57,9 @@ interface Row {
   signed_margin_pct: number | null
   turnout_pct: number | null
   turnout_null_reason: string | null
-  jmm_swing_pct: number | null
+  /** Swing of the AC's contest party A (`swing_party`) against the prior election. */
+  swing_pct: number | null
+  swing_party: string | null
   swing_null_reason: string | null
   new_voter_pct: number | null
   new_voter_null_reason: string | null
@@ -212,10 +214,10 @@ export default function Booths({ ac }: { ac: AcState }) {
     },
     {
       key: 'jmm_swing', label: t('booths.swing'), align: 'right',
-      sort: (r) => r.jmm_swing_pct,
-      render: (r) => r.jmm_swing_pct === null
+      sort: (r) => r.swing_pct,
+      render: (r) => r.swing_pct === null
         ? <Missing reason={r.swing_null_reason ?? t('booths.noSwing')} />
-        : `${r.jmm_swing_pct > 0 ? '+' : ''}${pct(r.jmm_swing_pct)}`,
+        : `${r.swing_party ? `${r.swing_party} ` : ''}${r.swing_pct > 0 ? '+' : ''}${pct(r.swing_pct)}`,
     },
     {
       key: 'additions', label: t('voters.additions'), align: 'right',

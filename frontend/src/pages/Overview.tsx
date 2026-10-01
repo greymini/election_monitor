@@ -90,11 +90,13 @@ const PUBLISHED_MARGINS = [
   { year: '2024', margin: 3838, winner: 'JMM' },
 ]
 
-export default function Overview({ ac, isAdmin = false }: {
+export default function Overview({ ac, isAdmin = false, seesCaste = false }: {
   ac: AcState
   /** Whether to offer the link to Admin's data-source screen. Passed down
    *  rather than fetched again: App already holds the session. */
   isAdmin?: boolean
+  /** Whether the community snapshot may be shown (block users: no). */
+  seesCaste?: boolean
 }) {
   const { t, i18n } = useTranslation()
   const hi = i18n.language === 'hi'
@@ -382,7 +384,7 @@ export default function Overview({ ac, isAdmin = false }: {
           spend a day. These five answer questions the page is actually opened
           with, from endpoints that already exist, and each links to the page
           that answers it properly. */}
-      <OverviewInsights ac={ac} />
+      <OverviewInsights ac={ac} seesCaste={seesCaste} />
 
       {/* Every contest, loaded or not, so absence is visible per election. */}
       <section className="card overflow-x-auto px-0 py-0">

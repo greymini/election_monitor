@@ -16,11 +16,17 @@
  * source builds by template - `nav.${key}`, `health.${state}`, `theme.${mode}` -
  * which a literal scan cannot see at all.
  *
- * Run: node scripts/check-i18n.mjs        (from web/)
+ * It also scans the source for literal `t('section.key')` calls. Checking only
+ * the keys the bundles define could never find a key the code uses and nobody
+ * defined - `health.roll` rendered as the raw text "health.roll" on the
+ * Overview of every AC without a roll, and the booth drawer's dialog was
+ * labelled "card.heading", both with this check passing.
+ *
+ * Run: node scripts/check-i18n.mjs        (from frontend/)
  * Exit 0 clean, 1 with findings. tests/test_i18n_keys.py runs it.
  */
 
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
 
@@ -64,6 +70,32 @@ for (const lang of ['en', 'hi']) {
     candidates.add(PLURAL_SUFFIX.test(key) ? key.replace(PLURAL_SUFFIX, '') : key)
   }
 }
+
+/** Literal keys used in the source: t('a.b'), t("a.b"), i18nKey="a.b". */
+function sourceFiles(dir) {
+  const out = []
+  for (const name of readdirSync(dir)) {
+    const path = resolve(dir, name)
+    if (statSync(path).isDirectory()) {
+      if (name !== 'fixtures' && name !== 'test' && name !== '__tests__') out.push(...sourceFiles(path))
+    } else if (/\.(ts|tsx)$/.test(name) && !/\.test\.tsx?$/.test(name)) {
+      out.push(path)
+    }
+  }
+  return out
+}
+
+const used = new Map()
+const USE = /(?:\bt|i18n\.t)\(\s*['"]([a-z][\w]*(?:\.[\w]+)+)['"]|i18nKey=['"]([a-z][\w]*(?:\.[\w]+)+)['"]/g
+for (const file of sourceFiles(resolve(root, 'src'))) {
+  const text = readFileSync(file, 'utf8')
+  for (const match of text.matchAll(USE)) {
+    const key = match[1] ?? match[2]
+    if (!used.has(key)) used.set(key, file.slice(root.length + 1))
+  }
+}
+const defined = (lang, key) =>
+  key in flat[lang] || Object.keys(flat[lang]).some((k) => k.replace(PLURAL_SUFFIX, '') === key)
 
 const missing = []
 
@@ -121,6 +153,12 @@ for (const entry of missing) {
 // Both bundles must carry the same keys. Without `fallbackLng` above, a key
 // present only in English would already have failed for Hindi - this reports it
 // as the shape problem it is rather than as 40 separate lookups.
+for (const [key, file] of [...used].sort()) {
+  for (const lang of ['en', 'hi']) {
+    if (!defined(lang, key)) problems.push(`${lang}: ${key} is used in ${file} but not defined`)
+  }
+}
+
 const onlyEn = Object.keys(flat.en).filter((k) => !(k in flat.hi))
 const onlyHi = Object.keys(flat.hi).filter((k) => !(k in flat.en))
 for (const key of onlyEn) problems.push(`missing from hi.json: ${key}`)
@@ -134,5 +172,5 @@ if (problems.length) {
 
 console.log(
   `i18n ok: ${candidates.size} keys resolve in both languages `
-  + `(${pluralBases.size} plural families)`,
+  + `(${pluralBases.size} plural families); ${used.size} keys used in the source are all defined`,
 )

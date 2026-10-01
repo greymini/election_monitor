@@ -115,10 +115,14 @@ export default function App() {
     <Layout me={me.data} config={config.data} ac={ac} onSignOut={signOut}>
       <ErrorBoundary resetKey={`${location.pathname}|${ac.acNumber}`}>
       <Suspense fallback={<Loading />}>
-      <Routes>
+      {/* Keyed by AC: switching constituency remounts the page, so filters
+          picked for one AC (a block, an area, an election) do not carry over
+          and select nothing in the next. */}
+      <Routes key={ac.acNumber ?? 'none'}>
         <Route
           path="/"
-          element={<Overview ac={ac} isAdmin={me.data?.role === 'admin'} />}
+          element={<Overview ac={ac} isAdmin={me.data?.role === 'admin'}
+                            seesCaste={Boolean(me.data?.sees_caste)} />}
         />
         <Route path="/map" element={<MapExplorer ac={ac} />} />
         <Route path="/booths" element={<Booths ac={ac} />} />
