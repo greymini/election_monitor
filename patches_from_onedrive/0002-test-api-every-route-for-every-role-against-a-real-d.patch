@@ -1,0 +1,2005 @@
+From df1979e68d50229a47e5113cd06a8d15dd34c753 Mon Sep 17 00:00:00 2001
+From: Kunal Jha <kunal.jha3@in.ey.com>
+Date: Thu, 1 Oct 2026 08:34:50 +0530
+Subject: [PATCH 2/2] test(api): every route for every role against a real
+ database, and the defects it found
+
+FRONTEND_HARDENING.md section 2, partial. Stopped mid-section on request; what
+is here is complete and green, and what is not started is named below.
+
+tests/e2e/test_api_contract.py calls all 56 routes as admin, strategist, block
+and anonymously against the loaded dev database and asserts the status matches
+the role dependency the handler declares - 200 when admitted, 403 when not,
+401 anonymous, and never 500. The route list is derived from the app and a
+route with no entry in the call table fails the test, so an endpoint cannot be
+added without saying how to call it. It also covers block-role AC scoping, an
+AC with nothing loaded, the legacy 308s, and the review queue end to end.
+
+tests/test_api_topology.py proves routes are registered and
+tests/test_api_sql_relations.py proves their SQL names relations that exist.
+Neither executes a query, which is why five endpoints have been returning 500
+since 0015_metrics.sql rebuilt the metric views:
+
+- N15 `votes_counted` -> `votes_polled` and `total_valid` -> `valid_votes`,
+      renamed by 0015 and never carried through. Fixed in api/routers/data.py,
+      analytics/metrics.sql and web/src/pages/Results.tsx.
+- N20 POST /admin/crosswalk inserted into booth_crosswalk without ac_id, so
+      the only manual override an admin has over the crosswalk never worked.
+- N21 GET /caste selected caste_estimate.matched_pct and .method_version,
+      neither of which existed. The Caste page could never have loaded.
+- N22 write_surname_estimates - the writer parse_roll actually calls - still
+      normalised over matched tokens and wrote no residual, so a booth where
+      the dictionary placed 40% of names reported shares summing to 100%.
+      C14 was fixed in the computation and not in the writer. refresh() also
+      inserted without ac_id. Both now write shares over the electorate, an
+      explicit UNMATCHED row, matched_pct and method_version.
+- N19 review-queue writers set no ac_id, and the admin route filters on it, so
+      every Form 20 row the LLD 4.2 gate rejected landed in a queue the Admin
+      page could not show. No conflict target either, so a re-run raised
+      instead of updating.
+- N17 review_queue.kind had no 'form20_column', so the failure path of the C1
+      fix would itself have failed.
+
+0018_queue_kinds_and_caste_columns.sql carries the schema half: the kind list
+the code actually writes, ac_id NOT NULL on review_queue, and
+caste_estimate.matched_pct / .method_version.
+
+scripts/endpoint_inventory.py generates docs/ENDPOINTS.md - 70 routes against
+30 frontend call sites - and flags calls to routes that do not exist, routes no
+page calls, parameters a page sends that a route rejects, and routes with no
+explicit response model. `--check` fails when the document is stale. It found 0
+orphan calls and 0 bad parameters once the scanner handled ac.path() and nested
+template literals; an earlier scanner in this repo reported false misses from
+exactly that.
+
+Not done, and not started: explicit pydantic response models (5 routes still
+return a bare dict), generating frontend types from the OpenAPI schema, and
+validating the fixtures against the response models. GET /acs/{ac}/summary and
+GET /acs/{ac}/booths/{uid}/card still 500 on further stale column names and are
+recorded as strict xfail against N15, so a fix forces the marker's removal
+rather than leaving the suite red or the defect hidden.
+
+Gates: pytest 756 passed, 1 skipped; tests/e2e 359 passed, 8 skipped,
+7 xfailed; ruff clean; lint_sql clean; endpoint_inventory --check clean;
+npm run build clean; no secret staged. NEXT_STEPS.md left untracked - not mine.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+---
+ giridih-monitor/analytics/caste_estimate.py   | 112 +++-
+ giridih-monitor/analytics/metrics.sql         |   6 +-
+ giridih-monitor/api/booth_card.py             |   2 +-
+ giridih-monitor/api/routers/admin.py          |  11 +-
+ giridih-monitor/api/routers/data.py           |  10 +-
+ .../0018_queue_kinds_and_caste_columns.sql    |  99 +++
+ giridih-monitor/db/seed/communities.csv       |   1 +
+ giridih-monitor/docs/ENDPOINTS.md             | 147 +++++
+ giridih-monitor/ingest/parse_form20.py        |  32 +-
+ giridih-monitor/ingest/parse_roll.py          |   8 +-
+ giridih-monitor/scripts/endpoint_inventory.py | 411 +++++++++++++
+ giridih-monitor/tests/e2e/conftest.py         | 118 ++++
+ .../tests/e2e/test_api_contract.py            | 570 ++++++++++++++++++
+ .../tests/e2e/test_ingest_pipeline.py         | 118 +---
+ giridih-monitor/web/src/pages/Results.tsx     |   6 +-
+ 15 files changed, 1507 insertions(+), 144 deletions(-)
+ create mode 100644 giridih-monitor/db/migrations/0018_queue_kinds_and_caste_columns.sql
+ create mode 100644 giridih-monitor/docs/ENDPOINTS.md
+ create mode 100644 giridih-monitor/scripts/endpoint_inventory.py
+ create mode 100644 giridih-monitor/tests/e2e/test_api_contract.py
+
+diff --git a/giridih-monitor/analytics/caste_estimate.py b/giridih-monitor/analytics/caste_estimate.py
+index 1b30d0a..196b90e 100644
+--- a/giridih-monitor/analytics/caste_estimate.py
++++ b/giridih-monitor/analytics/caste_estimate.py
+@@ -91,9 +91,37 @@ def _as_pct_of_electors(counts: dict[int, float], electors: int | None) -> dict[
+ 
+ 
+ # The explicit residual. Not a community: a statement about how much of the
+-# electorate the surname dictionary could not place.
++# electorate the surname dictionary could not place. It is seeded as a
++# `community` row because `caste_estimate.community_id` is a foreign key and the
++# booth card renders it by name, but it carries category OTHER and is excluded
++# from every category rollup.
+ UNMATCHED_NAME = "UNMATCHED"
+ 
++# Written to `caste_estimate.method_version` so a stored estimate says which
++# rule produced it. Bump it whenever the arithmetic changes: a mixture of old
++# and new rows in one table, with nothing to tell them apart, is how C14 stayed
++# invisible for as long as it did.
++#
++#   surname-1  normalised over matched tokens, no residual (pre-C14)
++#   surname-2  shares over all electors, explicit UNMATCHED residual
++METHOD_VERSION_SURNAME = "surname-2"
++METHOD_VERSION_BLEND = "blend-2"
++
++
++def unmatched_community_id(cur) -> int | None:
++    """The `community` row the residual is filed under."""
++    cur.execute("SELECT community_id FROM community WHERE name_en = %s", (UNMATCHED_NAME,))
++    row = cur.fetchone()
++    if row is None:
++        log.warning(
++            "no %r row in `community`, so the share the surname dictionary could not "
++            "place cannot be recorded and the estimates will read as a complete "
++            "picture of the booth. Add it to db/seed/communities.csv and re-seed.",
++            UNMATCHED_NAME,
++        )
++        return None
++    return row["community_id"]
++
+ 
+ def _category_total(pct: dict[int, float], communities: dict[int, CommunityRef], category: str) -> float:
+     return sum(v for cid, v in pct.items() if communities.get(cid) and communities[cid].category == category)
+@@ -219,15 +247,38 @@ def load_surname_dict(cur) -> dict[str, list[tuple[int, float]]]:
+     return out
+ 
+ 
+-def write_surname_estimates(cur, surname_totals: dict[str, Counter], ac_id: int) -> int:
++def write_surname_estimates(cur, surname_totals: dict[str, Counter], ac_id: int,
++                            electors: dict[str, int] | None = None) -> int:
+     """Turn per-booth surname histograms into caste_estimate(source='surname').
+ 
+     Called by parse_roll while the histogram is still in memory. The histogram
+     itself is never persisted - only the community totals it implies.
++
++    **Shares are over all electors, not over the matched tokens** (C14), and the
++    shortfall is written as an explicit UNMATCHED row. This function was the
++    other half of C14 and did not get it: `_as_pct_of_electors` was written,
++    tested and documented, while the writer parse_roll actually calls still did
++    `100.0 * value / grand` over the matched subset and wrote no residual. So a
++    booth where the dictionary placed 40% of names reported shares that summed
++    to 100%, and the bias `_as_pct_of_electors` exists to expose was presented
++    as a complete picture (N22).
++
++    `electors` is the per-booth elector count from the same roll pass. Without
++    it there is no denominator, so the function refuses to guess: it writes
++    nothing for that booth and says so.
+     """
+     lookup = load_surname_dict(cur)
++    electors = electors or {}
++    unmatched_id = unmatched_community_id(cur)
+     rows = 0
++    skipped: list[str] = []
++
+     for booth_uid, histogram in surname_totals.items():
++        booth_electors = electors.get(booth_uid)
++        if not booth_electors:
++            skipped.append(booth_uid)
++            continue
++
+         totals: dict[int, float] = {}
+         matched = 0.0
+         confident = 0.0
+@@ -243,20 +294,38 @@ def write_surname_estimates(cur, surname_totals: dict[str, Counter], ac_id: int)
+ 
+         if not totals:
+             continue
+-        grand = sum(totals.values())
+-        for community_id, value in totals.items():
++
++        pct = _as_pct_of_electors(totals, booth_electors)
++        matched_pct = round(min(100.0, 100.0 * matched / booth_electors), 2)
++        confidence = round(min(1.0, confident / matched if matched else 0.0), 3)
++
++        written = dict(pct)
++        if unmatched_id is not None:
++            residual = max(0.0, 100.0 - sum(pct.values()))
++            written[unmatched_id] = residual
++
++        for community_id, value in written.items():
+             cur.execute(
+-                "INSERT INTO caste_estimate (booth_uid, ac_id, community_id, est_count, est_pct, "
+-                "confidence, source, updated_at) "
+-                "VALUES (%s, %s, %s, %s, %s, %s, 'surname', now()) "
++                "INSERT INTO caste_estimate (booth_uid, ac_id, community_id, est_count, "
++                "est_pct, matched_pct, confidence, source, method_version, updated_at) "
++                "VALUES (%s, %s, %s, %s, %s, %s, %s, 'surname', %s, now()) "
+                 "ON CONFLICT (booth_uid, community_id, source) DO UPDATE SET "
+                 "est_count = EXCLUDED.est_count, est_pct = EXCLUDED.est_pct, "
+-                "confidence = EXCLUDED.confidence, updated_at = now()",
+-                (booth_uid, ac_id, community_id, int(round(value)),
+-                 round(100.0 * value / grand, 2) if grand else 0.0,
+-                 round(min(1.0, confident / matched if matched else 0.0), 3)),
++                "matched_pct = EXCLUDED.matched_pct, confidence = EXCLUDED.confidence, "
++                "method_version = EXCLUDED.method_version, ac_id = EXCLUDED.ac_id, "
++                "updated_at = now()",
++                (booth_uid, ac_id, community_id,
++                 int(round(booth_electors * value / 100.0)), round(value, 2),
++                 matched_pct, confidence, METHOD_VERSION_SURNAME),
+             )
+             rows += 1
++
++    if skipped:
++        log.warning(
++            "%d booth(s) have a surname histogram but no elector count, so there is no "
++            "denominator and no estimate was written for them: %s",
++            len(skipped), ", ".join(skipped[:8]),
++        )
+     return rows
+ 
+ 
+@@ -332,6 +401,11 @@ def refresh(current_year: int = 2026) -> dict:
+     stats = {"booths": 0, "rows": 0, "low_confidence": 0, "surveyed": 0}
+     with connection() as conn, conn.cursor() as cur:
+         communities = _communities(cur)
++        unmatched_id = unmatched_community_id(cur)
++        # `ac_id` is NOT NULL on caste_estimate since 0014 and this function did
++        # not supply it, so the blend pass could not write a row either (N22).
++        cur.execute("SELECT booth_uid, ac_id FROM booth")
++        ac_by_booth = {r["booth_uid"]: r["ac_id"] for r in cur.fetchall()}
+         for bi in gather_inputs(cur):
+             pct, confidence = blend_booth(bi, communities, current_year)
+             if not pct:
+@@ -341,15 +415,21 @@ def refresh(current_year: int = 2026) -> dict:
+                 stats["surveyed"] += 1
+             if confidence < LOW_CONFIDENCE:
+                 stats["low_confidence"] += 1
+-            for community_id, value in pct.items():
++            written = dict(pct)
++            if unmatched_id is not None:
++                written[unmatched_id] = max(0.0, 100.0 - sum(pct.values()))
++            for community_id, value in written.items():
+                 est_count = int(round(bi.electors * value / 100.0)) if bi.electors else None
+                 cur.execute(
+-                    "INSERT INTO caste_estimate (booth_uid, community_id, est_count, est_pct, "
+-                    "confidence, source, updated_at) VALUES (%s, %s, %s, %s, %s, 'blend', now()) "
++                    "INSERT INTO caste_estimate (booth_uid, ac_id, community_id, est_count, "
++                    "est_pct, confidence, source, method_version, updated_at) "
++                    "VALUES (%s, %s, %s, %s, %s, %s, 'blend', %s, now()) "
+                     "ON CONFLICT (booth_uid, community_id, source) DO UPDATE SET "
+                     "est_count = EXCLUDED.est_count, est_pct = EXCLUDED.est_pct, "
+-                    "confidence = EXCLUDED.confidence, updated_at = now()",
+-                    (bi.booth_uid, community_id, est_count, round(value, 2), confidence),
++                    "confidence = EXCLUDED.confidence, method_version = EXCLUDED.method_version, "
++                    "ac_id = EXCLUDED.ac_id, updated_at = now()",
++                    (bi.booth_uid, ac_by_booth.get(bi.booth_uid), community_id, est_count,
++                     round(value, 2), confidence, METHOD_VERSION_BLEND),
+                 )
+                 stats["rows"] += 1
+     return stats
+diff --git a/giridih-monitor/analytics/metrics.sql b/giridih-monitor/analytics/metrics.sql
+index 682f7a4..147c244 100644
+--- a/giridih-monitor/analytics/metrics.sql
++++ b/giridih-monitor/analytics/metrics.sql
+@@ -65,8 +65,8 @@ LIMIT 30;
+ -- Read as ECOLOGICAL CORRELATION. It says nothing about how any individual or
+ -- any community voted (HLD 5, 10).
+ SELECT c.name_en AS community,
+-       ROUND(CORR(ce.est_pct, w.jmm::NUMERIC / NULLIF(w.votes_counted, 0) * 100)::NUMERIC, 3) AS corr_jmm,
+-       ROUND(CORR(ce.est_pct, w.bjp::NUMERIC / NULLIF(w.votes_counted, 0) * 100)::NUMERIC, 3) AS corr_bjp,
++       ROUND(CORR(ce.est_pct, w.jmm::NUMERIC / NULLIF(w.votes_polled, 0) * 100)::NUMERIC, 3) AS corr_jmm,
++       ROUND(CORR(ce.est_pct, w.bjp::NUMERIC / NULLIF(w.votes_polled, 0) * 100)::NUMERIC, 3) AS corr_bjp,
+        COUNT(*) AS booths
+ FROM caste_estimate ce
+ JOIN community c ON c.community_id = ce.community_id
+@@ -75,4 +75,4 @@ JOIN election e ON e.election_id = w.election_id AND e.is_baseline
+ WHERE ce.source = 'blend' AND ce.confidence >= 0.4
+ GROUP BY c.name_en
+ HAVING COUNT(*) >= 30
+-ORDER BY ABS(COALESCE(CORR(ce.est_pct, w.jmm::NUMERIC / NULLIF(w.votes_counted, 0) * 100), 0)) DESC;
++ORDER BY ABS(COALESCE(CORR(ce.est_pct, w.jmm::NUMERIC / NULLIF(w.votes_polled, 0) * 100), 0)) DESC;
+diff --git a/giridih-monitor/api/booth_card.py b/giridih-monitor/api/booth_card.py
+index 748937d..9da362f 100644
+--- a/giridih-monitor/api/booth_card.py
++++ b/giridih-monitor/api/booth_card.py
+@@ -32,7 +32,7 @@ def build_booth_card(booth_uid: str, include_caste: bool = True,
+         raise LookupError(booth_uid)
+ 
+     results = query(
+-        "SELECT election_label, election_type, election_year, electors, votes_counted, "
++        "SELECT election_label, election_type, election_year, electors, votes_polled, "
+         "jmm, bjp, ajsu, jlkm, inc, rjd, jvm, others, nota, winner_party, runner_party, "
+         "margin_votes, margin_pct, turnout_pct, source_doc, source_page, ps_numbers "
+         "FROM mv_result_booth_wide WHERE booth_uid = %s "
+diff --git a/giridih-monitor/api/routers/admin.py b/giridih-monitor/api/routers/admin.py
+index 1e585e6..146d87a 100644
+--- a/giridih-monitor/api/routers/admin.py
++++ b/giridih-monitor/api/routers/admin.py
+@@ -76,12 +76,15 @@ def fix_crosswalk(body: CrosswalkFix, user: AdminUser, ac: CurrentAC) -> dict:
+                  (body.booth_uid, ac.ac_id)) is None:
+         raise HTTPException(status.HTTP_404_NOT_FOUND, f"No booth {body.booth_uid!r}")
+ 
++    # `ac_id` is NOT NULL on booth_crosswalk since 0014 and was not supplied, so
++    # this handler raised on every call and the one manual override an admin has
++    # over the crosswalk did not work at all (N20).
+     execute(
+-        "INSERT INTO booth_crosswalk (election_id, ps_number, booth_uid, match_method, "
+-        "confidence, reviewed) VALUES (%s, %s, %s, 'manual', 1.0, true) "
++        "INSERT INTO booth_crosswalk (election_id, ac_id, ps_number, booth_uid, "
++        "match_method, confidence, reviewed) VALUES (%s, %s, %s, %s, 'manual', 1.0, true) "
+         "ON CONFLICT (election_id, ps_number) DO UPDATE SET booth_uid = EXCLUDED.booth_uid, "
+-        "match_method = 'manual', confidence = 1.0, reviewed = true",
+-        (election["election_id"], body.ps_number, body.booth_uid),
++        "match_method = 'manual', confidence = 1.0, reviewed = true, ac_id = EXCLUDED.ac_id",
++        (election["election_id"], ac.ac_id, body.ps_number, body.booth_uid),
+     )
+     return {"updated": True, "next": "Re-run analytics.refresh so the views pick this up."}
+ 
+diff --git a/giridih-monitor/api/routers/data.py b/giridih-monitor/api/routers/data.py
+index 20072db..1c38b8e 100644
+--- a/giridih-monitor/api/routers/data.py
++++ b/giridih-monitor/api/routers/data.py
+@@ -52,17 +52,17 @@ def summary(user: CurrentUser, ac: CurrentAC) -> dict:
+     #
+     # Two caveats, both being fixed in A-3 and neither introduced here: the party
+     # columns are a fixed pivot (jmm/bjp/ajsu/jlkm/inc/rjd/jvm/others), so a
+-    # winner outside that set lands in `others`; and `votes_counted` excludes
+-    # NOTA while `total_valid` includes it, which is audit finding D1. Percentages
++    # winner outside that set lands in `others`; and `votes_polled` excludes
++    # NOTA while `valid_votes` includes it, which is audit finding D1. Percentages
+     # are therefore deliberately not computed here - the frontend shows vote
+     # counts, and METRICS.md will own the percentage definitions.
+     elections = query(
+         "WITH totals AS ("
+         "  SELECT e.election_id, e.label, e.type, e.year, e.is_baseline,"
+         "         COUNT(DISTINCT w.booth_uid) AS booths,"
+-        "         SUM(w.votes_counted) AS votes,"
++        "         SUM(w.votes_polled) AS votes,"
+         "         SUM(w.electors) AS electors,"
+-        "         SUM(w.total_valid) AS total_valid,"
++        "         SUM(w.valid_votes) AS total_valid,"
+         "         SUM(w.nota) AS nota,"
+         "         SUM(w.jmm) AS jmm, SUM(w.bjp) AS bjp, SUM(w.ajsu) AS ajsu,"
+         "         SUM(w.jlkm) AS jlkm, SUM(w.inc) AS inc, SUM(w.rjd) AS rjd,"
+@@ -96,7 +96,7 @@ def summary(user: CurrentUser, ac: CurrentAC) -> dict:
+     )
+     baseline = query_one(
+         "SELECT e.label, SUM(w.jmm) AS jmm, SUM(w.bjp) AS bjp, SUM(w.jlkm) AS jlkm, "
+-        "SUM(w.nota) AS nota, SUM(w.electors) AS electors, SUM(w.votes_counted) AS votes "
++        "SUM(w.nota) AS nota, SUM(w.electors) AS electors, SUM(w.votes_polled) AS votes "
+         "FROM mv_result_booth_wide w JOIN election e ON e.election_id = w.election_id "
+         "WHERE e.is_baseline AND e.ac_id = %s GROUP BY e.label",
+         (ac.ac_id,),
+diff --git a/giridih-monitor/db/migrations/0018_queue_kinds_and_caste_columns.sql b/giridih-monitor/db/migrations/0018_queue_kinds_and_caste_columns.sql
+new file mode 100644
+index 0000000..5a286f3
+--- /dev/null
++++ b/giridih-monitor/db/migrations/0018_queue_kinds_and_caste_columns.sql
+@@ -0,0 +1,99 @@
++-- 0018: review-queue kinds and scoping, and the caste columns the API reads
++--
++-- Two findings, both from running the loaders against a database for the first
++-- time (N17, N19).
++--
++-- 1. `form20_column`. Master prompt 3.1 step 6 says an unresolved Form 20
++--    column aborts the load and goes to the review queue carrying the raw
++--    header and the top three guesses. `ingest/parse_form20.queue_unresolved`
++--    writes exactly that - with `kind = 'form20_column'`, which the CHECK
++--    constraint in 0008 does not allow. So the failure path of the fix for C1,
++--    the audit's most consequential defect, would itself have failed: the
++--    insert raises, the handler logs "could not write to review_queue", and the
++--    operator is told a column did not resolve with no record of which or why.
++--
++--    It was never hit because every column in every generated document
++--    resolves. That is exactly the kind of path a dev stack does not exercise,
++--    which is why `tests/test_resolve.py` and the contract test both have to.
++--
++-- 2. `ac_id NOT NULL`. 0014 added the column to `review_queue` and left it
++--    nullable, and `queue_errors` never set it. `GET /acs/{ac}/admin/review-queue`
++--    filters on `ac_id`, so every Form 20 row rejected by the LLD 4.2
++--    arithmetic gate landed in a queue the Admin page could not show. A
++--    rejected load that reports nothing to review is worse than one that fails
++--    loudly: the operator sees "NOT LOADING" and an empty queue.
++--
++--    Existing NULLs are assigned to Giridih, which is the only constituency any
++--    deployment of this system has ever loaded. If that is ever untrue the
++--    UPDATE below is the place it would be wrong, so it reports what it did.
++
++-- 1. The kinds. Rewritten whole rather than extended, so the list in the
++--    schema is the list, and `kind` values no writer produces are not implied
++--    to be supported. `local_tag` and `geocode` have no writer yet and are
++--    kept: `ingest/geocode.py` and the news labeller are both specified to use
++--    them.
++ALTER TABLE review_queue DROP CONSTRAINT IF EXISTS review_queue_kind_check;
++ALTER TABLE review_queue
++    ADD CONSTRAINT review_queue_kind_check CHECK (kind IN (
++        'ocr_page',        -- a page whose OCR confidence is below the floor
++        'form20_row',      -- a row whose arithmetic does not reconcile (LLD 4.2)
++        'form20_column',   -- a header column that resolved to no candidate (3.1 step 6)
++        'crosswalk',       -- a station matched between the review floor and auto-accept
++        'roll_section',    -- a roll section whose PS number has no booth
++        'geocode',         -- a booth that could not be placed
++        'area_alias',      -- a printed area name that could not be placed in a block
++        'local_tag'        -- a panchayat/ULB result whose party affiliation needs a human
++    ));
++
++-- 2. ac_id. Backfill, then enforce.
++DO $$
++DECLARE
++    orphans  BIGINT;
++    giridih  INT;
++BEGIN
++    SELECT COUNT(*) INTO orphans FROM review_queue WHERE ac_id IS NULL;
++    IF orphans = 0 THEN
++        RAISE NOTICE 'review_queue: no rows without an ac_id';
++    ELSE
++        SELECT ac_id INTO giridih FROM ac WHERE ac_number = 32;
++        IF giridih IS NULL THEN
++            RAISE EXCEPTION
++                'review_queue has % row(s) with no ac_id and AC 32 is not seeded, so '
++                'they cannot be assigned. Set ac_id by hand and re-run.', orphans;
++        END IF;
++        UPDATE review_queue SET ac_id = giridih WHERE ac_id IS NULL;
++        RAISE NOTICE 'review_queue: % row(s) without an ac_id assigned to AC 32', orphans;
++    END IF;
++END
++$$;
++
++ALTER TABLE review_queue ALTER COLUMN ac_id SET NOT NULL;
++
++COMMENT ON COLUMN review_queue.ac_id IS
++    'Which constituency the item belongs to. NOT NULL since 0018: the admin route filters on it, so a NULL made the item invisible rather than global (N19).';
++
++-- ---------------------------------------------------------------------------
++-- 3. caste_estimate.matched_pct and .method_version (N21, N22)
++--
++-- `api/routers/data.py` has always selected both, and neither existed, so
++-- GET /acs/{ac}/caste returned 500 on every call - the Caste page could never
++-- have loaded.
++--
++-- They are not decoration. C14's fix is that a surname estimate is a share of
++-- the *electorate*, not of the names the 176-entry dictionary happened to
++-- recognise, with the shortfall left explicitly unallocated. `matched_pct`
++-- is how much the dictionary placed, so a reader can see that a booth at 38%
++-- coverage is 38% attributed and 62% unknown rather than a complete picture.
++-- `method_version` says which rule produced the row, because a table holding a
++-- mixture of pre- and post-C14 estimates with nothing to tell them apart is how
++-- that defect stayed invisible.
++-- ---------------------------------------------------------------------------
++
++ALTER TABLE caste_estimate ADD COLUMN IF NOT EXISTS matched_pct REAL
++    CHECK (matched_pct IS NULL OR matched_pct BETWEEN 0 AND 100);
++ALTER TABLE caste_estimate ADD COLUMN IF NOT EXISTS method_version TEXT;
++
++COMMENT ON COLUMN caste_estimate.matched_pct IS
++    'Share of this booth electorate the surname dictionary could place, 0-100. NULL for sources where it does not apply. The complement is the UNMATCHED row (C14).';
++COMMENT ON COLUMN caste_estimate.method_version IS
++    'Which rule produced this row: surname-1 normalised over matched tokens (pre-C14), surname-2 shares the electorate with an explicit residual.';
+diff --git a/giridih-monitor/db/seed/communities.csv b/giridih-monitor/db/seed/communities.csv
+index 72185f9..177c118 100644
+--- a/giridih-monitor/db/seed/communities.csv
++++ b/giridih-monitor/db/seed/communities.csv
+@@ -21,3 +21,4 @@ Munda,मुंडा,ST,190
+ Oraon,उरांव,ST,200
+ ST (other),अन्य अनुसूचित जनजाति,ST,210
+ Unclassified,अवर्गीकृत,OTHER,999
++UNMATCHED,अज्ञात,OTHER,999
+diff --git a/giridih-monitor/docs/ENDPOINTS.md b/giridih-monitor/docs/ENDPOINTS.md
+new file mode 100644
+index 0000000..5f92da5
+--- /dev/null
++++ b/giridih-monitor/docs/ENDPOINTS.md
+@@ -0,0 +1,147 @@
++# docs/ENDPOINTS.md
++
++**Generated by `scripts/endpoint_inventory.py`. Do not edit by hand.**
++Regenerate with `python scripts/endpoint_inventory.py`; `--check` fails if this
++file is out of date, which is what keeps it true.
++
++Required by `FRONTEND_HARDENING.md` 2. It answers three questions that were
++previously only answerable by reading every file: what routes exist, who may
++call them, and which page calls which.
++
++A `?` on a parameter means it has a default. "Response model" is the pydantic
++model FastAPI publishes in the OpenAPI schema; `dict (untyped)` means the
++handler returns a bare dict, which generates no schema at all - so
++`openapi-typescript` emits `unknown` and the frontend has nothing to check
++against.
++
++
++## Summary
++
++- **39** live routes, **31** legacy redirects
++- **30** frontend call sites
++- **5** routes with no explicit response model
++- **13** routes no page calls
++- **0** frontend calls to a route that does not exist
++- **0** calls sending a parameter the route does not accept
++
++## Routes
++
++| Method | Path | Roles | Query / path params | Response model | Called from |
++|---|---|---|---|---|---|
++| GET | `/acs` | any signed-in | — | dict | `web/src/pages/Compare.tsx:77` |
++| GET | `/acs/{ac_number}` | any signed-in | — | dict | **(none)** |
++| GET | `/acs/{ac_number}/admin/crosswalk` | admin | `election_label`? | dict | **(none)** |
++| POST | `/acs/{ac_number}/admin/crosswalk` | admin | — | dict | **(none)** |
++| GET | `/acs/{ac_number}/admin/jobs` | admin | `limit`? | dict | `web/src/pages/Admin.tsx:44` |
++| GET | `/acs/{ac_number}/admin/review-queue` | admin | `kind`?, `status_filter`?, `limit`? | dict | `web/src/pages/Admin.tsx:36` |
++| POST | `/acs/{ac_number}/admin/review-queue/{item_id}` | admin | — | dict | `web/src/pages/Admin.tsx:50` |
++| GET | `/acs/{ac_number}/admin/sources` | admin | — | dict | **(none)** |
++| GET | `/acs/{ac_number}/admin/surnames` | admin | `q`? | dict | **(none)** |
++| POST | `/acs/{ac_number}/admin/surnames` | admin | — | dict | **(none)** |
++| GET | `/acs/{ac_number}/admin/usage` | admin | `days`? | dict | `web/src/pages/Admin.tsx:40` |
++| GET | `/acs/{ac_number}/areas` | any signed-in | — | dict | `web/src/pages/MapExplorer.tsx:106`<br>`web/src/pages/Results.tsx:35` |
++| GET | `/acs/{ac_number}/booths` | any signed-in | `election_label`?, `area_id`?, `block_id`?, `metric`? | dict | `web/src/pages/MapExplorer.tsx:116` |
++| GET | `/acs/{ac_number}/booths/{booth_uid}/card` | any signed-in | — | dict | `web/src/components/BoothDrawer.tsx:100` |
++| GET | `/acs/{ac_number}/candidates` | any signed-in | `election_label`? | dict | `web/src/pages/Candidates.tsx:69` |
++| GET | `/acs/{ac_number}/caste` | admin, strategist | `area_id`?, `booth_uid`?, `min_conf`?, `source`? | dict | `web/src/pages/Caste.tsx:30` |
++| GET | `/acs/{ac_number}/caste/correlation` | admin, strategist | `community`?, `min_conf`? | dict | `web/src/pages/CasteScatter.tsx:91` |
++| GET | `/acs/{ac_number}/ground-reports` | any signed-in | `booth_uid`?, `limit`? | dict | **(none)** |
++| POST | `/acs/{ac_number}/ground-reports` | any signed-in | — | dict | **(none)** |
++| GET | `/acs/{ac_number}/knowledge-cards` | any signed-in | — | dict | `web/src/pages/Factors.tsx:47` |
++| GET | `/acs/{ac_number}/local-politics` | any signed-in | — | dict | `web/src/pages/LocalPolitics.tsx:70` |
++| GET | `/acs/{ac_number}/local-results` | any signed-in | `election_label`?, `seat_type`? | dict | `web/src/pages/LocalPolls.tsx:28` |
++| GET | `/acs/{ac_number}/news` | any signed-in | `q`?, `date_from`?, `date_to`?, `issue`?, `area_id`?, `include_unlabelled`?, `limit`? | dict | `web/src/pages/News.tsx:45` |
++| GET | `/acs/{ac_number}/news/issues` | any signed-in | `days`? | dict | `web/src/pages/News.tsx:36` |
++| GET | `/acs/{ac_number}/priority` | any signed-in | `limit`?, `format`? | **dict (untyped)** | **(none)** |
++| GET | `/acs/{ac_number}/results/{election_label}/areas` | any signed-in | `format`? | **dict (untyped)** | **(none)** |
++| GET | `/acs/{ac_number}/results/{election_label}/booths` | any signed-in | `area_id`?, `block_id`?, `format`? | **dict (untyped)** | `web/src/pages/Booths.tsx:123`<br>`web/src/pages/Results.tsx:46` |
++| GET | `/acs/{ac_number}/rolls/changes` | any signed-in | `revision_label`?, `area_id`?, `block_id`?, `format`? | **dict (untyped)** | `web/src/pages/Voters.tsx:39`<br>`web/src/pages/Voters.tsx:98` |
++| GET | `/acs/{ac_number}/rolls/revisions` | any signed-in | — | dict | `web/src/pages/Voters.tsx:33` |
++| POST | `/acs/{ac_number}/scenario` | admin, strategist | — | dict | `web/src/pages/Scenario.tsx:32` |
++| GET | `/acs/{ac_number}/summary` | any signed-in | — | dict | `web/src/pages/Overview.tsx:91` |
++| GET | `/acs/{ac_number}/transfer` | admin, strategist | `year`?, `area_id`?, `format`? | **dict (untyped)** | `web/src/pages/Transfer.tsx:30`<br>`web/src/pages/Transfer.tsx:70` |
++| POST | `/auth/login` | public | — | Token | `web/src/lib/api.ts:124` |
++| GET | `/auth/me` | any signed-in | — | dict | `web/src/lib/api.ts:142` |
++| POST | `/auth/otp` | public | — | dict | **(none)** |
++| POST | `/auth/verify` | public | — | Token | **(none)** |
++| GET | `/compare` | any signed-in | `metric`? | dict | `web/src/pages/Compare.tsx:81` |
++| GET | `/config` | public | — | dict | `web/src/lib/api.ts:167` |
++| GET | `/health` | public | — | dict | **(none)** |
++
++## Legacy redirects
++
++Pre-multi-AC paths, kept as 308 redirects into `/acs/{ac_number}/…` for one release. A 308 preserves the method and body; a 302 would turn a POST into a GET.
++
++| Method | Path | Handler |
++|---|---|---|
++| GET | `/areas` | `legacy.handler` |
++| POST | `/areas` | `legacy.handler` |
++| GET | `/booths` | `legacy.handler` |
++| POST | `/booths` | `legacy.handler` |
++| GET | `/booths/{booth_uid}/card` | `legacy.legacy_booth_card` |
++| GET | `/caste` | `legacy.handler` |
++| POST | `/caste` | `legacy.handler` |
++| GET | `/ground-reports` | `legacy.handler` |
++| POST | `/ground-reports` | `legacy.handler` |
++| GET | `/knowledge-cards` | `legacy.handler` |
++| POST | `/knowledge-cards` | `legacy.handler` |
++| GET | `/local-results` | `legacy.handler` |
++| POST | `/local-results` | `legacy.handler` |
++| GET | `/news` | `legacy.handler` |
++| POST | `/news` | `legacy.handler` |
++| GET | `/news/issues` | `legacy.handler` |
++| POST | `/news/issues` | `legacy.handler` |
++| GET | `/priority` | `legacy.handler` |
++| POST | `/priority` | `legacy.handler` |
++| GET | `/results/{election_label}/areas` | `legacy.legacy_results_areas` |
++| GET | `/results/{election_label}/booths` | `legacy.legacy_results_booths` |
++| GET | `/rolls/changes` | `legacy.handler` |
++| POST | `/rolls/changes` | `legacy.handler` |
++| GET | `/rolls/revisions` | `legacy.handler` |
++| POST | `/rolls/revisions` | `legacy.handler` |
++| GET | `/scenario` | `legacy.handler` |
++| POST | `/scenario` | `legacy.handler` |
++| GET | `/summary` | `legacy.handler` |
++| POST | `/summary` | `legacy.handler` |
++| GET | `/transfer` | `legacy.handler` |
++| POST | `/transfer` | `legacy.handler` |
++
++## Findings
++
++
++### Frontend calls to a route that does not exist
++
++None.
++
++### Routes no page calls
++
++Not necessarily wrong - some are for operators, scripts or a page not yet built - but each should be either used or removed.
++
++- `GET /acs/{ac_number}` (`acs.ac_detail`)
++- `GET /acs/{ac_number}/admin/crosswalk` (`admin.crosswalk_status`)
++- `POST /acs/{ac_number}/admin/crosswalk` (`admin.fix_crosswalk`)
++- `GET /acs/{ac_number}/admin/sources` (`admin.sources`)
++- `GET /acs/{ac_number}/admin/surnames` (`admin.list_surnames`)
++- `POST /acs/{ac_number}/admin/surnames` (`admin.upsert_surname`)
++- `GET /acs/{ac_number}/ground-reports` (`news.list_ground_reports`)
++- `POST /acs/{ac_number}/ground-reports` (`news.create_ground_report`)
++- `GET /acs/{ac_number}/priority` (`data.priority`)
++- `GET /acs/{ac_number}/results/{election_label}/areas` (`data.results_by_area`)
++- `POST /auth/otp` (`auth.request_otp`)
++- `POST /auth/verify` (`auth.verify_otp`)
++- `GET /health` (`main.health`)
++
++### Parameters a page sends that the route does not accept
++
++None.
++
++### Routes with no explicit response model
++
++Each returns a bare `dict`, so its OpenAPI schema is an untyped object.
++
++- `GET /acs/{ac_number}/priority` (`data.priority`)
++- `GET /acs/{ac_number}/results/{election_label}/areas` (`data.results_by_area`)
++- `GET /acs/{ac_number}/results/{election_label}/booths` (`data.results_by_booth`)
++- `GET /acs/{ac_number}/rolls/changes` (`data.roll_changes`)
++- `GET /acs/{ac_number}/transfer` (`data.transfer`)
++
+diff --git a/giridih-monitor/ingest/parse_form20.py b/giridih-monitor/ingest/parse_form20.py
+index 3cdbf4a..37cd941 100644
+--- a/giridih-monitor/ingest/parse_form20.py
++++ b/giridih-monitor/ingest/parse_form20.py
+@@ -312,13 +312,29 @@ def validate(doc: Form20Document, ac_totals: dict[str, int] | None = None) -> li
+     return errors
+ 
+ 
+-def queue_errors(errors: list[ValidationError]) -> int:
++def queue_errors(errors: list[ValidationError], ac_id: int) -> int:
++    """Queue the rows that failed validation, for one constituency.
++
++    Two fixes, both finding N19. `ac_id` was never set, and
++    `GET /acs/{ac}/admin/review-queue` filters on it - so every row the LLD 4.2
++    arithmetic gate rejected landed in a queue the Admin page could not show.
++    An operator saw "NOT LOADING" and an empty queue.
++
++    And the insert had no conflict target against the `(kind, ref)` unique index
++    0014 added for C16, so a second run of the same failing document raised
++    instead of updating; `_run` catches that and logs "could not write to
++    review_queue", which reads like a database problem rather than a re-run.
++    """
+     from common.db import execute
+ 
+     for err in errors:
+         execute(
+-            "INSERT INTO review_queue (kind, ref, payload, note) VALUES (%s, %s, %s, %s)",
+-            (err.kind, err.ref, json.dumps(err.payload, ensure_ascii=False, default=str), err.detail),
++            "INSERT INTO review_queue (kind, ref, ac_id, payload, note) "
++            "VALUES (%s, %s, %s, %s, %s) "
++            "ON CONFLICT (kind, ref) DO UPDATE SET payload = EXCLUDED.payload, "
++            "note = EXCLUDED.note, ac_id = EXCLUDED.ac_id",
++            (err.kind, err.ref, ac_id,
++             json.dumps(err.payload, ensure_ascii=False, default=str), err.detail),
+         )
+     return len(errors)
+ 
+@@ -395,7 +411,9 @@ def queue_unresolved(doc: Form20Document, failures: list[resolve_mod.Resolution]
+     for r in failures:
+         execute(
+             "INSERT INTO review_queue (kind, ref, ac_id, payload, note) "
+-            "VALUES (%s, %s, %s, %s, %s)",
++            "VALUES (%s, %s, %s, %s, %s) "
++            "ON CONFLICT (kind, ref) DO UPDATE SET payload = EXCLUDED.payload, "
++            "note = EXCLUDED.note, ac_id = EXCLUDED.ac_id, status = 'open'",
+             ("form20_column", f"{doc.source_doc}#col{r.column_index}", ac_id,
+              json.dumps(resolve_mod.review_payload(r), ensure_ascii=False, default=str),
+              f"Form 20 column {r.column_index} ({r.raw_header!r}) resolved to no "
+@@ -699,8 +717,10 @@ def _run(args, pdf_path: Path, provenance: dict) -> int:
+         if len(errors) > 20:
+             log.error("  ... and %d more", len(errors) - 20)
+         try:
+-            queue_errors(errors)
+-            log.error("queued for manual review (review_queue kind='form20_row')")
++            queue_errors(errors, scope.ac_id)
++            log.error("queued for manual review (review_queue kind='form20_row', "
++                      "AC %s) - see /acs/%s/admin/review-queue",
++                      scope.ac_number, scope.ac_number)
+         except Exception as exc:
+             log.error("could not write to review_queue: %s", exc)
+         log.error("NOT LOADING %s - fix the rows above and re-run", pdf_path.name)
+diff --git a/giridih-monitor/ingest/parse_roll.py b/giridih-monitor/ingest/parse_roll.py
+index ae28e9d..746d329 100644
+--- a/giridih-monitor/ingest/parse_roll.py
++++ b/giridih-monitor/ingest/parse_roll.py
+@@ -395,6 +395,10 @@ def load(results: list[RollCounts], revision_label: str, revision_date: str,
+             log.info("linked roll revision %s to %s", revision_label, link_scope)
+ 
+         surname_totals: dict[str, Counter] = {}
++        # Electors per booth, for the surname estimator's denominator. C14: the
++        # share of a community is a share of the electorate, not of the names the
++        # dictionary happened to recognise.
++        booth_electors: dict[str, int] = {}
+ 
+         for c in results:
+             booth_uid = _booth_for_ps(cur, scope, c.ps_number) if c.ps_number else None
+@@ -444,13 +448,15 @@ def load(results: list[RollCounts], revision_label: str, revision_date: str,
+                      c.age_50_59, c.age_60p, source_doc),
+                 )
+                 stats["snapshots"] += 1
++                booth_electors[booth_uid] = c.electors
+                 if write_surnames and c.surnames:
+                     surname_totals[booth_uid] = c.surnames
+ 
+         if write_surnames and surname_totals:
+             from analytics.caste_estimate import write_surname_estimates
+ 
+-            stats["surname_rows"] = write_surname_estimates(cur, surname_totals, scope.ac_id)
++            stats["surname_rows"] = write_surname_estimates(
++                cur, surname_totals, scope.ac_id, electors=booth_electors)
+ 
+     return stats
+ 
+diff --git a/giridih-monitor/scripts/endpoint_inventory.py b/giridih-monitor/scripts/endpoint_inventory.py
+new file mode 100644
+index 0000000..e7c203b
+--- /dev/null
++++ b/giridih-monitor/scripts/endpoint_inventory.py
+@@ -0,0 +1,411 @@
++"""Generate docs/ENDPOINTS.md: every API route against every frontend call site.
++
++    python scripts/endpoint_inventory.py            # write docs/ENDPOINTS.md
++    python scripts/endpoint_inventory.py --check    # fail if it is out of date
++
++A generator rather than a hand-written table, because a hand-written one is
++wrong within a week and nobody can tell. `--check` in the commit gate means the
++document cannot drift from the code without the gate noticing.
++
++What it flags:
++
++  * a frontend call to a route that does not exist;
++  * a route with no frontend caller;
++  * a route whose response model is a bare `dict`, which is the state
++    `FRONTEND_HARDENING.md` 2 asks to end - a bare dict generates no schema, so
++    `openapi-typescript` produces `unknown` and the frontend has no contract to
++    check against;
++  * a query parameter the frontend sends that the route does not accept.
++
++What it cannot do. Frontend paths are built at runtime - `ac.path('/caste?min_conf=' + x)`
++is a template literal, not a constant - so the scanner normalises interpolations
++to a parameter placeholder and matches the shape. It will miss a path assembled
++in pieces across statements. The route-by-role contract test in
++`tests/e2e/test_api_contract.py` is the real guarantee; this is the map.
++"""
++
++from __future__ import annotations
++
++import argparse
++import inspect
++import re
++import sys
++from dataclasses import dataclass, field
++from pathlib import Path
++
++APP_ROOT = Path(__file__).resolve().parents[1]
++# Runnable as `python scripts/endpoint_inventory.py` from the application root,
++# which does not put that root on the path the way `python -m` does.
++if str(APP_ROOT) not in sys.path:
++    sys.path.insert(0, str(APP_ROOT))
++
++WEB_SRC = APP_ROOT / "web" / "src"
++OUTPUT = APP_ROOT / "docs" / "ENDPOINTS.md"
++
++ROLE_ALIASES = {
++    "AdminUser": "admin",
++    "StrategistUser": "admin, strategist",
++    "CurrentUser": "any signed-in",
++}
++
++# Parameters that are plumbing, not part of the contract.
++HIDDEN_PARAMS = {"user", "ac", "request", "response", "body", "_path"}
++
++
++@dataclass
++class Route:
++    method: str
++    path: str
++    module: str
++    handler: str
++    roles: str
++    params: list[str] = field(default_factory=list)
++    response_model: str = "dict (untyped)"
++    is_legacy: bool = False
++
++    @property
++    def key(self) -> str:
++        return f"{self.method} {self.path}"
++
++
++@dataclass
++class CallSite:
++    file: str
++    line: int
++    method: str
++    path: str
++    query: list[str] = field(default_factory=list)
++
++
++# ---------------------------------------------------------------------------
++# The API side
++# ---------------------------------------------------------------------------
++
++def collect_routes() -> list[Route]:
++    from fastapi.routing import APIRoute
++
++    from api.main import app
++
++    def walk(obj, prefix: str = ""):
++        for route in getattr(obj, "routes", []):
++            if isinstance(route, APIRoute):
++                yield prefix + route.path, route
++                continue
++            original = getattr(route, "original_router", None)
++            if original is not None:
++                context = getattr(route, "include_context", None)
++                yield from walk(original, prefix + (getattr(context, "prefix", "") or ""))
++
++    routes: list[Route] = []
++    for path, route in walk(app):
++        signature = inspect.signature(route.endpoint)
++        roles = "public"
++        params: list[str] = []
++        for name, parameter in signature.parameters.items():
++            annotation = str(parameter.annotation)
++            if name == "user":
++                roles = ROLE_ALIASES.get(annotation, f"? ({annotation})")
++                continue
++            if name in HIDDEN_PARAMS:
++                continue
++            if "{" + name + "}" in path:
++                continue
++            optional = parameter.default is not inspect.Parameter.empty
++            params.append(f"`{name}`{'' if not optional else '?'}")
++
++        model = route.response_model
++        model_name = getattr(model, "__name__", None)
++        if model_name is None:
++            model_name = "dict (untyped)" if model in (None, dict) else str(model)
++
++        for method in sorted(m for m in route.methods if m not in {"HEAD", "OPTIONS"}):
++            routes.append(Route(
++                method=method, path=path,
++                module=route.endpoint.__module__.split(".")[-1],
++                handler=route.endpoint.__name__, roles=roles, params=params,
++                response_model=model_name,
++                is_legacy=route.endpoint.__module__.endswith("legacy"),
++            ))
++    return sorted(routes, key=lambda r: (r.is_legacy, r.path, r.method))
++
++
++# ---------------------------------------------------------------------------
++# The frontend side
++# ---------------------------------------------------------------------------
++
++# api.get('/x'), api.post(ac.path(`/y?z=1`)), downloadCsv(ac.path('/z'), ...)
++CALL_RE = re.compile(
++    r"\b(?:api\.(?P<verb>get|post)|(?P<csv>downloadCsv))\s*(?:<[^>]*>)?\s*\(\s*"
++    r"(?P<arg>[^\n]+)")
++# ac.path('/booths') or ac.path(`/booths/${uid}/card`) or '/acs'
++SCOPED_RE = re.compile(r"ac\.path\(")
++PATH_RE = re.compile(r"""(?P<quote>['"`])(?P<path>[^'"`]*)\1""")
++# Innermost ${...}: no braces of its own, so repeated application collapses
++# nesting from the inside out.
++INTERP_RE = re.compile(r"\$\{[^{}]*\}")
++
++
++# A placeholder with no braces of its own, so collapsing an inner `${...}` does
++# not make the interpolation that contains it unmatchable.
++SENTINEL = "@@INTERP@@"
++
++
++def collapse_interpolations(text: str) -> str:
++    """Replace every `${...}` with `{}`, innermost first.
++
++    Nested template literals are why this is a loop rather than one `sub`.
++    `ac.path(`/local-results${seatType ? `?seat_type=${seatType}` : ''}`)` has a
++    backtick *inside* an interpolation, so a single pattern that stops at the
++    next quote character truncates the path to `/local-results${seatType ` and
++    the call looks like it points at a route that does not exist. A previous
++    scanner in this repository reported exactly that and the finding was
++    recorded as "two apparent misses were bugs in my scanner, not in the app".
++    """
++    previous = None
++    while previous != text:
++        previous = text
++        text = INTERP_RE.sub(SENTINEL, text)
++    return text.replace(SENTINEL, "{}")
++
++
++def normalise(path: str, scoped: bool) -> tuple[str, list[str]]:
++    """A frontend path to the route template it should match, plus its query keys.
++
++    `${...}` becomes `{}`, matched positionally against the route's own `{name}`
++    segments - the frontend's variable name says nothing about which parameter
++    it is. `scoped` means the call went through `ac.path()`, which prefixes
++    `/acs/{ac_number}`; without accounting for it every single data call looks
++    like a call to a route that does not exist.
++    """
++    raw, _, query = path.partition("?")
++    keys = []
++    for part in query.split("&"):
++        key = part.split("=")[0].strip()
++        # A query string assembled with URLSearchParams leaves nothing to read
++        # here; those calls are matched on path alone.
++        if key and "{" not in key and "}" not in key:
++            keys.append(key)
++    if scoped:
++        raw = "/acs/{}" + raw
++    return raw, keys
++
++
++def template_shape(path: str) -> str:
++    return re.sub(r"\{[^}]*\}", "{}", path)
++
++
++def shape_candidates(path: str) -> list[str]:
++    """The route shapes a frontend path might mean, best guess first.
++
++    A trailing `{}` is usually an optional query suffix, not a path segment:
++    `ac.path(`/local-results${seatType ? `?seat_type=${seatType}` : ''}`)`
++    collapses to `/acs/{}/local-results{}` and means `/acs/{ac}/local-results`.
++    A `{}` between slashes is a real path parameter and is left alone.
++    """
++    shape = template_shape(path)
++    candidates = [shape]
++    if shape.endswith("{}") and not shape.endswith("/{}"):
++        candidates.append(shape[:-2])
++    return candidates
++
++
++def collect_call_sites() -> list[CallSite]:
++    sites: list[CallSite] = []
++    if not WEB_SRC.exists():
++        return sites
++    for file in sorted(WEB_SRC.rglob("*.ts")) + sorted(WEB_SRC.rglob("*.tsx")):
++        text = file.read_text(encoding="utf-8")
++        for number, line in enumerate(text.splitlines(), start=1):
++            match = CALL_RE.search(line)
++            if not match:
++                continue
++            argument = collapse_interpolations(match.group("arg"))
++            scoped = bool(SCOPED_RE.search(argument))
++            inner = PATH_RE.search(argument)
++            if not inner:
++                continue
++            path, query = normalise(inner.group("path"), scoped)
++            if not path.startswith("/"):
++                continue
++            method = "GET" if match.group("csv") else match.group("verb").upper()
++            sites.append(CallSite(
++                file=str(file.relative_to(APP_ROOT)).replace("\\", "/"),
++                line=number, method=method, path=path, query=query,
++            ))
++    return sites
++
++
++# ---------------------------------------------------------------------------
++# Reconciliation
++# ---------------------------------------------------------------------------
++
++def reconcile(routes: list[Route], sites: list[CallSite]) -> dict:
++    by_shape: dict[tuple[str, str], list[Route]] = {}
++    for route in routes:
++        by_shape.setdefault((route.method, template_shape(route.path)), []).append(route)
++
++    matched: dict[str, list[CallSite]] = {r.key: [] for r in routes}
++    orphan_calls: list[CallSite] = []
++    bad_params: list[tuple[CallSite, Route, list[str]]] = []
++
++    for site in sites:
++        candidates: list[Route] = []
++        for shape in shape_candidates(site.path):
++            candidates = by_shape.get((site.method, shape), [])
++            if candidates:
++                break
++        if not candidates:
++            orphan_calls.append(site)
++            continue
++        route = candidates[0]
++        matched[route.key].append(site)
++        declared = {p.strip("`?") for p in route.params}
++        unknown = [q for q in site.query if q not in declared]
++        if unknown:
++            bad_params.append((site, route, unknown))
++
++    uncalled = [r for r in routes if not r.is_legacy and not matched[r.key]]
++    untyped = [r for r in routes if not r.is_legacy and r.response_model == "dict (untyped)"]
++    return {"matched": matched, "orphan_calls": orphan_calls, "uncalled": uncalled,
++            "bad_params": bad_params, "untyped": untyped}
++
++
++# ---------------------------------------------------------------------------
++# Rendering
++# ---------------------------------------------------------------------------
++
++HEADER = """# docs/ENDPOINTS.md
++
++**Generated by `scripts/endpoint_inventory.py`. Do not edit by hand.**
++Regenerate with `python scripts/endpoint_inventory.py`; `--check` fails if this
++file is out of date, which is what keeps it true.
++
++Required by `FRONTEND_HARDENING.md` 2. It answers three questions that were
++previously only answerable by reading every file: what routes exist, who may
++call them, and which page calls which.
++
++A `?` on a parameter means it has a default. "Response model" is the pydantic
++model FastAPI publishes in the OpenAPI schema; `dict (untyped)` means the
++handler returns a bare dict, which generates no schema at all - so
++`openapi-typescript` emits `unknown` and the frontend has nothing to check
++against.
++"""
++
++
++def render(routes: list[Route], sites: list[CallSite], findings: dict) -> str:
++    out = [HEADER]
++    live = [r for r in routes if not r.is_legacy]
++    legacy = [r for r in routes if r.is_legacy]
++
++    out.append("\n## Summary\n")
++    out.append(f"- **{len(live)}** live routes, **{len(legacy)}** legacy redirects")
++    out.append(f"- **{len(sites)}** frontend call sites")
++    out.append(f"- **{len(findings['untyped'])}** routes with no explicit response model")
++    out.append(f"- **{len(findings['uncalled'])}** routes no page calls")
++    out.append(f"- **{len(findings['orphan_calls'])}** frontend calls to a route that "
++               f"does not exist")
++    out.append(f"- **{len(findings['bad_params'])}** calls sending a parameter the route "
++               f"does not accept")
++
++    out.append("\n## Routes\n")
++    out.append("| Method | Path | Roles | Query / path params | Response model | Called from |")
++    out.append("|---|---|---|---|---|---|")
++    for route in live:
++        callers = findings["matched"][route.key]
++        where = "<br>".join(f"`{c.file}:{c.line}`" for c in callers) or "**(none)**"
++        params = ", ".join(route.params) or "—"
++        model = (route.response_model if route.response_model != "dict (untyped)"
++                 else "**dict (untyped)**")
++        out.append(f"| {route.method} | `{route.path}` | {route.roles} | {params} | "
++                   f"{model} | {where} |")
++
++    out.append("\n## Legacy redirects\n")
++    out.append("Pre-multi-AC paths, kept as 308 redirects into `/acs/{ac_number}/…` for "
++               "one release. A 308 preserves the method and body; a 302 would turn a POST "
++               "into a GET.\n")
++    out.append("| Method | Path | Handler |")
++    out.append("|---|---|---|")
++    for route in legacy:
++        out.append(f"| {route.method} | `{route.path}` | `{route.module}.{route.handler}` |")
++
++    out.append("\n## Findings\n")
++
++    out.append("\n### Frontend calls to a route that does not exist\n")
++    if findings["orphan_calls"]:
++        for site in findings["orphan_calls"]:
++            out.append(f"- `{site.file}:{site.line}` calls `{site.method} {site.path}`")
++    else:
++        out.append("None.")
++
++    out.append("\n### Routes no page calls\n")
++    if findings["uncalled"]:
++        out.append("Not necessarily wrong - some are for operators, scripts or a page not "
++                   "yet built - but each should be either used or removed.\n")
++        for route in findings["uncalled"]:
++            out.append(f"- `{route.key}` (`{route.module}.{route.handler}`)")
++    else:
++        out.append("None.")
++
++    out.append("\n### Parameters a page sends that the route does not accept\n")
++    if findings["bad_params"]:
++        for site, route, unknown in findings["bad_params"]:
++            out.append(f"- `{site.file}:{site.line}` sends "
++                       f"{', '.join('`' + u + '`' for u in unknown)} to `{route.key}`, "
++                       f"which accepts {', '.join(route.params) or 'no parameters'}")
++    else:
++        out.append("None.")
++
++    out.append("\n### Routes with no explicit response model\n")
++    if findings["untyped"]:
++        out.append("Each returns a bare `dict`, so its OpenAPI schema is an untyped "
++                   "object.\n")
++        for route in findings["untyped"]:
++            out.append(f"- `{route.key}` (`{route.module}.{route.handler}`)")
++    else:
++        out.append("None. Every route publishes a model.")
++
++    out.append("")
++    return "\n".join(out) + "\n"
++
++
++def main(argv: list[str] | None = None) -> int:
++    ap = argparse.ArgumentParser(description=__doc__,
++                                 formatter_class=argparse.RawDescriptionHelpFormatter)
++    ap.add_argument("--check", action="store_true",
++                    help="exit 1 if docs/ENDPOINTS.md is out of date")
++    ap.add_argument("--fail-on-findings", action="store_true",
++                    help="exit 1 if any finding is non-empty (for a stricter gate)")
++    args = ap.parse_args(argv)
++
++    routes = collect_routes()
++    sites = collect_call_sites()
++    findings = reconcile(routes, sites)
++    document = render(routes, sites, findings)
++
++    if args.check:
++        current = OUTPUT.read_text(encoding="utf-8") if OUTPUT.exists() else ""
++        if current != document:
++            print(f"{OUTPUT.relative_to(APP_ROOT)} is out of date. Run: "
++                  f"python scripts/endpoint_inventory.py", file=sys.stderr)
++            return 1
++        print(f"{OUTPUT.relative_to(APP_ROOT)} is up to date "
++              f"({len(routes)} routes, {len(sites)} call sites).")
++    else:
++        OUTPUT.parent.mkdir(parents=True, exist_ok=True)
++        OUTPUT.write_text(document, encoding="utf-8", newline="\n")
++        print(f"wrote {OUTPUT.relative_to(APP_ROOT)}: {len(routes)} routes, "
++              f"{len(sites)} call sites")
++
++    for name in ("orphan_calls", "bad_params"):
++        if findings[name]:
++            print(f"  {len(findings[name])} {name.replace('_', ' ')}", file=sys.stderr)
++    print(f"  {len(findings['untyped'])} route(s) with no explicit response model")
++    print(f"  {len(findings['uncalled'])} route(s) no page calls")
++
++    if args.fail_on_findings and (findings["orphan_calls"] or findings["bad_params"]):
++        return 1
++    return 0
++
++
++if __name__ == "__main__":
++    sys.exit(main())
+diff --git a/giridih-monitor/tests/e2e/conftest.py b/giridih-monitor/tests/e2e/conftest.py
+index 60a2fc6..df9be4c 100644
+--- a/giridih-monitor/tests/e2e/conftest.py
++++ b/giridih-monitor/tests/e2e/conftest.py
+@@ -99,3 +99,121 @@ def refresh_views(cur) -> None:
+ 
+     for view in VIEWS:
+         cur.execute(f"REFRESH MATERIALIZED VIEW {view}")
++
++# ---------------------------------------------------------------------------
++# One loaded dataset, shared
++# ---------------------------------------------------------------------------
++
++# Giridih, at close to its real station count, with a roll over two of them.
++# The roll is what costs: pdfplumber's text extraction is linear in characters,
++# and the published electorate divided over fewer stations means more electors
++# per station, not fewer overall.
++DATASET_AC = 32
++DATASET_BOOTHS = 120
++DATASET_ROLL_BOOTHS = 2
++DATASET_ELECTIONS = ["VS-2024", "VS-2019"]
++DATASET_SEED = 4242
++
++# A constituency that is seeded and deliberately never loaded, so the empty
++# state is a real state rather than a hypothetical one.
++EMPTY_AC = 42
++
++
++def run_loader(module: str, argv: list) -> int:
++    """Call a loader's `main()` in-process, as its CLI would.
++
++    `main()` rather than the internals, so argument parsing, scope resolution
++    and exit codes are covered too - three of the defects this suite found
++    lived in exactly those.
++    """
++    import importlib
++
++    return importlib.import_module(module).main([str(a) for a in argv])
++
++
++def load_dataset(mock_dir, manifest: dict) -> None:
++    """The same order, and the same commands, as scripts/dev_stack.py."""
++    docs = manifest["documents"]
++
++    for d in [x for x in docs if x["kind"] == "ps_list"]:
++        argv = [mock_dir / d["path"], "--ac", d["ac"], "--election", d["election"],
++                "--load", "--block", d["block_id"]]
++        if d["anchor"]:
++            argv.append("--anchor")
++        assert run_loader("ingest.parse_pslist", argv) == 0, d["path"]
++
++    for d in [x for x in docs if x["kind"] == "form20"]:
++        # No --skip-ac-check: the AC-total reconciliation gate has to pass.
++        assert run_loader("ingest.parse_form20", [
++            mock_dir / d["path"], "--ac", d["ac"], "--election", d["election"],
++            "--load", "--replace",
++        ]) == 0, d["path"]
++
++    anchors = {d["election"] for d in docs if d["kind"] == "ps_list" and d["anchor"]}
++    for label in [e for e in manifest["elections"] if e not in anchors]:
++        assert run_loader("ingest.crosswalk", [
++            "--ac", DATASET_AC, "--election", label, "--apply"]) == 0, label
++
++    for kind in ("roll_mother", "roll_supplement"):
++        for d in [x for x in docs if x["kind"] == kind]:
++            argv = [mock_dir / d["path"], "--ac", d["ac"], "--election", d["election"],
++                    "--revision", d["revision"], "--date", d["date"], "--load"]
++            if d["supplement"]:
++                argv.append("--supplement")
++            else:
++                argv += ["--link-election", d["link_election"]]
++            assert run_loader("ingest.parse_roll", argv) == 0, d["path"]
++
++
++@pytest.fixture(scope="session")
++def loaded_dataset(conn, db_url, tmp_path_factory):
++    """Generate synthetic source documents, load them, refresh the views.
++
++    Session-scoped: the load takes half a minute and both `test_ingest_pipeline`
++    and `test_api_contract` read the same state. The `conn` fixture has already
++    rebuilt the schema from db/migrations and loaded db/seed.
++    """
++    import json
++    import os
++
++    work = tmp_path_factory.mktemp("dataset")
++    mock_dir = work / "mock"
++    # Keep the page cache and any retained PDF inside the temp tree: the roll
++    # loader refuses to run when it finds roll text under OCR_DIR, and a test
++    # must neither depend on nor pollute the repository's ocr/ and raw/.
++    previous = {k: os.environ.get(k) for k in ("OCR_DIR", "RAW_DIR", "DATABASE_URL")}
++    os.environ["OCR_DIR"] = str(work / "ocr")
++    os.environ["RAW_DIR"] = str(work / "raw")
++    os.environ["DATABASE_URL"] = db_url
++
++    from common.config import get_settings
++    from common.db import close_pools
++
++    get_settings.cache_clear()
++    close_pools()
++
++    try:
++        assert run_loader("ingest.mock_documents", [
++            "--ac", DATASET_AC, "--out-dir", mock_dir, "--booths", DATASET_BOOTHS,
++            "--roll-booths", DATASET_ROLL_BOOTHS, "--seed", DATASET_SEED,
++            "--elections", ",".join(DATASET_ELECTIONS),
++        ]) == 0
++
++        manifest = json.loads((mock_dir / "manifest.json").read_text(encoding="utf-8"))
++        load_dataset(mock_dir, manifest)
++
++        from common.db import cursor
++
++        with cursor() as cur:
++            refresh_views(cur)
++        yield {"manifest": manifest, "dir": mock_dir, "ac": DATASET_AC,
++               "booths": DATASET_BOOTHS, "roll_booths": DATASET_ROLL_BOOTHS,
++               "elections": DATASET_ELECTIONS, "empty_ac": EMPTY_AC}
++    finally:
++        close_pools()
++        for key, value in previous.items():
++            if value is None:
++                os.environ.pop(key, None)
++            else:
++                os.environ[key] = value
++        get_settings.cache_clear()
+diff --git a/giridih-monitor/tests/e2e/test_api_contract.py b/giridih-monitor/tests/e2e/test_api_contract.py
+new file mode 100644
+index 0000000..b0c9bf4
+--- /dev/null
++++ b/giridih-monitor/tests/e2e/test_api_contract.py
+@@ -0,0 +1,570 @@
++"""Every route, for every role, against a loaded database.
++
++`FRONTEND_HARDENING.md` 2 asks for exactly this: "a test that calls every route,
++for every role, against the seeded dev database, and asserts correct status for
++the role (200 or 403, never 500), and the response validates against its model."
++
++It is the test this codebase most obviously lacked. `tests/test_api_topology.py`
++proves the routes are *registered* and `tests/test_api_sql_relations.py` proves
++their SQL names relations that exist - neither executes a query, so a column
++renamed in a migration breaks a page and nothing notices. `0015_metrics.sql`
++renamed `votes_counted` to `votes_polled`, three handlers still read the old
++name, and `GET /acs/{ac}/summary` has been returning 500 ever since.
++
++The route list is **derived from the application**, not declared here, and a
++route with no entry in `PATH_PARAMS`/`BODIES` fails the test. A new endpoint
++therefore cannot be added without saying how to call it, which is the only way
++a list like this stays true.
++
++**Skipped without a database.** Set E2E_DATABASE_URL; see tests/e2e/conftest.py.
++"""
++
++from __future__ import annotations
++
++import inspect
++from dataclasses import dataclass
++
++import pytest
++from fastapi.routing import APIRoute
++
++from tests.e2e.conftest import requires_db
++
++pytestmark = requires_db
++
++ROLES = ("admin", "strategist", "block")
++
++# How the role dependency on an endpoint maps to the roles it admits. Read off
++# the annotation rather than declared, so the two cannot drift: `api/deps.py`
++# exports exactly these three aliases and every data route uses one of them.
++ROLE_ALIASES = {
++    "AdminUser": {"admin"},
++    "StrategistUser": {"admin", "strategist"},
++    "CurrentUser": {"admin", "strategist", "block"},
++}
++
++# Routes that take no user at all. Each is deliberate and worth stating.
++PUBLIC = {
++    ("GET", "/health"),      # a load balancer reads this
++    ("GET", "/config"),      # the login screen needs it before anyone has a token
++    ("POST", "/auth/login"),
++    ("POST", "/auth/otp"),
++    ("POST", "/auth/verify"),
++}
++
++# Path parameters, filled from the loaded dataset by the `ids` fixture.
++PATH_PARAMS = {
++    "ac_number": "ac_number",
++    "booth_uid": "booth_uid",
++    "election_label": "election_label",
++    "item_id": "review_item_id",
++}
++
++# Bodies for the POST routes. Deliberately the smallest valid body: this test is
++# about status and shape, and a POST that changes data is covered by
++# `test_a_review_item_can_be_resolved_and_the_change_is_visible` below.
++BODIES = {
++    ("POST", "/auth/login"): {"phone": "9000000001", "password": "wrong-on-purpose"},
++    ("POST", "/auth/otp"): {"phone": "9000000001"},
++    ("POST", "/auth/verify"): {"phone": "9000000001", "code": "000000"},
++    ("POST", "/acs/{ac_number}/scenario"): {"turnout_multiplier": 1.0, "draws": 10},
++    ("POST", "/acs/{ac_number}/ground-reports"): {
++        "text": "Contract test report. Booth reachable, no issues raised.",
++        "issues": ["roads"],
++    },
++    ("POST", "/acs/{ac_number}/admin/crosswalk"): "CROSSWALK_FIX",
++    # `status` must be 'resolved' or 'rejected' by the model's own pattern, and
++    # the sweep is pointed at a nonexistent id so it cannot resolve a real item
++    # out from under test_a_review_item_can_be_resolved_and_the_change_is_visible.
++    ("POST", "/acs/{ac_number}/admin/review-queue/{item_id}"): {
++        "status": "rejected", "note": "swept by the contract test",
++    },
++    ("POST", "/acs/{ac_number}/admin/surnames"): "SURNAME_ENTRY",
++}
++
++# Endpoints known to be broken, with the finding that tracks them. `xfail` and
++# not `skip`: a skip says nothing, whereas a strict xfail fails the moment the
++# endpoint starts working and so forces this entry to be removed with the fix.
++#
++# N15 is one defect with a long tail. `0015_metrics.sql` rebuilt the metric
++# views and renamed columns - `votes_counted` to `votes_polled`, `total_valid`
++# to `valid_votes` - and the handlers were never updated. Three references are
++# fixed; these two handlers select several more stale names each
++# (`electors_now` in the booth card's roll block, and more behind it in
++# `/summary`), and getting them right means reconciling each SELECT list
++# against the view it reads, not renaming by sight. That is the rest of
++# FRONTEND_HARDENING.md section 2 and is not started.
++#
++# Both have returned 500 since 0015 was written. Neither page has ever loaded
++# against a database, which is why nothing noticed.
++KNOWN_BROKEN = {
++    ("GET", "/acs/{ac_number}/summary"):
++        "N15: selects stale metric-view columns renamed by 0015 (total_valid, "
++        "and more behind it). The Overview page cannot load.",
++    ("GET", "/acs/{ac_number}/booths/{booth_uid}/card"):
++        "N15: api/booth_card.py selects electors_now and other names the roll "
++        "and metric views no longer have. The booth card cannot load.",
++}
++
++
++def known_broken(endpoint: Endpoint, broken: dict | None = None):
++    """The xfail marker for a route recorded as broken, or None."""
++    reason = (KNOWN_BROKEN if broken is None else broken).get(endpoint.key)
++    return None if reason is None else pytest.mark.xfail(strict=True, reason=reason)
++
++
++# Statuses a wrong-password login or an unconfigured OTP sender may legitimately
++# return. Anything else - and in particular any 5xx - is a failure.
++EXPECTED_OTHER = {
++    # Resolving an item is 200; resolving one already resolved is 404, and the
++    # sweep may run after test_a_review_item_can_be_resolved has taken the
++    # first open item. Both are correct answers.
++    ("POST", "/acs/{ac_number}/admin/review-queue/{item_id}"): {200, 404},
++    # 201 Created, which is the right answer for a POST that creates a row.
++    ("POST", "/acs/{ac_number}/ground-reports"): {201},
++    ("POST", "/auth/login"): {400, 401, 429},
++    ("POST", "/auth/otp"): {200, 400, 501, 503},
++    ("POST", "/auth/verify"): {400, 401, 429},
++}
++
++
++@dataclass(frozen=True)
++class Endpoint:
++    method: str
++    path: str
++    module: str
++    name: str
++    roles: frozenset[str]
++    is_public: bool
++    is_legacy: bool
++
++    @property
++    def key(self) -> tuple[str, str]:
++        return (self.method, self.path)
++
++    def __str__(self) -> str:
++        return f"{self.method} {self.path}"
++
++
++def _walk(obj, prefix: str = ""):
++    """Every APIRoute under an app or router, with its mounted prefix.
++
++    FastAPI 0.141 wraps an included router in an `_IncludedRouter` that holds
++    the original router and the prefix separately, so `app.routes` is not a flat
++    list and the obvious `for r in app.routes` finds only the two routes defined
++    on the app itself. Getting that wrong is how a sweep like this quietly
++    covers nothing.
++    """
++    for route in getattr(obj, "routes", []):
++        if isinstance(route, APIRoute):
++            yield prefix + route.path, route
++            continue
++        original = getattr(route, "original_router", None)
++        if original is not None:
++            context = getattr(route, "include_context", None)
++            yield from _walk(original, prefix + (getattr(context, "prefix", "") or ""))
++
++
++def endpoints() -> list[Endpoint]:
++    from api.main import app
++
++    out: list[Endpoint] = []
++    for path, route in _walk(app):
++        module = route.endpoint.__module__.split(".")[-1]
++        signature = inspect.signature(route.endpoint)
++        annotation = signature.parameters.get("user")
++        # `from __future__ import annotations` makes these strings, which is
++        # what we want: the alias name is the contract.
++        alias = str(annotation.annotation) if annotation is not None else None
++        roles = ROLE_ALIASES.get(alias, frozenset())
++        for method in sorted(m for m in route.methods if m not in {"HEAD", "OPTIONS"}):
++            out.append(Endpoint(
++                method=method, path=path, module=module, name=route.endpoint.__name__,
++                roles=frozenset(roles), is_public=(method, path) in PUBLIC,
++                is_legacy=module == "legacy",
++            ))
++    return sorted(out, key=lambda e: (e.path, e.method))
++
++
++ALL = endpoints()
++SCOPED = [e for e in ALL if not e.is_legacy and not e.is_public]
++LEGACY = [e for e in ALL if e.is_legacy]
++
++
++def ident(e: Endpoint) -> str:
++    return f"{e.method}-{e.path}"
++
++
++def cases(endpoints_: list[Endpoint], broken: dict | None = None):
++    """Parametrise over endpoints, carrying any known-broken marker.
++
++    `broken` is narrowed per sweep because a route can be broken in one
++    situation and correct in another, and a strict xfail that passes is itself a
++    failure - which is the point of it being strict. The booth card is the
++    example: it 500s on a real booth because of the stale column names, and
++    404s on a constituency with no booths, so it is only expected to fail in the
++    first sweep.
++    """
++    return [
++        pytest.param(e, marks=[m] if (m := known_broken(e, broken)) else [], id=ident(e))
++        for e in endpoints_
++    ]
++
++
++# ---------------------------------------------------------------------------
++# Fixtures: a client per role, and real ids to put in the paths
++# ---------------------------------------------------------------------------
++
++@pytest.fixture(scope="module")
++def ids(loaded_dataset, db_url):
++    """Real identifiers from the loaded data, so a 404 means a bug not a typo."""
++    import psycopg
++
++    with psycopg.connect(db_url, row_factory=psycopg.rows.dict_row) as conn:
++        with conn.cursor() as cur:
++            cur.execute("SELECT ac_number FROM ac WHERE ac_number = 32")
++            ac_number = cur.fetchone()["ac_number"]
++            cur.execute("SELECT booth_uid FROM booth WHERE ac_id = "
++                        "(SELECT ac_id FROM ac WHERE ac_number = 32) ORDER BY booth_uid LIMIT 1")
++            booth_uid = cur.fetchone()["booth_uid"]
++            # `review_queue.id`, not `item_id`: the POST path parameter is
++            # named `item_id` and the listing returns `id`. Worth a note rather
++            # than a rename, since the route is already in use.
++            cur.execute("SELECT id FROM review_queue WHERE status = 'open' "
++                        "ORDER BY id LIMIT 1")
++            row = cur.fetchone()
++            review_item_id = row["id"] if row else 1
++            cur.execute("SELECT block_id FROM block b JOIN ac a USING (ac_id) "
++                        "WHERE a.ac_number = 32 ORDER BY block_id")
++            blocks = [r["block_id"] for r in cur.fetchall()]
++            # The booth PS 1 already maps to, so the POST /admin/crosswalk the
++            # sweep sends is provably a no-op. The sweep has to call every
++            # route, and this one rewrites a crosswalk binding - pointing it at
++            # the current value is how it stays a contract test rather than a
++            # mutation that later assertions have to tolerate.
++            cur.execute("SELECT booth_uid FROM booth_crosswalk x "
++                        "JOIN election e ON e.election_id = x.election_id "
++                        "WHERE e.label = 'VS-2024' AND x.ps_number = 1 "
++                        "AND x.ac_id = (SELECT ac_id FROM ac WHERE ac_number = 32)")
++            row = cur.fetchone()
++            ps1_booth = row["booth_uid"] if row else booth_uid
++            # A second AC with no booth data, for the empty-state and scoping
++            # checks. 42-Tundi is seeded and deliberately never loaded.
++            cur.execute("SELECT ac_number FROM ac WHERE ac_number = %s",
++                        (loaded_dataset["empty_ac"],))
++            empty_ac = cur.fetchone()["ac_number"]
++    return {
++        "ac_number": ac_number, "booth_uid": booth_uid,
++        "election_label": "VS-2024", "review_item_id": review_item_id,
++        "blocks": blocks, "empty_ac": empty_ac, "ps1_booth": ps1_booth,
++    }
++
++
++@pytest.fixture(scope="module")
++def users(loaded_dataset, ids, db_url):
++    """One user per role, created through the real path, with a known password."""
++    import os
++
++    os.environ["DATABASE_URL"] = db_url
++    os.environ.setdefault("JWT_SECRET", "contract-test-secret-at-least-32-bytes-long")
++    from common.config import get_settings
++    from common.db import close_pools
++
++    get_settings.cache_clear()
++    close_pools()
++
++    from api.deps import hash_password
++    from common.db import query_one
++
++    made = {}
++    for index, role in enumerate(ROLES):
++        phone = f"95000000{index:02d}"
++        password = f"contract-{role}-pw"
++        block = ids["blocks"][1] if role == "block" and len(ids["blocks"]) > 1 else (
++            ids["blocks"][0] if role == "block" else None)
++        row = query_one(
++            "INSERT INTO app_user (phone, name, role, block_id, password_hash, "
++            "daily_token_budget) VALUES (%s, %s, %s, %s, %s, 150000) "
++            "ON CONFLICT (phone) DO UPDATE SET role = EXCLUDED.role, "
++            "block_id = EXCLUDED.block_id, password_hash = EXCLUDED.password_hash, "
++            "is_active = true RETURNING user_id",
++            (phone, f"Contract {role}", role, block, hash_password(password)),
++        )
++        made[role] = {"phone": phone, "password": password,
++                      "user_id": row["user_id"], "block_id": block}
++    return made
++
++
++@pytest.fixture(scope="module")
++def client(users, db_url):
++    from fastapi.testclient import TestClient
++
++    from api.main import app
++
++    return TestClient(app, raise_server_exceptions=False)
++
++
++@pytest.fixture(scope="module")
++def tokens(client, users):
++    out = {}
++    for role, spec in users.items():
++        response = client.post("/auth/login",
++                               json={"phone": spec["phone"], "password": spec["password"]})
++        assert response.status_code == 200, (role, response.status_code, response.text)
++        out[role] = response.json()["access_token"]
++    return out
++
++
++def call(client, endpoint: Endpoint, ids: dict, token: str | None = None,
++         ac_number: int | None = None, params: dict | None = None):
++    path = endpoint.path
++    for name, key in PATH_PARAMS.items():
++        placeholder = "{" + name + "}"
++        if placeholder in path:
++            value = ac_number if name == "ac_number" and ac_number is not None else ids[key]
++            path = path.replace(placeholder, str(value))
++    headers = {"Authorization": f"Bearer {token}"} if token else {}
++    body = BODIES.get(endpoint.key)
++    if body == "CROSSWALK_FIX":
++        body = {"election_label": ids["election_label"], "ps_number": 1,
++                "booth_uid": ids["ps1_booth"]}
++    elif body == "SURNAME_ENTRY":
++        body = {"surname_hi": "संपर्क", "surname_en": "Contract", "community_id": 1,
++                "weight": 0.5, "notes": "written by the contract test"}
++    if endpoint.method == "POST":
++        return client.post(path, json=body or {}, headers=headers,
++                           params=params, follow_redirects=False)
++    return client.get(path, headers=headers, params=params, follow_redirects=False)
++
++
++# ---------------------------------------------------------------------------
++# The sweep itself
++# ---------------------------------------------------------------------------
++
++def test_the_route_list_was_actually_discovered():
++    """Guards every parametrised test below.
++
++    If `_walk` returns nothing - and the obvious implementation does, because
++    FastAPI 0.141 nests included routers - then every sweep below is
++    parametrised over an empty list and passes without calling anything.
++    """
++    assert len(ALL) > 40, f"only {len(ALL)} routes found; _walk is not descending"
++    assert len(SCOPED) > 25, f"only {len(SCOPED)} scoped routes found"
++    paths = {e.path for e in ALL}
++    for expected in ("/acs", "/acs/{ac_number}/summary", "/acs/{ac_number}/booths",
++                     "/compare", "/auth/login"):
++        assert expected in paths, expected
++
++
++def test_every_route_has_a_contract_entry():
++    """A new endpoint cannot be added without saying how to call it."""
++    missing_body = [str(e) for e in ALL
++                    if e.method == "POST" and not e.is_legacy and e.key not in BODIES]
++    assert missing_body == [], (
++        "these POST routes have no body in BODIES, so the sweep cannot exercise them: "
++        f"{missing_body}"
++    )
++    unknown_role = [f"{e} ({e.module}.{e.name})" for e in ALL
++                    if not e.is_legacy and not e.is_public and not e.roles]
++    assert unknown_role == [], (
++        "these routes take no recognised role dependency, so their access control is "
++        f"undeclared: {unknown_role}"
++    )
++
++
++@pytest.mark.parametrize("endpoint", SCOPED, ids=ident)
++def test_an_anonymous_request_is_rejected_not_served(client, ids, endpoint):
++    response = call(client, endpoint, ids)
++    assert response.status_code in {401, 403}, (
++        f"{endpoint} served an unauthenticated request with {response.status_code}: "
++        f"{response.text[:200]}"
++    )
++
++
++@pytest.mark.parametrize("endpoint", cases(SCOPED))
++@pytest.mark.parametrize("role", ROLES)
++def test_every_route_answers_correctly_for_every_role(client, tokens, ids, endpoint, role):
++    """200 when the role is admitted, 403 when it is not, never 500.
++
++    The "never 500" half is the one that matters. A 500 here means a handler
++    cannot run its own query against the schema it ships with - and it is how
++    N15 (`votes_counted`, renamed by 0015) reached this commit.
++    """
++    response = call(client, endpoint, ids, token=tokens[role])
++    allowed = role in endpoint.roles
++
++    assert response.status_code < 500, (
++        f"{endpoint} as {role} returned {response.status_code}: {response.text[:400]}"
++    )
++    if allowed:
++        expected = EXPECTED_OTHER.get(endpoint.key, {200})
++        assert response.status_code in expected, (
++            f"{endpoint} as {role} returned {response.status_code}, expected "
++            f"{sorted(expected)}: {response.text[:300]}"
++        )
++    else:
++        assert response.status_code == 403, (
++            f"{endpoint} as {role} returned {response.status_code}, expected 403 "
++            f"(the route declares {sorted(endpoint.roles)})"
++        )
++
++
++@pytest.mark.parametrize("endpoint", [e for e in SCOPED if e.method == "GET"], ids=ident)
++def test_a_get_response_is_json_and_not_a_bare_scalar(client, tokens, ids, endpoint):
++    """Every data route returns an object or an array, never a bare value.
++
++    A handler that returns a scalar cannot carry provenance or a count beside
++    its figure, and the frontend has no way to tell an empty result from an
++    error.
++    """
++    response = call(client, endpoint, ids, token=tokens["admin"])
++    if response.status_code != 200:
++        # A route in KNOWN_BROKEN lands here. The sweep above is what reports
++        # it; this one has nothing to inspect.
++        pytest.skip(f"{endpoint} returned {response.status_code} for admin")
++    if "application/json" not in response.headers.get("content-type", ""):
++        # CSV export routes answer text/csv when asked; the JSON default is
++        # what is under test here.
++        pytest.skip(f"{endpoint} returned {response.headers.get('content-type')}")
++    body = response.json()
++    assert isinstance(body, (dict, list)), f"{endpoint} returned {type(body).__name__}"
++
++
++# ---------------------------------------------------------------------------
++# Role scoping beyond the status code
++# ---------------------------------------------------------------------------
++
++@pytest.mark.parametrize("endpoint", SCOPED, ids=ident)
++def test_a_block_user_cannot_reach_another_constituency(client, tokens, ids, endpoint):
++    """A block-role user belongs to one block, which belongs to one AC.
++
++    Asking for a different AC must be 403, not an empty result: an empty result
++    reads as "nothing loaded" and sends someone looking for a data problem that
++    does not exist. `api/deps.py` says so in its own docstring.
++    """
++    if "{ac_number}" not in endpoint.path:
++        pytest.skip("not an AC-scoped route")
++    response = call(client, endpoint, ids, token=tokens["block"],
++                    ac_number=ids["empty_ac"])
++    assert response.status_code == 403, (
++        f"{endpoint} let a block user of AC 32 address AC {ids['empty_ac']} with "
++        f"{response.status_code}"
++    )
++
++
++def test_the_caste_pages_are_closed_to_a_block_user(client, tokens, ids):
++    """LLD 12. Asserted directly rather than only via the role sweep, because
++    this is the one access rule with a legal reason behind it."""
++    for path in (f"/acs/{ids['ac_number']}/caste",
++                 f"/acs/{ids['ac_number']}/caste/correlation"):
++        response = client.get(path, headers={"Authorization": f"Bearer {tokens['block']}"})
++        assert response.status_code == 403, (path, response.status_code)
++
++
++def test_an_unknown_constituency_is_a_404_not_a_500(client, tokens):
++    response = client.get("/acs/999/summary",
++                          headers={"Authorization": f"Bearer {tokens['admin']}"})
++    assert response.status_code == 404, response.text[:300]
++
++
++def test_an_invalid_token_is_rejected(client, ids):
++    response = client.get(f"/acs/{ids['ac_number']}/summary",
++                          headers={"Authorization": "Bearer not-a-token"})
++    assert response.status_code == 401
++
++
++# ---------------------------------------------------------------------------
++# An AC with nothing loaded must answer, not fail
++# ---------------------------------------------------------------------------
++
++@pytest.mark.parametrize("endpoint", cases(
++    [e for e in SCOPED if e.method == "GET"],
++    # The booth card is excluded: with no booths in the constituency it returns
++    # 404 from its own existence check and never reaches the broken SQL.
++    broken={k: v for k, v in KNOWN_BROKEN.items()
++            if k != ("GET", "/acs/{ac_number}/booths/{booth_uid}/card")},
++))
++def test_a_constituency_with_no_data_answers_empty_rather_than_failing(
++        client, tokens, ids, endpoint):
++    """42-Tundi is seeded and deliberately never loaded.
++
++    Section 4 of the hardening brief requires the frontend to render an AC with
++    nothing in it, so the API has to give it something to render. A 500 here is
++    a handler that assumes its view has rows.
++    """
++    if "{ac_number}" not in endpoint.path:
++        pytest.skip("not an AC-scoped route")
++    response = call(client, endpoint, ids, token=tokens["admin"],
++                    ac_number=ids["empty_ac"])
++    assert response.status_code < 500, (
++        f"{endpoint} on an empty constituency returned {response.status_code}: "
++        f"{response.text[:400]}"
++    )
++    assert response.status_code in {200, 404}, (
++        f"{endpoint} on an empty constituency returned {response.status_code}"
++    )
++
++
++# ---------------------------------------------------------------------------
++# Legacy redirects
++# ---------------------------------------------------------------------------
++
++@pytest.mark.parametrize("endpoint", [e for e in LEGACY if e.method == "GET"], ids=ident)
++def test_a_legacy_path_redirects_into_the_scoped_one(client, tokens, ids, endpoint):
++    """The pre-multi-AC paths are kept as 308s for one release.
++
++    A 308 preserves the method and body, which a 302 does not - a POST to a
++    legacy path must not silently become a GET.
++    """
++    path = endpoint.path.replace("{booth_uid}", ids["booth_uid"]).replace(
++        "{election_label}", ids["election_label"])
++    response = client.get(path, headers={"Authorization": f"Bearer {tokens['admin']}"},
++                          follow_redirects=False)
++    assert response.status_code in {307, 308}, (
++        f"{endpoint} returned {response.status_code}, not a redirect"
++    )
++    location = response.headers.get("location", "")
++    assert location.startswith("/acs/"), f"{endpoint} redirected to {location!r}"
++
++
++# ---------------------------------------------------------------------------
++# One write, end to end
++# ---------------------------------------------------------------------------
++
++def test_a_review_item_can_be_resolved_and_the_change_is_visible(client, tokens, ids):
++    """Section 5 asks that the review queue's actions work end to end.
++
++    Done here rather than in the sweep because it has to assert the effect, not
++    the status: an action that returns 200 and changes nothing is the failure
++    worth catching.
++    """
++    headers = {"Authorization": f"Bearer {tokens['admin']}"}
++    base = f"/acs/{ids['ac_number']}/admin/review-queue"
++    listing = client.get(base, headers=headers)
++    assert listing.status_code == 200, listing.text[:300]
++    rows = listing.json().get("rows") or []
++    if not rows:
++        pytest.skip("no open review items in the loaded dataset")
++    item_id = rows[0]["id"]
++
++    done = client.post(f"{base}/{item_id}",
++                       json={"status": "resolved", "note": "contract test"},
++                       headers=headers)
++    assert done.status_code == 200, done.text[:300]
++    assert done.json()["updated"] == 1
++
++    # `status_filter` is aliased to the `status` query parameter.
++    after = client.get(base, headers=headers, params={"status": "open", "limit": 500})
++    assert after.status_code == 200
++    still_open = {r["id"] for r in (after.json().get("rows") or [])}
++    assert item_id not in still_open, "the item is still listed as open after resolving it"
++
++    resolved = client.get(base, headers=headers,
++                          params={"status": "resolved", "limit": 500})
++    assert resolved.status_code == 200
++    assert item_id in {r["id"] for r in (resolved.json().get("rows") or [])}
++
++    # Resolving it twice must be a 404, not a second silent success: the UPDATE
++    # is guarded on `status = 'open'` precisely so two operators clicking the
++    # same row cannot both think they handled it.
++    again = client.post(f"{base}/{item_id}", json={"status": "rejected"}, headers=headers)
++    assert again.status_code == 404, again.text[:200]
+diff --git a/giridih-monitor/tests/e2e/test_ingest_pipeline.py b/giridih-monitor/tests/e2e/test_ingest_pipeline.py
+index c47dc6f..b30761a 100644
+--- a/giridih-monitor/tests/e2e/test_ingest_pipeline.py
++++ b/giridih-monitor/tests/e2e/test_ingest_pipeline.py
+@@ -21,27 +21,20 @@ one**; set E2E_DATABASE_URL (see tests/e2e/conftest.py).
+ 
+ from __future__ import annotations
+ 
+-import json
+-import os
+ from pathlib import Path
+ 
+ import pytest
+ 
++from tests.e2e import conftest as e2e
+ from tests.e2e.conftest import refresh_views, requires_db
+ 
+ pytestmark = requires_db
+ 
+-AC = 32
+-# 120 stations, close to Giridih's real count, and a roll over two of them.
+-# The roll's size is what costs: pdfplumber's text extraction is linear in
+-# characters, and the published electorate divided over fewer stations means
+-# more electors per station, not fewer in total. Two stations is about 5,000
+-# electors and a few seconds; the twelve scripts/dev_stack.py loads by default
+-# is about a minute.
+-BOOTHS = 120
+-ROLL_BOOTHS = 2
+-ELECTIONS = ["VS-2024", "VS-2019"]
+-SEED = 4242
++# The shape of the dataset is declared once, in conftest, because the API
++# contract test asserts against the same load.
++AC = e2e.DATASET_AC
++BOOTHS = e2e.DATASET_BOOTHS
++ROLL_BOOTHS = e2e.DATASET_ROLL_BOOTHS
+ 
+ # Published Giridih VS-2024 figures from db/seed/ac_totals.csv. The seed marks
+ # them secondary and needing verification; this test only requires that the
+@@ -51,102 +44,17 @@ PUBLISHED_2024 = {"Sudivya Kumar": 94042, "Nirbhay Kumar Shahabadi": 90204,
+ PUBLISHED_NOTA_2024 = 2004
+ 
+ 
+-def run_module(module: str, argv: list[str]) -> int:
+-    """Call a loader's `main()` in-process, as the CLI would.
+-
+-    `main()` rather than the internals, so the argument parsing, the scope
+-    resolution and the exit codes are all covered - those are where three of the
+-    defects above lived.
+-    """
+-    import importlib
+-
+-    mod = importlib.import_module(module)
+-    return mod.main([str(a) for a in argv])
+-
+-
+ @pytest.fixture(scope="module")
+-def pipeline(request, db_url, tmp_path_factory):
+-    """Generate documents, load them through every loader, refresh the views.
+-
+-    Module-scoped: the pipeline takes a few seconds and every assertion below
+-    reads the same loaded state. The session `conn` fixture has already rebuilt
+-    the schema from db/migrations and loaded db/seed.
+-    """
+-    request.getfixturevalue("conn")
+-
+-    work = tmp_path_factory.mktemp("pipeline")
+-    mock_dir = work / "mock"
+-    # Keep the roll's page cache and any retained PDF inside the temp tree: the
+-    # roll loader refuses to run when it finds roll text under OCR_DIR, and a
+-    # test must not depend on - or pollute - the repository's ocr/ and raw/.
+-    previous = {k: os.environ.get(k) for k in ("OCR_DIR", "RAW_DIR", "DATABASE_URL")}
+-    os.environ["OCR_DIR"] = str(work / "ocr")
+-    os.environ["RAW_DIR"] = str(work / "raw")
+-    os.environ["DATABASE_URL"] = db_url
+-
+-    from common.config import get_settings
+-    from common.db import close_pools
+-
+-    get_settings.cache_clear()
+-    close_pools()
+-
+-    try:
+-        assert run_module("ingest.mock_documents", [
+-            "--ac", AC, "--out-dir", mock_dir, "--booths", BOOTHS,
+-            "--roll-booths", ROLL_BOOTHS, "--seed", SEED,
+-            "--elections", ",".join(ELECTIONS),
+-        ]) == 0
+-
+-        manifest = json.loads((mock_dir / "manifest.json").read_text(encoding="utf-8"))
+-        load_all(mock_dir, manifest)
+-
+-        from common.db import cursor
+-
+-        with cursor() as cur:
+-            refresh_views(cur)
+-        yield {"manifest": manifest, "dir": mock_dir}
+-    finally:
+-        close_pools()
+-        for key, value in previous.items():
+-            if value is None:
+-                os.environ.pop(key, None)
+-            else:
+-                os.environ[key] = value
+-        get_settings.cache_clear()
++def pipeline(loaded_dataset):
++    """The dataset `tests/e2e/conftest.py` loaded, under this module's old name."""
++    return loaded_dataset
+ 
+ 
+ def load_all(mock_dir: Path, manifest: dict) -> None:
+-    """The same order, and the same commands, as scripts/dev_stack.py."""
+-    docs = manifest["documents"]
+-
+-    for d in [x for x in docs if x["kind"] == "ps_list"]:
+-        argv = [mock_dir / d["path"], "--ac", d["ac"], "--election", d["election"],
+-                "--load", "--block", d["block_id"]]
+-        if d["anchor"]:
+-            argv.append("--anchor")
+-        assert run_module("ingest.parse_pslist", argv) == 0, d["path"]
+-
+-    for d in [x for x in docs if x["kind"] == "form20"]:
+-        # No --skip-ac-check: the AC-total reconciliation gate has to pass.
+-        assert run_module("ingest.parse_form20", [
+-            mock_dir / d["path"], "--ac", d["ac"], "--election", d["election"],
+-            "--load", "--replace",
+-        ]) == 0, d["path"]
+-
+-    anchors = {d["election"] for d in docs if d["kind"] == "ps_list" and d["anchor"]}
+-    for label in [e for e in manifest["elections"] if e not in anchors]:
+-        assert run_module("ingest.crosswalk", [
+-            "--ac", AC, "--election", label, "--apply"]) == 0, label
+-
+-    for kind in ("roll_mother", "roll_supplement"):
+-        for d in [x for x in docs if x["kind"] == kind]:
+-            argv = [mock_dir / d["path"], "--ac", d["ac"], "--election", d["election"],
+-                    "--revision", d["revision"], "--date", d["date"], "--load"]
+-            if d["supplement"]:
+-                argv.append("--supplement")
+-            else:
+-                argv += ["--link-election", d["link_election"]]
+-            assert run_module("ingest.parse_roll", argv) == 0, d["path"]
++    """Re-run every loader over the same documents (the idempotency test)."""
++    from tests.e2e.conftest import load_dataset
++
++    load_dataset(mock_dir, manifest)
+ 
+ 
+ def one(cursor, sql, params=None):
+diff --git a/giridih-monitor/web/src/pages/Results.tsx b/giridih-monitor/web/src/pages/Results.tsx
+index c7a9c2f..ba2be47 100644
+--- a/giridih-monitor/web/src/pages/Results.tsx
++++ b/giridih-monitor/web/src/pages/Results.tsx
+@@ -14,7 +14,7 @@ import type { AcState } from '../lib/ac'
+ interface Row {
+   booth_uid: string; ps_numbers: string | null
+   area_hi: string; area_en: string; block_en: string
+-  building: string | null; electors: number | null; votes_counted: number | null
++  building: string | null; electors: number | null; votes_polled: number | null
+   turnout_pct: number | null
+   jmm: number; bjp: number; ajsu: number; jlkm: number; others: number; nota: number
+   winner_party: string | null; runner_party: string | null
+@@ -56,8 +56,8 @@ export default function Results({ ac }: { ac: AcState }) {
+     },
+     { key: 'electors', header: t('common.electors'), numeric: true,
+       render: (row) => num(row.electors) },
+-    { key: 'votes_counted', header: t('common.votes'), numeric: true,
+-      render: (row) => num(row.votes_counted) },
++    { key: 'votes_polled', header: t('common.votes'), numeric: true,
++      render: (row) => num(row.votes_polled) },
+     { key: 'turnout_pct', header: t('common.turnout'), numeric: true,
+       render: (row) => pct(row.turnout_pct) },
+     { key: 'jmm', header: 'JMM', numeric: true, render: (row) => num(row.jmm) },
+-- 
+2.55.0.windows.3
+
