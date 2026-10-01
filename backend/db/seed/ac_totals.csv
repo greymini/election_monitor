@@ -1,13 +1,67 @@
 ac_number,election_label,candidate_name,party_abbr,metric,value,source
 32,VS-2014,Nirbhay Kumar Shahabadi,BJP,votes,57450,HLD 1.1 (secondary - re-verify vs Form 20)
 32,VS-2014,Sudivya Kumar,JMM,votes,47517,HLD 1.1 (secondary - re-verify vs Form 20)
-32,VS-2019,Sudivya Kumar,JMM,votes,80871,HLD 1.1 (secondary - re-verify vs Form 20)
-32,VS-2019,Nirbhay Kumar Shahabadi,BJP,votes,64987,HLD 1.1 (secondary - re-verify vs Form 20)
+32,VS-2019,Chunnu Kant,UNK,votes,6903,"ECI Form 20, Giridih VS-2019 (giridih_vs2019_form20.xlsx, Total Votes Polled row)"
+32,VS-2019,Chunnu Kant,UNK,postal,20,"ECI Form 20, Giridih VS-2019 (giridih_vs2019_form20.xlsx, Total Votes Polled row)"
+32,VS-2019,Nirbhay Kumar Shahabadi,BJP,votes,64987,"ECI Form 20, Giridih VS-2019 (giridih_vs2019_form20.xlsx, Total Votes Polled row)"
+32,VS-2019,Nirbhay Kumar Shahabadi,BJP,postal,71,"ECI Form 20, Giridih VS-2019 (giridih_vs2019_form20.xlsx, Total Votes Polled row)"
+32,VS-2019,Sikandar Ali,UNK,votes,1272,"ECI Form 20, Giridih VS-2019 (giridih_vs2019_form20.xlsx, Total Votes Polled row)"
+32,VS-2019,Sikandar Ali,UNK,postal,1,"ECI Form 20, Giridih VS-2019 (giridih_vs2019_form20.xlsx, Total Votes Polled row)"
+32,VS-2019,Sima Kumari,UNK,votes,833,"ECI Form 20, Giridih VS-2019 (giridih_vs2019_form20.xlsx, Total Votes Polled row)"
+32,VS-2019,Sima Kumari,UNK,postal,1,"ECI Form 20, Giridih VS-2019 (giridih_vs2019_form20.xlsx, Total Votes Polled row)"
+32,VS-2019,Sudivya Kumar,JMM,votes,80871,"ECI Form 20, Giridih VS-2019 (giridih_vs2019_form20.xlsx, Total Votes Polled row)"
+32,VS-2019,Sudivya Kumar,JMM,postal,165,"ECI Form 20, Giridih VS-2019 (giridih_vs2019_form20.xlsx, Total Votes Polled row)"
+32,VS-2019,Upendra Kumar Sharma,UNK,votes,2026,"ECI Form 20, Giridih VS-2019 (giridih_vs2019_form20.xlsx, Total Votes Polled row)"
+32,VS-2019,Upendra Kumar Sharma,UNK,postal,3,"ECI Form 20, Giridih VS-2019 (giridih_vs2019_form20.xlsx, Total Votes Polled row)"
+32,VS-2019,Rajesh Ku Sinha,UNK,votes,834,"ECI Form 20, Giridih VS-2019 (giridih_vs2019_form20.xlsx, Total Votes Polled row)"
+32,VS-2019,Rajesh Ku Sinha,UNK,postal,2,"ECI Form 20, Giridih VS-2019 (giridih_vs2019_form20.xlsx, Total Votes Polled row)"
+32,VS-2019,Shweta Kumari,UNK,votes,1182,"ECI Form 20, Giridih VS-2019 (giridih_vs2019_form20.xlsx, Total Votes Polled row)"
+32,VS-2019,Shweta Kumari,UNK,postal,3,"ECI Form 20, Giridih VS-2019 (giridih_vs2019_form20.xlsx, Total Votes Polled row)"
+32,VS-2019,Md Salman Sahab,UNK,votes,1124,"ECI Form 20, Giridih VS-2019 (giridih_vs2019_form20.xlsx, Total Votes Polled row)"
+32,VS-2019,Md Salman Sahab,UNK,postal,2,"ECI Form 20, Giridih VS-2019 (giridih_vs2019_form20.xlsx, Total Votes Polled row)"
+32,VS-2019,Budhan Hemabram,UNK,votes,991,"ECI Form 20, Giridih VS-2019 (giridih_vs2019_form20.xlsx, Total Votes Polled row)"
+32,VS-2019,Budhan Hemabram,UNK,postal,0,"ECI Form 20, Giridih VS-2019 (giridih_vs2019_form20.xlsx, Total Votes Polled row)"
+32,VS-2019,Mohammad Lallu,UNK,votes,2493,"ECI Form 20, Giridih VS-2019 (giridih_vs2019_form20.xlsx, Total Votes Polled row)"
+32,VS-2019,Mohammad Lallu,UNK,postal,1,"ECI Form 20, Giridih VS-2019 (giridih_vs2019_form20.xlsx, Total Votes Polled row)"
+32,VS-2019,Shyam Prasad Barnwal,UNK,votes,1533,"ECI Form 20, Giridih VS-2019 (giridih_vs2019_form20.xlsx, Total Votes Polled row)"
+32,VS-2019,Shyam Prasad Barnwal,UNK,postal,0,"ECI Form 20, Giridih VS-2019 (giridih_vs2019_form20.xlsx, Total Votes Polled row)"
+32,VS-2019,,,nota,2773,"ECI Form 20, Giridih VS-2019 (giridih_vs2019_form20.xlsx, Total Votes Polled row)"
+32,VS-2019,,,total_valid,167822,"ECI Form 20, Giridih VS-2019 (giridih_vs2019_form20.xlsx, Total Votes Polled row)"
+32,VS-2019,,,rejected,71,"ECI Form 20, Giridih VS-2019 (giridih_vs2019_form20.xlsx, Total Votes Polled row)"
+32,VS-2019,,,postal,271,"ECI Form 20, Giridih VS-2019 (giridih_vs2019_form20.xlsx, Total Votes Polled row)"
+32,VS-2024,Arundhati Mishra,UNK,votes,1208,"ECI Form 20, Giridih VS-2024 (giridih_vs2024_form20.xlsx, Total Votes Polled row)"
+32,VS-2024,Arundhati Mishra,UNK,postal,11,"ECI Form 20, Giridih VS-2024 (giridih_vs2024_form20.xlsx, Total Votes Polled row)"
+32,VS-2024,Nirbhay Kumar Shahabadi,BJP,votes,90204,"ECI Form 20, Giridih VS-2024 (giridih_vs2024_form20.xlsx, Total Votes Polled row)"
+32,VS-2024,Nirbhay Kumar Shahabadi,BJP,postal,863,"ECI Form 20, Giridih VS-2024 (giridih_vs2024_form20.xlsx, Total Votes Polled row)"
+32,VS-2024,Sudivya Kumar,JMM,votes,94042,"ECI Form 20, Giridih VS-2024 (giridih_vs2024_form20.xlsx, Total Votes Polled row)"
+32,VS-2024,Sudivya Kumar,JMM,postal,863,"ECI Form 20, Giridih VS-2024 (giridih_vs2024_form20.xlsx, Total Votes Polled row)"
+32,VS-2024,Ajeet Ray,UNK,votes,1540,"ECI Form 20, Giridih VS-2024 (giridih_vs2024_form20.xlsx, Total Votes Polled row)"
+32,VS-2024,Ajeet Ray,UNK,postal,4,"ECI Form 20, Giridih VS-2024 (giridih_vs2024_form20.xlsx, Total Votes Polled row)"
+32,VS-2024,Anisha Sinha,UNK,votes,858,"ECI Form 20, Giridih VS-2024 (giridih_vs2024_form20.xlsx, Total Votes Polled row)"
+32,VS-2024,Anisha Sinha,UNK,postal,1,"ECI Form 20, Giridih VS-2024 (giridih_vs2024_form20.xlsx, Total Votes Polled row)"
+32,VS-2024,Ashwini Ambedkar,UNK,votes,250,"ECI Form 20, Giridih VS-2024 (giridih_vs2024_form20.xlsx, Total Votes Polled row)"
+32,VS-2024,Ashwini Ambedkar,UNK,postal,2,"ECI Form 20, Giridih VS-2024 (giridih_vs2024_form20.xlsx, Total Votes Polled row)"
+32,VS-2024,Kranti Kumar Murmu,UNK,votes,253,"ECI Form 20, Giridih VS-2024 (giridih_vs2024_form20.xlsx, Total Votes Polled row)"
+32,VS-2024,Kranti Kumar Murmu,UNK,postal,4,"ECI Form 20, Giridih VS-2024 (giridih_vs2024_form20.xlsx, Total Votes Polled row)"
+32,VS-2024,Navin Anand,JLKM,votes,10787,"ECI Form 20, Giridih VS-2024 (giridih_vs2024_form20.xlsx, Total Votes Polled row)"
+32,VS-2024,Navin Anand,JLKM,postal,125,"ECI Form 20, Giridih VS-2024 (giridih_vs2024_form20.xlsx, Total Votes Polled row)"
+32,VS-2024,Arti Devi,UNK,votes,306,"ECI Form 20, Giridih VS-2024 (giridih_vs2024_form20.xlsx, Total Votes Polled row)"
+32,VS-2024,Arti Devi,UNK,postal,2,"ECI Form 20, Giridih VS-2024 (giridih_vs2024_form20.xlsx, Total Votes Polled row)"
+32,VS-2024,Om Prakash Mahto,UNK,votes,301,"ECI Form 20, Giridih VS-2024 (giridih_vs2024_form20.xlsx, Total Votes Polled row)"
+32,VS-2024,Om Prakash Mahto,UNK,postal,3,"ECI Form 20, Giridih VS-2024 (giridih_vs2024_form20.xlsx, Total Votes Polled row)"
+32,VS-2024,Qaisar Jamal Ansari,UNK,votes,289,"ECI Form 20, Giridih VS-2024 (giridih_vs2024_form20.xlsx, Total Votes Polled row)"
+32,VS-2024,Qaisar Jamal Ansari,UNK,postal,5,"ECI Form 20, Giridih VS-2024 (giridih_vs2024_form20.xlsx, Total Votes Polled row)"
+32,VS-2024,Dr. Barnabas Hembrom,UNK,votes,842,"ECI Form 20, Giridih VS-2024 (giridih_vs2024_form20.xlsx, Total Votes Polled row)"
+32,VS-2024,Dr. Barnabas Hembrom,UNK,postal,7,"ECI Form 20, Giridih VS-2024 (giridih_vs2024_form20.xlsx, Total Votes Polled row)"
+32,VS-2024,Rameshwar Dusadh,UNK,votes,2163,"ECI Form 20, Giridih VS-2024 (giridih_vs2024_form20.xlsx, Total Votes Polled row)"
+32,VS-2024,Rameshwar Dusadh,UNK,postal,0,"ECI Form 20, Giridih VS-2024 (giridih_vs2024_form20.xlsx, Total Votes Polled row)"
+32,VS-2024,Sunaina Pathak,UNK,votes,2635,"ECI Form 20, Giridih VS-2024 (giridih_vs2024_form20.xlsx, Total Votes Polled row)"
+32,VS-2024,Sunaina Pathak,UNK,postal,4,"ECI Form 20, Giridih VS-2024 (giridih_vs2024_form20.xlsx, Total Votes Polled row)"
+32,VS-2024,,,nota,2004,"ECI Form 20, Giridih VS-2024 (giridih_vs2024_form20.xlsx, Total Votes Polled row)"
+32,VS-2024,,,total_valid,207682,"ECI Form 20, Giridih VS-2024 (giridih_vs2024_form20.xlsx, Total Votes Polled row)"
+32,VS-2024,,,rejected,139,"ECI Form 20, Giridih VS-2024 (giridih_vs2024_form20.xlsx, Total Votes Polled row)"
+32,VS-2024,,,postal,1905,"ECI Form 20, Giridih VS-2024 (giridih_vs2024_form20.xlsx, Total Votes Polled row)"
 32,VS-2019,,,electors,264814,HLD 1.1 (secondary - re-verify vs Form 20)
-32,VS-2024,Sudivya Kumar,JMM,votes,94042,HLD 1.1 (secondary - re-verify vs Form 20)
-32,VS-2024,Nirbhay Kumar Shahabadi,BJP,votes,90204,HLD 1.1 (secondary - re-verify vs Form 20)
-32,VS-2024,Navin Anand,JLKM,votes,10787,HLD 1.1 (secondary - re-verify vs Form 20)
-32,VS-2024,,,nota,2004,HLD 1.1 (secondary - re-verify vs Form 20)
 32,VS-2024,,,electors,304898,HLD 1.1 (secondary - re-verify vs Form 20)
 33,VS-2024,Jairam Mahato,JLKM,votes,94496,spec-unverified
 33,VS-2024,Baby Devi,JMM,votes,83551,spec-unverified

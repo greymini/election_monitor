@@ -223,7 +223,9 @@ def test_every_party_has_at_least_one_alias_in_each_script(parties):
     by_party: dict[str, set[str]] = {}
     for r in rows("party_alias.csv"):
         by_party.setdefault(r["party_abbr"], set()).add(r["script"])
-    for abbr in parties:
+    # UNK is a placeholder for "party not recorded in source" (db/seed/form20/),
+    # not a party a Form 20 header can print, so nothing should resolve to it.
+    for abbr in parties - {"UNK"}:
         assert abbr in by_party, f"{abbr} has no alias at all"
         assert "hi" in by_party[abbr], f"{abbr} has no Devanagari alias"
         assert "en" in by_party[abbr], f"{abbr} has no Latin alias"

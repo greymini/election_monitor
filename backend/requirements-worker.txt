@@ -8,6 +8,8 @@ anthropic==1.7.0
 # PDF -> text -> OCR (LLD 4.1)
 pdfplumber==0.11.10
 pypdf==6.19.0
+# Form 20 delivered as extracted tables (ingest/form20_tables.py)
+openpyxl==3.1.5
 pytesseract==0.3.13
 Pillow==12.3.0
 
