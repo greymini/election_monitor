@@ -118,6 +118,16 @@ def run_scenario(body: ScenarioBody, user: StrategistUser, ac: CurrentAC) -> dic
         # publications. A projection off unverified figures is still arithmetic,
         # but the reader has to know which kind of input it had.
         "ac_verified": ac.verified,
+        # The baseline is the booth table, so the projection starts from EVM
+        # votes; postal ballots are reported for the whole AC only and are not
+        # apportioned to booths. OTH is every other candidate's votes summed,
+        # including those whose party the source does not record.
+        "baseline_notes": [
+            "Baseline is EVM votes at polling stations; postal ballots (Form 20 "
+            "'Total Postal Ballot Votes') are not included.",
+            "OTH sums every candidate outside the named parties, including candidates "
+            "whose party is not recorded in the source.",
+        ],
         "disclaimer": (
             "This is arithmetic on the assumptions above applied to the baseline booth "
             "result. It is not a forecast. The sympathy effect after a sitting member's "

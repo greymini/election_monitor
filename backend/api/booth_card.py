@@ -36,13 +36,46 @@ def build_booth_card(booth_uid: str, include_caste: bool = True,
     results = query(
         "SELECT election_label, election_type, election_year, electors, electors_source, "
         "valid_votes, votes_polled, rejected, jmm, bjp, ajsu, jlkm, inc, rjd, jvm, others, "
-        "nota, winner_party, runner_party, margin_votes, margin_pct, signed_margin_pct, "
+        "nota, winner_party, winner_candidate, runner_party, contestants, margin_votes, "
+        "margin_pct, signed_margin_pct, "
         "contest_party_a, contest_party_b, turnout_pct, lineage_kind, source_doc, "
         "source_page, ps_numbers "
         "FROM mv_result_booth_wide WHERE booth_uid = %s "
         "ORDER BY election_year DESC, election_type",
         (booth_uid,),
     )
+
+    # Every candidate per election by name, not just the fixed party pivot:
+    # most Form 20 candidates have no recorded party (UNK) and would otherwise
+    # be visible only as "others". Shares use valid votes including NOTA.
+    candidates = query(
+        "SELECT c.election_label, c.candidate_name AS candidate, c.party, c.contestant, "
+        "c.votes, ROUND((100.0 * c.votes / NULLIF(w.valid_votes, 0))::NUMERIC, 2) "
+        "  AS share_pct "
+        "FROM mv_result_booth_candidate c "
+        "JOIN mv_result_booth_wide w ON w.booth_uid = c.booth_uid "
+        "  AND w.election_id = c.election_id "
+        "WHERE c.booth_uid = %s "
+        "ORDER BY c.election_year DESC, c.election_type, c.votes DESC, c.contestant",
+        (booth_uid,),
+    )
+    by_election: dict[str, list[dict]] = {}
+    for c in candidates:
+        by_election.setdefault(c.pop("election_label"), []).append(c)
+    tendered = {
+        r["election_label"]: r["tendered"] for r in query(
+            "SELECT e.label AS election_label, SUM(m.tendered)::INT AS tendered "
+            "FROM booth_crosswalk x "
+            "JOIN result_booth_meta m ON m.election_id = x.election_id "
+            "  AND m.ps_number = x.ps_number "
+            "JOIN election e ON e.election_id = x.election_id "
+            "WHERE x.booth_uid = %s GROUP BY e.label",
+            (booth_uid,),
+        )
+    }
+    for r in results:
+        r["candidates"] = by_election.get(r["election_label"], [])
+        r["tendered"] = tendered.get(r["election_label"])
 
     # `roll` is what the drawer's Voters and Sources tabs read: one row per
     # snapshot, with the document it came from.

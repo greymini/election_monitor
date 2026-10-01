@@ -63,6 +63,9 @@ KNOWN_NON_RELATIONS = {
     # From the N5 fix: /summary ranks candidates now rather than a hardcoded
     # eight-party pivot, and the ranking reads this CTE.
     "candidate_totals",
+    # api/election_results.py: per-candidate EVM sums and booths led, the two
+    # halves of the full candidate table (Form 20, 0023).
+    "evm", "led",
     # GET /booths: the one election every join is to (requested, else baseline).
     "selected_election",
     # ingest/validate.check_row_arithmetic: candidate and NOTA sums per row.

@@ -214,3 +214,134 @@ def test_a_tampered_file_is_refused_and_nothing_changes(real, tmp_path):
     with pytest.raises(LoadRefused):
         load_table(bad, 32, "VS-2024")
     assert one(c, "SELECT SUM(votes) AS v FROM result_booth")["v"] == before
+
+
+# ---------------------------------------------------------------------------
+# The API on the real load: what the pages read.
+# ---------------------------------------------------------------------------
+
+@pytest.fixture(scope="module")
+def api(real):
+    from fastapi.testclient import TestClient
+
+    from api.deps import hash_password
+    from api.main import app
+    from common.config import get_settings
+    from common.db import query_one
+
+    os.environ.setdefault("JWT_SECRET", "contract-test-secret-at-least-32-bytes-long")
+    get_settings.cache_clear()
+    block = query_one("SELECT block_id FROM block WHERE name_en = 'PS list not loaded'")
+    headers = {}
+    client = TestClient(app, raise_server_exceptions=False)
+    for i, (role, block_id) in enumerate((("strategist", None),
+                                          ("block", block["block_id"]))):
+        phone = f"96000000{i:02d}"
+        query_one("INSERT INTO app_user (phone, name, role, block_id, password_hash, "
+                  "daily_token_budget) VALUES (%s, %s, %s, %s, %s, 1000) "
+                  "ON CONFLICT (phone) DO UPDATE SET role = EXCLUDED.role "
+                  "RETURNING user_id",
+                  (phone, f"Form 20 {role}", role, block_id, hash_password("pw-" + role)))
+        token = client.post("/auth/login", json={"phone": phone, "password": "pw-" + role})
+        assert token.status_code == 200, token.text
+        headers[role] = {"Authorization": f"Bearer {token.json()['access_token']}"}
+    return client, headers
+
+
+def _get(api, path, role="strategist"):
+    client, headers = api
+    response = client.get(path, headers=headers[role])
+    assert response.status_code == 200, response.text[:500]
+    return response.json()
+
+
+def test_summary_reports_the_declared_result_with_postal_ballots(api):
+    body = _get(api, "/acs/32/summary")
+    assert body["synthetic"] is False
+    rows = {e["label"]: e for e in body["elections"]}
+    e24 = rows["VS-2024"]
+    assert (e24["winner_candidate"], e24["winner_votes"]) == ("Sudivya Kumar", 94042)
+    assert (e24["runner_candidate"], e24["runner_votes"]) == ("Nirbhay Kumar Shahabadi", 90204)
+    assert (e24["margin_votes"], float(e24["margin_pct"])) == (3838, 1.85)
+    assert (e24["evm_votes"], e24["postal_votes"], e24["rejected"]) == (205777, 1905, 139)
+    assert (e24["total_valid"], e24["votes"], e24["contestants"]) == (207682, 207821, 14)
+    assert e24["synthetic"] is False and e24["published"] is None
+    assert e24["source_doc"] == "giridih_vs2024_form20.xlsx"
+    assert e24["sources"][0]["booth_rows"] == 367 and e24["sources"][0]["sha256"]
+    assert [(r["candidate"], r["booths"]) for r in e24["booths_led"]] == [
+        ("Nirbhay Kumar Shahabadi", 193), ("Sudivya Kumar", 166), ("Navin Anand", 8)]
+    assert rows["VS-2019"]["margin_votes"] == 15884
+    assert body["data_health"]["form20_real_docs"] == 2
+    assert body["data_health"]["form20_booth_rows"] == 734
+
+
+def test_an_election_without_form20_keeps_its_published_result(api):
+    rows = {e["label"]: e for e in _get(api, "/acs/32/summary")["elections"]}
+    e14 = rows["VS-2014"]
+    assert e14["has_results"] is False and e14["booths"] == 0
+    assert e14["published"]["margin_votes"] == 9933
+    assert e14["published"]["source"]
+
+
+def test_every_candidate_of_2024_ranked_with_postal_and_deposit(api):
+    body = _get(api, "/acs/32/elections/VS-2024/candidates")
+    cands = body["candidates"]
+    assert body["basis"] == "form20" and body["valid_votes"] == 207682
+    assert len(cands) == 14 and [c["rank"] for c in cands] == list(range(1, 15))
+    top = cands[0]
+    assert (top["candidate"], top["party"], top["is_winner"]) == ("Sudivya Kumar", "JMM", True)
+    assert top["evm_votes"] + top["postal_votes"] == top["votes"] == 94042
+    assert top["booths_led"] == 166 and top["deposit_forfeited"] is False
+    third = cands[2]
+    assert (third["candidate"], third["party"], third["votes"]) == ("Navin Anand", "JLKM", 10787)
+    assert third["deposit_forfeited"] is True        # 10,787 < 205,678 / 6
+    assert sum(c["votes"] for c in cands) + body["nota"]["votes"] == 207682
+    assert body["nota"]["votes"] == 2004
+    unrecorded = [c for c in cands if not c["party_recorded"]]
+    assert len(unrecorded) == 11 and all(c["party"] == "UNK" for c in unrecorded)
+    assert sum(c["booths_led"] for c in cands) == 367
+    assert "s.158" in body["deposit_rule"]
+    assert body["sources"][0]["source_doc"] == "giridih_vs2024_form20.xlsx"
+
+
+def test_candidates_of_an_unloaded_election_come_from_published_totals(api):
+    body = _get(api, "/acs/32/elections/VS-2014/candidates")
+    assert body["basis"] == "published"
+    assert all(c["evm_votes"] is None and c["booths_led"] is None for c in body["candidates"])
+
+
+def test_an_unknown_election_is_a_404(api):
+    client, headers = api
+    assert client.get("/acs/32/elections/VS-1999/candidates",
+                      headers=headers["strategist"]).status_code == 404
+
+
+def test_the_booth_card_names_every_candidate(api, real):
+    uid = one(real["conn"], "SELECT booth_uid FROM booth WHERE current_ps_number = 1")["booth_uid"]
+    card = _get(api, f"/acs/32/booths/{uid}/card")
+    results = {r["election_label"]: r for r in card["results"]}
+    assert len(results["VS-2024"]["candidates"]) == 15          # 14 and NOTA
+    assert len(results["VS-2019"]["candidates"]) == 13
+    assert results["VS-2024"]["tendered"] == 0
+    names = [c["candidate"] for c in results["VS-2024"]["candidates"]]
+    assert results["VS-2024"]["winner_candidate"] == names[0]
+
+
+def test_the_booth_table_names_winner_and_runner_up(api):
+    body = _get(api, "/acs/32/results/VS-2024/booths")
+    assert body["count"] == 367
+    row = body["rows"][0]
+    assert row["winner_candidate"] and row["runner_candidate"]
+    assert row["winner_candidate"] != row["runner_candidate"]
+    assert 2 <= row["contestants"] <= 14 and row["tendered"] == 0     # who polled here
+
+
+def test_the_block_user_sees_the_unassigned_block(api):
+    body = _get(api, "/acs/32/results/VS-2024/booths", role="block")
+    assert body["count"] == 367
+
+
+def test_profiles_leave_out_nota(api):
+    rows = _get(api, "/acs/32/candidates")["rows"]
+    assert rows and all(r["party"] != "NOTA" for r in rows)
+

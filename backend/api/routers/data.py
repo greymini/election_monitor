@@ -24,6 +24,13 @@ from fastapi import APIRouter, HTTPException, Query, Response, status
 
 from api.booth_card import build_booth_card
 from api.deps import CurrentAC, CurrentUser, StrategistUser, scoped_block_id
+from api.election_results import (
+    any_synthetic,
+    booths_led,
+    candidate_results,
+    election_sources,
+    published_results,
+)
 from common.db import query, query_one
 
 router = APIRouter(prefix="/acs/{ac_number}", tags=["data"])
@@ -48,87 +55,45 @@ def _csv_response(rows: list[dict], filename: str) -> Response:
 
 @router.get("/summary")
 def summary(user: CurrentUser, ac: CurrentAC) -> dict:
-    # AC-level party totals per election, so the margin trend on the overview is
-    # the loaded data rather than a constant compiled into the frontend. The
-    # winner and margin are computed from the summed party columns here because
-    # mv_result_booth_wide's own winner/margin are per booth.
+    # One row per election in this AC. Loaded elections come from mv_ac_summary,
+    # which ranks candidates on the declared result - EVM votes from the booth
+    # rows plus the postal ballots Form 20 reports only for the whole AC - so the
+    # winner and margin here are the ones the Returning Officer declared. Ranking
+    # booth rows alone (as this route did before 0023) left postal ballots out
+    # of every total.
     #
-    # Two caveats, both being fixed in A-3 and neither introduced here: the party
-    # columns are a fixed pivot (jmm/bjp/ajsu/jlkm/inc/rjd/jvm/others), so a
-    # winner outside that set lands in `others`; and `votes_polled` excludes
-    # NOTA while `valid_votes` includes it, which is audit finding D1. Percentages
-    # are therefore deliberately not computed here - the frontend shows vote
-    # counts, and METRICS.md will own the percentage definitions.
+    # The legacy names `votes` (= votes polled, valid + rejected) and
+    # `total_valid` (valid including NOTA, METRICS.md) are kept for the pages
+    # that already read them.
     elections = query(
-        "WITH totals AS ("
-        "  SELECT e.election_id, e.label, e.type, e.year, e.is_baseline,"
-        "         COUNT(DISTINCT w.booth_uid) AS booths,"
-        # `votes_counted` and `total_valid` are pre-0015 column names and do
-        # not exist on the rebuilt view, so this endpoint raised
-        # UndefinedColumn - a live 500 on the first page every user sees.
-        # Nothing caught it because no test had ever executed a query
-        # against a real schema. `votes_polled` is the right numerator for
-        # turnout (valid + rejected, METRICS.md) where `votes_counted`
-        # excluded NOTA and understated it.
-        "         SUM(w.votes_polled) AS votes,"
-        "         SUM(w.electors) AS electors,"
-        "         SUM(w.valid_votes) AS total_valid,"
-        "         SUM(w.nota) AS nota,"
-        "         SUM(w.jmm) AS jmm, SUM(w.bjp) AS bjp, SUM(w.ajsu) AS ajsu,"
-        "         SUM(w.jlkm) AS jlkm, SUM(w.inc) AS inc, SUM(w.rjd) AS rjd,"
-        "         SUM(w.jvm) AS jvm, SUM(w.others) AS others"
-        "  FROM election e"
-        "  LEFT JOIN mv_result_booth_wide w ON w.election_id = e.election_id"
-        "  WHERE e.ac_id = %(ac)s"
-        "  GROUP BY e.election_id, e.label, e.type, e.year, e.is_baseline"
-        # N5. This ranked over a hardcoded eight-party VALUES pivot built from
-        # the wide view's party columns, which had two consequences. A party
-        # outside that list was summed into `others` and could be returned as
-        # the winning "party" OTHERS - a winner no ballot named. And every
-        # independent shared that same bucket, which is D3 and N2 for a third
-        # time at a third grain.
-        #
-        # Ranked per candidate now, from mv_result_booth_candidate, on the same
-        # `contestant` key mv_result_booth_wide and mv_ac_summary use. NOTA is
-        # excluded because it is not a candidate and can never win or be
-        # runner-up (METRICS.md, margin_votes).
-        "), candidate_totals AS ("
-        "  SELECT c.election_id, c.contestant AS abbr, c.candidate_name,"
-        "         SUM(c.votes)::INT AS votes"
-        "  FROM mv_result_booth_candidate c"
-        "  JOIN election e2 ON e2.election_id = c.election_id"
-        "  WHERE e2.ac_id = %(ac)s AND c.party IS DISTINCT FROM 'NOTA'"
-        "  GROUP BY c.election_id, c.contestant, c.candidate_name"
-        "), ranked AS ("
-        "  SELECT t.election_id AS t_election_id, ct.abbr, ct.candidate_name, ct.votes,"
-        "         ROW_NUMBER() OVER (PARTITION BY ct.election_id"
-        "                            ORDER BY ct.votes DESC, ct.candidate_name) AS rn,"
-        "         COUNT(*) OVER (PARTITION BY ct.election_id) AS contestants"
-        "  FROM totals t"
-        "  JOIN candidate_totals ct ON ct.election_id = t.election_id"
-        "  WHERE t.booths > 0 AND ct.votes > 0"
-        ")"
-        "SELECT t.label, t.type, t.year, t.is_baseline, t.booths, t.votes, t.electors,"
-        "       t.total_valid, t.nota,"
-        "       win.abbr AS winner_party, win.candidate_name AS winner_candidate,"
-        "       win.votes AS winner_votes,"
-        "       run.abbr AS runner_party, run.candidate_name AS runner_candidate,"
-        "       run.votes AS runner_votes,"
-        # Through the generated functions, not a hand-written subtraction:
-        # the fewer-than-two rule and the NOTA-inclusive denominator are
-        # defined once, in analytics/metric_sql.py. Writing the quotient
-        # out here again is how D1 happened.
-        "       metric_margin_votes(win.votes, run.votes, win.contestants)::INT"
-        "           AS margin_votes,"
-        "       metric_margin_pct(win.votes, run.votes, win.contestants,"
-        "                         t.total_valid) AS margin_pct,"
-        "       metric_turnout_pct(t.votes, t.electors) AS turnout_pct "
-        "FROM totals t "
-        "LEFT JOIN ranked win ON win.t_election_id = t.election_id AND win.rn = 1 "
-        "LEFT JOIN ranked run ON run.t_election_id = t.election_id AND run.rn = 2 "
-        "ORDER BY t.year DESC, t.type",
+        "SELECT e.label, e.type, e.year, e.is_baseline,"
+        "       COALESCE(s.booths, 0)::INT AS booths,"
+        "       s.votes_polled AS votes, s.electors, s.electors_source,"
+        "       s.valid_votes AS total_valid, s.nota, s.rejected,"
+        "       s.evm_votes, s.postal_votes, s.votes_polled_published,"
+        "       s.winner_party, s.winner_candidate, s.winner_votes, s.winner_evm_votes,"
+        "       s.runner_party, s.runner_candidate, s.runner_votes, s.runner_evm_votes,"
+        "       s.contestants, s.margin_votes, s.margin_pct, s.turnout_pct,"
+        "       s.election_id IS NOT NULL AS has_results "
+        "FROM election e "
+        "LEFT JOIN mv_ac_summary s ON s.election_id = e.election_id "
+        "WHERE e.ac_id = %(ac)s "
+        "ORDER BY e.year DESC, e.type",
         {"ac": ac.ac_id},
     )
+    sources = election_sources(ac.ac_id)
+    led = booths_led(ac.ac_id)
+    published = published_results(ac.ac_id)
+    for e in elections:
+        docs = sources.get(e["label"], [])
+        e["sources"] = docs
+        e["source_doc"] = docs[0]["source_doc"] if docs else None
+        e["synthetic"] = any(d["synthetic"] for d in docs) if docs else None
+        e["booths_led"] = led.get(e["label"], [])
+        # Elections with no Form 20 loaded keep their published result, with
+        # its source, rather than a list compiled into the frontend.
+        e["published"] = None if e["has_results"] else published.get(e["label"])
+
     baseline = query_one(
         "SELECT e.label, SUM(w.jmm) AS jmm, SUM(w.bjp) AS bjp, SUM(w.jlkm) AS jlkm, "
         "SUM(w.nota) AS nota, SUM(w.electors) AS electors, SUM(w.votes_polled) AS votes "
@@ -160,7 +125,10 @@ def summary(user: CurrentUser, ac: CurrentAC) -> dict:
         "  AS caste_rows, "
         "(SELECT COUNT(*) FROM demography WHERE ac_id = %(ac)s) AS census_rows, "
         "(SELECT COUNT(*) FROM local_result WHERE ac_id = %(ac)s) AS local_result_rows, "
-        "(SELECT COUNT(*) FROM source_doc WHERE ac_id = %(ac)s) AS source_docs",
+        "(SELECT COUNT(*) FROM source_doc WHERE ac_id = %(ac)s) AS source_docs, "
+        "(SELECT COUNT(*) FROM source_doc WHERE ac_id = %(ac)s AND kind = 'form20' "
+        "   AND parse_status = 'loaded' AND NOT is_synthetic) AS form20_real_docs, "
+        "(SELECT COUNT(*) FROM result_booth_meta WHERE ac_id = %(ac)s) AS form20_booth_rows",
         {"ac": ac.ac_id},
     )
 
@@ -187,6 +155,9 @@ def summary(user: CurrentUser, ac: CurrentAC) -> dict:
         "elections": elections,
         "baseline": baseline,
         "data_health": data_health,
+        # True while any loaded document is generated test data, so every page
+        # can say so instead of presenting mock figures as a result.
+        "synthetic": any_synthetic(ac.ac_id),
         "scope": {"block_id": scoped_block_id(user), "sees_caste": user.sees_caste},
     }
 
@@ -369,7 +340,8 @@ def results_by_booth(election_label: str, user: CurrentUser, ac: CurrentAC,
                w.electors, w.votes_polled, w.valid_votes, w.turnout_pct,
                w.jmm, w.bjp, w.ajsu, w.jlkm, w.inc, w.rjd, w.jvm, w.others, w.nota,
                w.winner_party, w.runner_party, w.margin_votes, w.margin_pct,
-               w.signed_margin_pct, w.rejected, w.lineage_kind,
+               w.winner_candidate, ru.candidate_name AS runner_candidate, w.contestants,
+               w.signed_margin_pct, w.rejected, tv.tendered, w.lineage_kind,
                x.confidence AS crosswalk_confidence, x.reviewed AS crosswalk_reviewed,
                -- The Booths page's swing / voters / priority presets read these;
                -- without them every one of those columns was a dash.
@@ -389,6 +361,21 @@ def results_by_booth(election_label: str, user: CurrentUser, ac: CurrentAC,
             FROM booth_crosswalk
             WHERE booth_uid = w.booth_uid AND election_id = w.election_id
         ) x ON true
+        -- Runner-up by name, ranked as mv_result_booth_wide ranks (votes, then
+        -- contestant key), so it is the candidate behind runner_party.
+        LEFT JOIN LATERAL (
+            SELECT c.candidate_name FROM mv_result_booth_candidate c
+            WHERE c.booth_uid = w.booth_uid AND c.election_id = w.election_id
+              AND c.party IS DISTINCT FROM 'NOTA'
+            ORDER BY c.votes DESC, c.contestant OFFSET 1 LIMIT 1
+        ) ru ON true
+        LEFT JOIN LATERAL (
+            SELECT SUM(m.tendered)::INT AS tendered
+            FROM booth_crosswalk bx
+            JOIN result_booth_meta m ON m.election_id = bx.election_id
+                                    AND m.ps_number = bx.ps_number
+            WHERE bx.booth_uid = w.booth_uid AND bx.election_id = w.election_id
+        ) tv ON true
         LEFT JOIN mv_swing sw ON sw.booth_uid = w.booth_uid
                              AND sw.election_id = w.election_id
                              AND sw.party = w.contest_party_a
@@ -648,7 +635,9 @@ def candidates(user: CurrentUser, ac: CurrentAC, election_label: str | None = No
         LEFT JOIN result_ac_total tot
                ON tot.election_id = c.election_id AND tot.metric = 'total_valid'
               AND tot.candidate_id IS NULL
-        WHERE {' AND '.join(clauses)}
+        -- NOTA is seeded as a candidate row so its votes can be stored per
+        -- booth; it is not a person and has no profile.
+        WHERE {' AND '.join(clauses)} AND p.abbr IS DISTINCT FROM 'NOTA'
         ORDER BY e.year DESC, t.value DESC NULLS LAST
         """,
         params,
@@ -661,6 +650,22 @@ def candidates(user: CurrentUser, ac: CurrentAC, election_label: str | None = No
             "candidate, not as established by a court."
         ),
     }
+
+
+@router.get("/elections/{election_label}/candidates")
+def election_candidates(election_label: str, user: CurrentUser, ac: CurrentAC) -> dict:
+    """The full declared result of one election: every candidate, ranked.
+
+    EVM, postal and total votes, share of valid votes (NOTA included, as
+    everywhere in METRICS.md), polling stations led, and whether the deposit
+    was forfeited. Constituency-wide for every role: these are published
+    figures, unlike the booth rows a block user is scoped to.
+    """
+    result = candidate_results(ac.ac_id, election_label)
+    if result is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND,
+                            f"No election {election_label} in AC {ac.ac_number}")
+    return result
 
 
 @router.get("/local-politics")
