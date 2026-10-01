@@ -1,0 +1,161 @@
+{
+    "booth": {
+        "booth_uid": "32-B0001",
+        "ps_name_hi": "High School Ward 1, Ward 1",
+        "building": "High School Ward 1",
+        "village_or_locality": "Ward 1",
+        "current_ps_number": 1,
+        "geocode_conf": null,
+        "area_id": 1,
+        "area_en": "Ward 1",
+        "area_hi": "\u0935\u093e\u0930\u094d\u0921 1",
+        "area_kind": "ward",
+        "block_id": 3201,
+        "block_en": "Giridih Municipal Corporation",
+        "block_hi": "\u0917\u093f\u0930\u093f\u0921\u0940\u0939 \u0928\u0917\u0930 \u0928\u093f\u0917\u092e"
+    },
+    "results": [
+        {
+            "election_label": "VS-2024",
+            "election_type": "VS",
+            "election_year": 2024,
+            "electors": 2992,
+            "electors_source": "roll",
+            "valid_votes": 1807,
+            "votes_polled": 1807,
+            "rejected": 0,
+            "jmm": 576,
+            "bjp": 1033,
+            "ajsu": null,
+            "jlkm": 130,
+            "inc": null,
+            "rjd": null,
+            "jvm": null,
+            "others": 49,
+            "nota": 19,
+            "winner_party": "BJP",
+            "runner_party": "JMM",
+            "margin_votes": 457,
+            "margin_pct": 25.29,
+            "signed_margin_pct": -25.29,
+            "contest_party_a": "JMM",
+            "contest_party_b": "BJP",
+            "turnout_pct": 60.39,
+            "lineage_kind": null,
+            "source_doc": "form20_32_VS-2024.pdf",
+            "source_page": 1,
+            "ps_numbers": "1"
+        },
+        {
+            "election_label": "VS-2014",
+            "election_type": "VS",
+            "election_year": 2014,
+            "electors": null,
+            "electors_source": null,
+            "valid_votes": 497,
+            "votes_polled": 498,
+            "rejected": 1,
+            "jmm": 314,
+            "bjp": 167,
+            "ajsu": null,
+            "jlkm": null,
+            "inc": null,
+            "rjd": null,
+            "jvm": null,
+            "others": 16,
+            "nota": 0,
+            "winner_party": "JMM",
+            "runner_party": "BJP",
+            "margin_votes": 147,
+            "margin_pct": 29.58,
+            "signed_margin_pct": -29.58,
+            "contest_party_a": "BJP",
+            "contest_party_b": "JMM",
+            "turnout_pct": null,
+            "lineage_kind": null,
+            "source_doc": "form20_32_VS-2014.pdf",
+            "source_page": 2,
+            "ps_numbers": "40"
+        }
+    ],
+    "roll": [
+        {
+            "revision": "VS-2024-MOTHER",
+            "revision_date": "2024-01-05",
+            "electors": 2992,
+            "male": 1552,
+            "female": 1436,
+            "other": 4,
+            "age_18_19": 323,
+            "age_20_29": 717,
+            "age_30_39": 495,
+            "age_40_49": 447,
+            "age_50_59": 348,
+            "age_60p": 662,
+            "source_doc": "roll_mother_32.pdf",
+            "source_page": null
+        }
+    ],
+    "roll_changes": [
+        {
+            "revision": "VS-2024-SUPP-1",
+            "revision_date": "2024-10-15",
+            "is_post_sir": false,
+            "additions": 81,
+            "deletions": 17,
+            "modifications": 6,
+            "add_18_19": 14,
+            "add_female": 37,
+            "del_death": 11,
+            "del_shifted": 6,
+            "source_doc": "roll_supplement_32.pdf",
+            "source_page": null
+        }
+    ],
+    "new_voters": {
+        "additions": null,
+        "deletions": null,
+        "electors": 2992,
+        "electors_start": null,
+        "new_voter_pct": null,
+        "null_reason": "The roll window is incomplete (no earlier roll to compare against)."
+    },
+    "priority": {
+        "election_label": "VS-2024",
+        "margin_pct": 25.29,
+        "margin_votes": 457,
+        "new_voter_pct": null,
+        "margin_stddev": 3.03,
+        "floating_pct": null,
+        "priority_score": 0.2483,
+        "priority_quartile": 4,
+        "inputs_used": [
+            "closeness",
+            "volatility"
+        ],
+        "weight_used": 0.55,
+        "winner_party": "BJP",
+        "runner_party": "JMM"
+    },
+    "crosswalk": [
+        {
+            "election_label": "VS-2024",
+            "ps_number": 1,
+            "match_method": "anchor",
+            "confidence": 1.0,
+            "reviewed": true
+        },
+        {
+            "election_label": "VS-2014",
+            "ps_number": 40,
+            "match_method": "fuzzy",
+            "confidence": 0.8,
+            "reviewed": false
+        }
+    ],
+    "caveats": [
+        "Cross-year matching is unconfirmed for VS-2014 (confidence below 0.85, not yet reviewed). Treat swing against those years as provisional."
+    ],
+    "caste_estimate": [],
+    "caste_note": "Estimates only, at booth level. Derived from surname inference, Census 2011 proportions and any ground survey. No individual voter is tagged. Figures below 0.4 confidence are too weak to use."
+}

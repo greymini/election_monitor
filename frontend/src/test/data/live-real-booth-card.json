@@ -1,0 +1,333 @@
+{
+    "booth": {
+        "booth_uid": "32-B0001",
+        "ps_name_hi": null,
+        "building": null,
+        "village_or_locality": null,
+        "current_ps_number": 1,
+        "geocode_conf": null,
+        "area_id": 37,
+        "area_en": "Unassigned (PS list pending)",
+        "area_hi": "\u0905\u0928\u093f\u0930\u094d\u0927\u093e\u0930\u093f\u0924 (\u092e\u0924\u0926\u093e\u0928 \u0915\u0947\u0902\u0926\u094d\u0930 \u0938\u0942\u091a\u0940 \u0932\u0902\u092c\u093f\u0924)",
+        "area_kind": "panchayat",
+        "block_id": 3299,
+        "block_en": "PS list not loaded",
+        "block_hi": "\u092e\u0924\u0926\u093e\u0928 \u0915\u0947\u0902\u0926\u094d\u0930 \u0938\u0942\u091a\u0940 \u0932\u094b\u0921 \u0928\u0939\u0940\u0902"
+    },
+    "results": [
+        {
+            "election_label": "VS-2024",
+            "election_type": "VS",
+            "election_year": 2024,
+            "electors": null,
+            "electors_source": null,
+            "valid_votes": 489,
+            "votes_polled": 489,
+            "rejected": 0,
+            "jmm": 28,
+            "bjp": 447,
+            "ajsu": null,
+            "jlkm": 0,
+            "inc": null,
+            "rjd": null,
+            "jvm": null,
+            "others": 9,
+            "nota": 5,
+            "winner_party": "BJP",
+            "winner_candidate": "Nirbhay Kumar Shahabadi",
+            "runner_party": "JMM",
+            "contestants": 4,
+            "margin_votes": 419,
+            "margin_pct": 85.69,
+            "signed_margin_pct": -85.69,
+            "contest_party_a": "JMM",
+            "contest_party_b": "BJP",
+            "turnout_pct": null,
+            "lineage_kind": null,
+            "source_doc": "giridih_vs2024_form20.xlsx",
+            "source_page": 1,
+            "ps_numbers": "1",
+            "candidates": [
+                {
+                    "candidate": "Nirbhay Kumar Shahabadi",
+                    "party": "BJP",
+                    "contestant": "BJP",
+                    "votes": 447,
+                    "share_pct": 91.41
+                },
+                {
+                    "candidate": "Sudivya Kumar",
+                    "party": "JMM",
+                    "contestant": "JMM",
+                    "votes": 28,
+                    "share_pct": 5.73
+                },
+                {
+                    "candidate": "Sunaina Pathak",
+                    "party": "UNK",
+                    "contestant": "UNK:Sunaina Pathak",
+                    "votes": 6,
+                    "share_pct": 1.23
+                },
+                {
+                    "candidate": "NOTA",
+                    "party": "NOTA",
+                    "contestant": "NOTA",
+                    "votes": 5,
+                    "share_pct": 1.02
+                },
+                {
+                    "candidate": "Arti Devi",
+                    "party": "UNK",
+                    "contestant": "UNK:Arti Devi",
+                    "votes": 1,
+                    "share_pct": 0.2
+                },
+                {
+                    "candidate": "Arundhati Mishra",
+                    "party": "UNK",
+                    "contestant": "UNK:Arundhati Mishra",
+                    "votes": 1,
+                    "share_pct": 0.2
+                },
+                {
+                    "candidate": "Qaisar Jamal Ansari",
+                    "party": "UNK",
+                    "contestant": "UNK:Qaisar Jamal Ansari",
+                    "votes": 1,
+                    "share_pct": 0.2
+                },
+                {
+                    "candidate": "Navin Anand",
+                    "party": "JLKM",
+                    "contestant": "JLKM",
+                    "votes": 0,
+                    "share_pct": 0.0
+                },
+                {
+                    "candidate": "Ajeet Ray",
+                    "party": "UNK",
+                    "contestant": "UNK:Ajeet Ray",
+                    "votes": 0,
+                    "share_pct": 0.0
+                },
+                {
+                    "candidate": "Anisha Sinha",
+                    "party": "UNK",
+                    "contestant": "UNK:Anisha Sinha",
+                    "votes": 0,
+                    "share_pct": 0.0
+                },
+                {
+                    "candidate": "Ashwini Ambedkar",
+                    "party": "UNK",
+                    "contestant": "UNK:Ashwini Ambedkar",
+                    "votes": 0,
+                    "share_pct": 0.0
+                },
+                {
+                    "candidate": "Dr. Barnabas Hembrom",
+                    "party": "UNK",
+                    "contestant": "UNK:Dr. Barnabas Hembrom",
+                    "votes": 0,
+                    "share_pct": 0.0
+                },
+                {
+                    "candidate": "Kranti Kumar Murmu",
+                    "party": "UNK",
+                    "contestant": "UNK:Kranti Kumar Murmu",
+                    "votes": 0,
+                    "share_pct": 0.0
+                },
+                {
+                    "candidate": "Om Prakash Mahto",
+                    "party": "UNK",
+                    "contestant": "UNK:Om Prakash Mahto",
+                    "votes": 0,
+                    "share_pct": 0.0
+                },
+                {
+                    "candidate": "Rameshwar Dusadh",
+                    "party": "UNK",
+                    "contestant": "UNK:Rameshwar Dusadh",
+                    "votes": 0,
+                    "share_pct": 0.0
+                }
+            ],
+            "tendered": 0
+        },
+        {
+            "election_label": "VS-2019",
+            "election_type": "VS",
+            "election_year": 2019,
+            "electors": null,
+            "electors_source": null,
+            "valid_votes": 378,
+            "votes_polled": 378,
+            "rejected": 0,
+            "jmm": 55,
+            "bjp": 303,
+            "ajsu": null,
+            "jlkm": null,
+            "inc": null,
+            "rjd": null,
+            "jvm": null,
+            "others": 18,
+            "nota": 2,
+            "winner_party": "BJP",
+            "winner_candidate": "Nirbhay Kumar Shahabadi",
+            "runner_party": "JMM",
+            "contestants": 3,
+            "margin_votes": 248,
+            "margin_pct": 65.61,
+            "signed_margin_pct": -65.61,
+            "contest_party_a": "JMM",
+            "contest_party_b": "BJP",
+            "turnout_pct": null,
+            "lineage_kind": null,
+            "source_doc": "giridih_vs2019_form20.xlsx",
+            "source_page": 1,
+            "ps_numbers": "1",
+            "candidates": [
+                {
+                    "candidate": "Nirbhay Kumar Shahabadi",
+                    "party": "BJP",
+                    "contestant": "BJP",
+                    "votes": 303,
+                    "share_pct": 80.16
+                },
+                {
+                    "candidate": "Sudivya Kumar",
+                    "party": "JMM",
+                    "contestant": "JMM",
+                    "votes": 55,
+                    "share_pct": 14.55
+                },
+                {
+                    "candidate": "Chunnu Kant",
+                    "party": "UNK",
+                    "contestant": "UNK:Chunnu Kant",
+                    "votes": 8,
+                    "share_pct": 2.12
+                },
+                {
+                    "candidate": "Mohammad Lallu",
+                    "party": "UNK",
+                    "contestant": "UNK:Mohammad Lallu",
+                    "votes": 4,
+                    "share_pct": 1.06
+                },
+                {
+                    "candidate": "Shyam Prasad Barnwal",
+                    "party": "UNK",
+                    "contestant": "UNK:Shyam Prasad Barnwal",
+                    "votes": 3,
+                    "share_pct": 0.79
+                },
+                {
+                    "candidate": "NOTA",
+                    "party": "NOTA",
+                    "contestant": "NOTA",
+                    "votes": 2,
+                    "share_pct": 0.53
+                },
+                {
+                    "candidate": "Sima Kumari",
+                    "party": "UNK",
+                    "contestant": "UNK:Sima Kumari",
+                    "votes": 2,
+                    "share_pct": 0.53
+                },
+                {
+                    "candidate": "Shweta Kumari",
+                    "party": "UNK",
+                    "contestant": "UNK:Shweta Kumari",
+                    "votes": 1,
+                    "share_pct": 0.26
+                },
+                {
+                    "candidate": "Budhan Hemabram",
+                    "party": "UNK",
+                    "contestant": "UNK:Budhan Hemabram",
+                    "votes": 0,
+                    "share_pct": 0.0
+                },
+                {
+                    "candidate": "Md Salman Sahab",
+                    "party": "UNK",
+                    "contestant": "UNK:Md Salman Sahab",
+                    "votes": 0,
+                    "share_pct": 0.0
+                },
+                {
+                    "candidate": "Rajesh Ku Sinha",
+                    "party": "UNK",
+                    "contestant": "UNK:Rajesh Ku Sinha",
+                    "votes": 0,
+                    "share_pct": 0.0
+                },
+                {
+                    "candidate": "Sikandar Ali",
+                    "party": "UNK",
+                    "contestant": "UNK:Sikandar Ali",
+                    "votes": 0,
+                    "share_pct": 0.0
+                },
+                {
+                    "candidate": "Upendra Kumar Sharma",
+                    "party": "UNK",
+                    "contestant": "UNK:Upendra Kumar Sharma",
+                    "votes": 0,
+                    "share_pct": 0.0
+                }
+            ],
+            "tendered": 0
+        }
+    ],
+    "roll": [],
+    "roll_changes": [],
+    "new_voters": {
+        "additions": null,
+        "deletions": null,
+        "electors": null,
+        "electors_start": null,
+        "new_voter_pct": null,
+        "null_reason": "No electoral roll is linked to the baseline election for this booth, so additions cannot be counted."
+    },
+    "priority": {
+        "election_label": "VS-2024",
+        "margin_pct": 85.69,
+        "margin_votes": 419,
+        "new_voter_pct": null,
+        "margin_stddev": 14.2,
+        "floating_pct": null,
+        "priority_score": 0.316,
+        "priority_quartile": 4,
+        "inputs_used": [
+            "closeness",
+            "volatility"
+        ],
+        "weight_used": 0.55,
+        "winner_party": "BJP",
+        "runner_party": "JMM"
+    },
+    "crosswalk": [
+        {
+            "election_label": "VS-2024",
+            "ps_number": 1,
+            "match_method": "anchor",
+            "confidence": 1.0,
+            "reviewed": true
+        },
+        {
+            "election_label": "VS-2019",
+            "ps_number": 1,
+            "match_method": "exact",
+            "confidence": 0.95,
+            "reviewed": false
+        }
+    ],
+    "caveats": [],
+    "caste_estimate": [],
+    "caste_note": "Estimates only, at booth level. Derived from surname inference, Census 2011 proportions and any ground survey. No individual voter is tagged. Figures below 0.4 confidence are too weak to use."
+}
