@@ -15,7 +15,10 @@ from __future__ import annotations
 
 import csv
 import io
+import json
 from datetime import date
+from functools import lru_cache
+from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query, Response, status
 
@@ -52,8 +55,8 @@ def summary(user: CurrentUser, ac: CurrentAC) -> dict:
     #
     # Two caveats, both being fixed in A-3 and neither introduced here: the party
     # columns are a fixed pivot (jmm/bjp/ajsu/jlkm/inc/rjd/jvm/others), so a
-    # winner outside that set lands in `others`; and `votes_counted` excludes
-    # NOTA while `total_valid` includes it, which is audit finding D1. Percentages
+    # winner outside that set lands in `others`; and `votes_polled` excludes
+    # NOTA while `valid_votes` includes it, which is audit finding D1. Percentages
     # are therefore deliberately not computed here - the frontend shows vote
     # counts, and METRICS.md will own the percentage definitions.
     elections = query(
@@ -815,6 +818,109 @@ def priority(user: CurrentUser, ac: CurrentAC, limit: int = Query(50, ge=1, le=5
     }
 
 
+BOUNDARY_FILE = Path(__file__).resolve().parents[2] / "db" / "seed" / "geo" / "boundaries.json"
+
+
+@lru_cache(maxsize=1)
+def _boundary_file() -> dict:
+    """The built boundary file, for what the database has no row to hold.
+
+    Two things live only here: the source warnings (AC-32's outline does not
+    contain Giridih town), and blocks that overlap the AC but are not in the
+    seed, which have no `block` row to attach a shape to. Missing file means
+    neither, not an error - the database layers are still served.
+    """
+    try:
+        return json.loads(BOUNDARY_FILE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {"features": [], "warnings": [], "sources": {}}
+
+
+def _feature(geometry: dict, **properties) -> dict:
+    return {"type": "Feature", "geometry": geometry, "properties": properties}
+
+
+@router.get("/boundaries")
+def boundaries(user: CurrentUser, ac: CurrentAC) -> dict:
+    """Polygons for the map: the AC outline, its blocks, and any area shapes.
+
+    A block-scoped user gets their own block and its areas only, the same scope
+    /booths applies; the AC outline is not scoped, since it is the frame both
+    are drawn in. Every shape is unverified and says where it came from.
+    """
+    scoped = scoped_block_id(user)
+
+    row = query_one(
+        "SELECT boundary, boundary_bbox, boundary_source FROM ac WHERE ac_id = %s",
+        (ac.ac_id,),
+    )
+    outline = (
+        _feature(row["boundary"], layer="ac", ac_number=ac.ac_number,
+                 bbox=row["boundary_bbox"], source=row["boundary_source"], verified=False)
+        if row and row["boundary"] else None
+    )
+
+    block_clauses, block_params = ["ac_id = %s", "boundary IS NOT NULL"], [ac.ac_id]
+    if scoped is not None:
+        block_clauses.append("block_id = %s")
+        block_params.append(scoped)
+    blocks = [
+        _feature(r["boundary"], layer="block", ac_number=ac.ac_number,
+                 block_id=r["block_id"], name_en=r["name_en"], name_hi=r["name_hi"],
+                 kind=r["kind"], seeded=True, bbox=r["boundary_bbox"],
+                 source=r["boundary_source"], verified=False)
+        for r in query(
+            f"SELECT block_id, name_en, name_hi, kind, boundary, boundary_bbox, "
+            f"boundary_source FROM block WHERE {' AND '.join(block_clauses)} "
+            f"ORDER BY block_id",
+            block_params,
+        )
+    ]
+    built = _boundary_file()
+    if scoped is None:
+        blocks += [
+            f for f in built["features"]
+            if f["properties"]["layer"] == "block"
+            and f["properties"]["ac_number"] == ac.ac_number
+            and not f["properties"]["seeded"]
+        ]
+
+    area_clauses, area_params = ["a.ac_id = %s", "a.boundary IS NOT NULL"], [ac.ac_id]
+    if scoped is not None:
+        area_clauses.append("a.block_id = %s")
+        area_params.append(scoped)
+    areas_ = [
+        _feature(r["boundary"], layer="area", ac_number=ac.ac_number,
+                 area_id=r["area_id"], block_id=r["block_id"], name_en=r["name_en"],
+                 name_hi=r["name_hi"], kind=r["kind"], source=r["boundary_source"],
+                 verified=False)
+        for r in query(
+            f"SELECT a.area_id, a.block_id, a.name_en, a.name_hi, a.kind, a.boundary, "
+            f"a.boundary_source FROM area a WHERE {' AND '.join(area_clauses)} "
+            f"ORDER BY a.block_id, a.area_id",
+            area_params,
+        )
+    ]
+
+    return {
+        "ac_number": ac.ac_number,
+        "ac": outline,
+        "blocks": {"type": "FeatureCollection", "features": blocks},
+        "areas": {"type": "FeatureCollection", "features": areas_},
+        "sources": built.get("sources", {}),
+        # A "no shape for this block" warning is about the source file; once a
+        # shape has been loaded for that block some other way (the dev stack's
+        # synthetic ULB, or a hand-digitised one) it is no longer true here.
+        "warnings": [
+            w for w in built.get("warnings", [])
+            if w["ac_number"] == ac.ac_number
+            and not (w["code"] == "seed_block_without_shape"
+                     and w.get("params", {}).get("block")
+                     in {b["properties"].get("name_en") for b in blocks})
+        ],
+    }
+
+
 @router.get("/areas")
 def areas(user: CurrentUser, ac: CurrentAC) -> dict:
     """Filter vocabulary for this AC: its blocks, areas, elections and parties.
@@ -829,10 +935,14 @@ def areas(user: CurrentUser, ac: CurrentAC) -> dict:
         params.append(block_id)
     return {
         "ac_number": ac.ac_number,
+        # A block-scoped user was offered every block of the AC here while
+        # /booths silently returned only their own, so picking another block
+        # emptied the map with no explanation.
         "blocks": query(
             "SELECT block_id, name_en, name_hi, kind FROM block WHERE ac_id = %s "
-            "ORDER BY block_id",
-            (ac.ac_id,),
+            + ("AND block_id = %s " if block_id is not None else "")
+            + "ORDER BY block_id",
+            (ac.ac_id, block_id) if block_id is not None else (ac.ac_id,),
         ),
         "areas": query(
             f"SELECT a.area_id, a.block_id, a.kind, a.name_en, a.name_hi, a.code, "

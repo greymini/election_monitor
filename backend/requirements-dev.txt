@@ -35,3 +35,9 @@ ruff==0.16.8
 # it and the views cannot be built. tests/e2e/ still needs a real database; see
 # docker/Dockerfile.db and UAT_READINESS.md 1A.
 pgserver==0.1.4
+
+# Build-time only: scripts/build_boundaries.py turns the DataMeet AC shapefile and
+# geoBoundaries blocks into db/seed/geo/boundaries.json. Nothing at runtime, and
+# no test, imports either.
+shapely==2.1.2
+pyshp==3.1.6

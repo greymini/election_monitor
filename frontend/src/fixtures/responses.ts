@@ -9,11 +9,16 @@
 
 import {
   ACS,
+  AREAS_FIXTURE,
   BOOTHS,
   BOOTHS_2019,
   CONFIG,
   FIXTURE_BANNER,
 } from './index'
+// Built by scripts/build_boundaries.py: the real AC and block layers plus the
+// synthetic AC-32 areas. Typed loosely on purpose - inferring literal types
+// for 99 kB of coordinates buys nothing.
+import boundaryFile from './boundaries.json'
 
 const SOURCE_DOC = 'form20-vs2024-ac32.pdf'
 
@@ -114,10 +119,130 @@ function boothRow(b: (typeof BOOTHS)[number]) {
   }
 }
 
-const ROWS = BOOTHS.map(boothRow)
+/**
+ * Block and area identity, derived from the generated area list.
+ *
+ * Areas used to get `block_id: 3201 + (i % 3)` - round-robin - so Ward 2 was
+ * filed under Giridih Block, Ward 3 under Pirtand, and choosing a block in the
+ * map's picker listed areas from all three. Booth rows carried no ids at all,
+ * so nothing could be filtered by them. Both now come from the area's own
+ * `block_en`, the same field the generator placed the booth by.
+ */
+const BLOCK_KIND: Record<string, string> = { ward: 'ulb', panchayat: 'rural' }
+
+export const FIXTURE_BLOCKS = [...new Set(AREAS_FIXTURE.map((a) => a.block_en))].map(
+  (blockEn, i) => {
+    const first = AREAS_FIXTURE.find((a) => a.block_en === blockEn)!
+    return {
+      block_id: 3201 + i,
+      name_en: blockEn,
+      name_hi: first.block_hi,
+      kind: BLOCK_KIND[first.kind] ?? 'rural',
+    }
+  },
+)
+
+const BLOCK_ID = new Map<string, number>(FIXTURE_BLOCKS.map((b) => [b.name_en, b.block_id]))
+
+export const FIXTURE_AREAS = AREAS_FIXTURE.map((a, i) => ({
+  area_id: i + 1,
+  block_id: BLOCK_ID.get(a.block_en)!,
+  kind: a.kind,
+  name_en: a.area_en,
+  name_hi: a.area_hi,
+  code: null,
+  booths: BOOTHS.filter((b) => b.area_en === a.area_en).length,
+}))
+
+const AREA_ID = new Map<string, number>(FIXTURE_AREAS.map((a) => [a.name_en, a.area_id]))
+
+const ROWS = BOOTHS.map((b) => ({
+  ...boothRow(b),
+  area_id: AREA_ID.get(b.area_en)!,
+  block_id: BLOCK_ID.get(b.block_en)!,
+}))
 
 function acRows(acNumber: number) {
   return acNumber === 32 ? ROWS : []
+}
+
+interface BoundaryFeature {
+  type: 'Feature'
+  geometry: { type: string; coordinates: unknown }
+  properties: Record<string, unknown> & { layer: string; ac_number: number; name_en?: string }
+}
+
+const BOUNDARY = boundaryFile as unknown as {
+  features: BoundaryFeature[]
+  sources: Record<string, unknown>
+  warnings: Array<{ ac_number: number; code: string; message: string }>
+  fixture_note: string
+}
+
+/** /boundaries, shaped as api/routers/data.py returns it, with the fixture's
+ *  block and area ids attached so a selected filter can be highlighted. */
+function boundariesFor(acNumber: number) {
+  const mine = BOUNDARY.features.filter((f) => f.properties.ac_number === acNumber)
+  const withIds = (f: BoundaryFeature) => {
+    if (acNumber !== 32) return f
+    const name = f.properties.name_en ?? ''
+    return {
+      ...f,
+      properties: {
+        ...f.properties,
+        block_id: f.properties.layer === 'block' ? BLOCK_ID.get(name) ?? null : BLOCK_ID.get(String(f.properties.block_en)) ?? null,
+        ...(f.properties.layer === 'area' ? { area_id: AREA_ID.get(name) ?? null } : {}),
+      },
+    }
+  }
+  return {
+    ac_number: acNumber,
+    ac: mine.find((f) => f.properties.layer === 'ac') ?? null,
+    blocks: { type: 'FeatureCollection', features: mine.filter((f) => f.properties.layer === 'block').map(withIds) },
+    areas: { type: 'FeatureCollection', features: mine.filter((f) => f.properties.layer === 'area').map(withIds) },
+    sources: BOUNDARY.sources,
+    warnings: BOUNDARY.warnings.filter((w) => w.ac_number === acNumber),
+    fixture: FIXTURE_BANNER,
+  }
+}
+
+/** Metrics defined against the baseline only, as in mv_booth_priority. */
+const BASELINE_ONLY = ['new_voter_pct', 'priority_score', 'floating_pct', 'margin_stddev'] as const
+
+/**
+ * A booth's result columns for a non-baseline election, mirroring what
+ * /booths now joins from mv_result_booth_wide: margin, signed margin and
+ * winner for that election; baseline-only metrics NULL rather than borrowed.
+ *
+ * VS-2019 uses the same valid-vote convention as the booth card (JMM + BJP +
+ * JVM + NOTA, since the 2019 fixture carries no per-booth "others"). Turnout is
+ * NULL because no 2019 roll snapshot exists in the fixture. LS-2024 has no
+ * booth rows in the fixture, so every booth is uncoloured for it.
+ */
+function resultFor(row: (typeof ROWS)[number], election: string) {
+  const blank = Object.fromEntries(BASELINE_ONLY.map((k) => [k, null]))
+  const prev = election === 'VS-2019' ? BOOTHS_2019[row.booth_uid] : undefined
+  if (!prev) {
+    return {
+      ...row, ...blank, election_label: election, electors: null,
+      margin_pct: null, signed_margin_pct: null, turnout_pct: null,
+      winner_party: null, runner_party: null,
+    }
+  }
+  const valid = prev.jmm + prev.bjp + prev.jvm + prev.nota
+  const ranked = (
+    [['JMM', prev.jmm], ['BJP', prev.bjp], ['JVM', prev.jvm]] as const
+  ).slice().sort((x, y) => y[1] - x[1])
+  const [winner, runner] = ranked
+  const margin = valid > 0 ? Math.round((10000 * (winner[1] - runner[1])) / valid) / 100 : null
+  // Signed by the contest pair, JMM positive: a JVM win is neither arm.
+  const signed = margin === null ? null
+    : winner[0] === 'JMM' ? margin : winner[0] === 'BJP' ? -margin : null
+  return {
+    ...row, ...blank, election_label: election, electors: null,
+    margin_pct: margin, signed_margin_pct: signed, turnout_pct: null,
+    winner_party: winner[0], runner_party: runner[0],
+  }
 }
 
 function summaryFor(acNumber: number) {
@@ -329,12 +454,14 @@ export function fixtureFor(path: string, method = 'GET', body?: unknown): unknow
   const [clean, search = ''] = path.split('?')
   const query = new URLSearchParams(search)
   if (method.toUpperCase() !== 'GET') return postFixture(clean, body)
-  const answer = getFixture(clean)
+  const answer = getFixture(clean, query)
   return answer === undefined ? undefined : applyQuery(clean, query, answer)
 }
 
-/** The unfiltered GET answer for a path. */
-function getFixture(clean: string): unknown | undefined {
+/** The GET answer for a path. /booths applies its own filters (from rahul-working:
+ *  real block and area ids, other elections via resultFor); the rest are
+ *  filtered afterwards by applyQuery. */
+function getFixture(clean: string, params: URLSearchParams): unknown | undefined {
   if (clean in FIXTURES) return FIXTURES[clean]
 
   const scoped = clean.match(/^\/acs\/(\d+)(\/.*)?$/)
@@ -351,20 +478,8 @@ function getFixture(clean: string): unknown | undefined {
     case rest === '/areas': {
       return {
         ac_number: acNumber,
-        blocks: acNumber === 32
-          ? [
-            { block_id: 3201, name_en: 'Giridih Municipal Corporation', name_hi: 'गिरिडीह नगर निगम', kind: 'ulb' },
-            { block_id: 3202, name_en: 'Giridih Block', name_hi: 'गिरिडीह प्रखंड', kind: 'rural' },
-            { block_id: 3203, name_en: 'Pirtand Block', name_hi: 'पीरटांड़ प्रखंड', kind: 'rural' },
-          ]
-          : [],
-        areas: acNumber === 32
-          ? [...new Set(BOOTHS.map((b) => b.area_en))].map((name, i) => ({
-            area_id: i + 1, block_id: 3201 + (i % 3), kind: i < 2 ? 'ward' : 'panchayat',
-            name_en: name, name_hi: BOOTHS.find((b) => b.area_en === name)!.area_hi,
-            code: null, booths: BOOTHS.filter((b) => b.area_en === name).length,
-          }))
-          : [],
+        blocks: acNumber === 32 ? FIXTURE_BLOCKS : [],
+        areas: acNumber === 32 ? FIXTURE_AREAS : [],
         elections: acNumber === 32
           ? [
             { election_id: 1, label: 'VS-2024', type: 'VS', year: 2024, is_baseline: true, has_results: true },
@@ -384,10 +499,21 @@ function getFixture(clean: string): unknown | undefined {
         fixture: FIXTURE_BANNER,
       }
     }
-    case rest === '/booths':
+    case rest === '/boundaries':
+      return boundariesFor(acNumber)
+    case rest === '/booths': {
+      // The same filters, in the same way, as api/routers/data.py.
+      const blockId = Number(params.get('block_id')) || null
+      const areaId = Number(params.get('area_id')) || null
+      const metric = params.get('metric') ?? 'margin_pct'
+      const election = params.get('election_label') ?? 'VS-2024'
+      const scoped = rows
+        .filter((r) => blockId === null || r.block_id === blockId)
+        .filter((r) => areaId === null || r.area_id === areaId)
+        .map((r) => (election === 'VS-2024' ? r : resultFor(r, election)))
       return {
         type: 'FeatureCollection',
-        features: rows.map((r) => ({
+        features: scoped.map((r) => ({
           type: 'Feature',
           geometry: r.lon !== null && r.lat !== null
             ? { type: 'Point', coordinates: [r.lon, r.lat] }
@@ -395,15 +521,17 @@ function getFixture(clean: string): unknown | undefined {
           properties: r,
         })),
         meta: {
-          count: rows.length,
-          ungeocoded: rows.filter((r) => r.lat === null).length,
-          electors_known: rows.filter((r) => r.electors !== null).length,
-          metric: 'signed_margin_pct',
+          count: scoped.length,
+          ungeocoded: scoped.filter((r) => r.lat === null).length,
+          electors_known: scoped.filter((r) => r.electors !== null).length,
+          metric,
+          election_label: election,
           ac_number: acNumber,
           contest: acNumber === 32 ? { party_a: 'JMM', party_b: 'BJP' } : null,
         },
         fixture: FIXTURE_BANNER,
       }
+    }
     case rest.startsWith('/booths/') && rest.endsWith('/card'): {
       const uid = rest.slice('/booths/'.length, -'/card'.length)
       const row = rows.find((r) => r.booth_uid === decodeURIComponent(uid))
@@ -414,8 +542,10 @@ function getFixture(clean: string): unknown | undefined {
           booth_uid: row.booth_uid, ps_name_hi: row.building, building: row.building,
           village_or_locality: row.area_en, current_ps_number: Number(row.ps_numbers.split(',')[0]),
           geocode_conf: row.lat === null ? null : 0.82,
-          area_id: 1, area_en: row.area_en, area_hi: row.area_hi, area_kind: 'panchayat',
-          block_id: 3202, block_en: row.block_en, block_hi: row.block_en,
+          area_id: row.area_id, area_en: row.area_en, area_hi: row.area_hi,
+          area_kind: FIXTURE_AREAS[row.area_id - 1].kind,
+          block_id: row.block_id, block_en: row.block_en,
+          block_hi: FIXTURE_BLOCKS.find((b) => b.block_id === row.block_id)!.name_hi,
         },
         results: [
           {
@@ -812,50 +942,24 @@ function getFixture(clean: string): unknown | undefined {
 // Query parameters and writes
 // ---------------------------------------------------------------------------
 
-/** Area id -> block id, as the /areas fixture assigns them. */
-function areaBlock(): Map<string, { areaId: number; blockId: number }> {
-  const names = [...new Set(BOOTHS.map((b) => b.area_en))]
-  return new Map(names.map((name, i) => [name, { areaId: i + 1, blockId: 3201 + (i % 3) }]))
-}
-
 type Obj = Record<string, unknown>
 
 function applyQuery(clean: string, query: URLSearchParams, answer: unknown): unknown {
   const rest = clean.replace(/^\/acs\/\d+/, '')
   const data = answer as Obj
-  const areas = areaBlock()
-  const inArea = (areaEn: unknown) => {
-    const hit = areas.get(String(areaEn))
+  // Rows carry their real block_id and area_id (fixtures/giridih.py).
+  const inScope = (row: Obj) => {
     const block = query.get('block_id')
     const area = query.get('area_id')
-    if (block && hit?.blockId !== Number(block)) return false
-    if (area && hit?.areaId !== Number(area)) return false
+    if (block && row.block_id !== Number(block)) return false
+    if (area && row.area_id !== Number(area)) return false
     return true
   }
 
-  if (rest === '/booths') {
-    const features = (data.features as Array<{ properties: Obj }>)
-      .filter((f) => inArea(f.properties.area_en))
-    const label = query.get('election_label')
-    // Only VS-2024 has booth figures in the fixture set; another election's
-    // map is honest about that (grey markers) instead of relabelling 2024.
-    const shown: Array<{ properties: Obj }> = label && label !== 'VS-2024'
-      ? features.map((f) => ({ ...f, properties: { ...f.properties,
-        margin_pct: null, signed_margin_pct: null, turnout_pct: null, swing_pct: null,
-        priority_score: null, new_voter_pct: null, winner_party: null, runner_party: null,
-        election_label: null } }))
-      : features
-    const metric = query.get('metric')
-    return { ...data, features: metric
-      ? shown.map((f) => ({ ...f, properties: { ...f.properties,
-        metric: f.properties[metric] ?? null, metric_name: metric } }))
-      : shown,
-    meta: { ...(data.meta as Obj), count: shown.length, election_label: label } }
-  }
   if (rest.startsWith('/results/') && rest.endsWith('/booths')) {
     const label = decodeURIComponent(rest.split('/')[2])
     const rows = label === 'VS-2024'
-      ? (data.rows as Obj[]).filter((r) => inArea(r.area_en)) : []
+      ? (data.rows as Obj[]).filter(inScope) : []
     return { ...data, rows, count: rows.length }
   }
   if (rest === '/caste') {

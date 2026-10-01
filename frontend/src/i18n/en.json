@@ -118,7 +118,21 @@
     "ungeocoded_one": "{{count}} booth has no location and is not drawn. Place it with:",
     "ungeocoded_other": "{{count}} booths have no location and are not drawn. Place them with:",
     "nullCount_one": "{{count}} booth has no {{metric}} and is grey.",
-    "nullCount_other": "{{count}} booths have no {{metric}} and are grey."
+    "nullCount_other": "{{count}} booths have no {{metric}} and are grey.",
+    "noBooths": "No booths are loaded for this constituency and filter.",
+    "boundaries": "Boundaries",
+    "boundariesOn": "Boundaries on",
+    "boundariesOff": "Boundaries off",
+    "layerAc": "Constituency",
+    "layerBlocks": "Blocks",
+    "layerAreas": "Panchayats / wards",
+    "unseededBlock": "not in the seeded block list",
+    "syntheticArea": "synthetic outline",
+    "boundaryNote": "Outlines: {{sources}}. Unverified; check against the CEO Jharkhand maps before relying on them.",
+    "syntheticNote": "Panchayat and ward outlines are synthetic, cut for the fixture; real ones are not loaded yet.",
+    "noAreaShapes": "No panchayat or ward outlines are loaded for this constituency.",
+    "warn_anchor_outside": "{{label}} lies {{km}} km outside this constituency's source outline, so the outline is probably misdrawn here. Verify it against the CEO Jharkhand AC map.",
+    "warn_seed_block_without_shape": "{{block}} has no boundary in the source data, so it is not drawn."
   },
   "results": {
     "heading": "Booth-wise results",

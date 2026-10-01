@@ -15,9 +15,17 @@ describe('fixtureFor', () => {
   it('does not relabel 2024 figures as another election', () => {
     const r = fixtureFor('/acs/32/results/VS-2019/booths') as { rows: unknown[] }
     expect(r.rows).toEqual([])
-    const map = fixtureFor('/acs/32/booths?election_label=VS-2019') as
-      { features: Array<{ properties: Obj }> }
-    expect(map.features.every((f) => f.properties.margin_pct === null)).toBe(true)
+    // The map shows VS-2019's own figures (resultFor, from rahul-working) or
+    // blanks - never 2024's - and baseline-only metrics stay blank.
+    const map2019 = (fixtureFor('/acs/32/booths?election_label=VS-2019') as
+      { features: Array<{ properties: Obj }> }).features
+    const map2024 = (fixtureFor('/acs/32/booths') as
+      { features: Array<{ properties: Obj }> }).features
+    expect(map2019.every((f) => f.properties.election_label === 'VS-2019')).toBe(true)
+    expect(map2019.every((f) => f.properties.priority_score === null)).toBe(true)
+    const same = map2019.filter((f, i) => f.properties.margin_pct !== null
+      && f.properties.margin_pct === map2024[i].properties.margin_pct)
+    expect(same.length).toBeLessThan(map2019.length / 10)
   })
 
   it('applies the caste confidence floor', () => {

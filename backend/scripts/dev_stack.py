@@ -79,7 +79,7 @@ DEV_USERS = [
 # crosswalk binds the older elections' PS numbers onto those booths, and the
 # roll has to be linked to an election before any turnout figure exists.
 STEPS = ["migrate", "seed", "generate", "ps_list", "form20", "crosswalk", "roll",
-         "refresh", "users"]
+         "caste", "geo", "refresh", "users"]
 
 
 # ---------------------------------------------------------------------------
@@ -252,9 +252,9 @@ def report_capabilities() -> None:
 
     with psycopg.connect(os.environ["DATABASE_URL"], row_factory=psycopg.rows.dict_row) as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT extname FROM pg_extension ORDER BY extname")
+            cur.execute("SELECT extname, extversion FROM pg_extension ORDER BY extname")
             rows = cur.fetchall()
-    log("extensions: " + ", ".join(r["extname"] for r in rows))
+    log("extensions: " + ", ".join(f"{r['extname']} {r['extversion']}" for r in rows))
 
 
 def step_seed(py: str) -> None:
@@ -346,6 +346,20 @@ def step_roll(py: str) -> None:
             run(cmd, f"parse_roll {d['path']}")
 
 
+def step_caste(py: str) -> None:
+    """Blend the surname estimates the roll loader wrote into the `blend` rows
+    the dashboard reads. Without this the Community tile said "not loaded" on a
+    stack that had 180 surname estimates in it. (rahul-working)"""
+    run([py, "-m", "analytics.caste_estimate"], "analytics.caste_estimate")
+
+
+def step_geo(py: str, args) -> None:
+    """Synthetic area outlines and booth points, so the map has something to
+    draw. Generated stations cannot be geocoded; see scripts/dev_geo.py."""
+    run([py, "-m", "scripts.dev_geo", "--ac", str(args.ac), "--seed", str(args.seed)],
+        "scripts.dev_geo")
+
+
 def step_refresh(py: str) -> None:
     # --blocking: REFRESH ... CONCURRENTLY cannot run on a view that has never
     # been populated, which is every view in a freshly built stack. refresh.py
@@ -418,6 +432,8 @@ STEP_FUNCS = {
     "form20": lambda py, args: step_form20(py),
     "crosswalk": lambda py, args: step_crosswalk(py),
     "roll": lambda py, args: step_roll(py),
+    "caste": lambda py, args: step_caste(py),
+    "geo": step_geo,
     "refresh": lambda py, args: step_refresh(py),
     "users": lambda py, args: step_users(py),
 }

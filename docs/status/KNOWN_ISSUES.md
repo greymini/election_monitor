@@ -69,6 +69,25 @@ named. **Open** means it is not fixed; the reason is given. Paths are relative t
 | R-48 | Tooling | `npm run lint` called an uninstalled ESLint. Installed it with react-hooks rules. Playwright defaulted to Edge. |
 | R-49 | Tests | One Playwright test was flaky. `test_metrics_sql` wiped the shared dataset. |
 
+### From branch `rahul-working` (Rahul Gupta), merged 1 Oct 2026
+
+Rahul's branch fixed several of the same defects independently: Decimal→float, the booth card, the
+`/booths` joins, anusvara, the dev-stack `sys.path` fix, and the review-queue and caste writers
+from the OneDrive port. Where both branches fixed the same thing, the merge kept one implementation
+that passes both branches' tests (see the merge commit). His additional work:
+
+| ID | Area | What | Test |
+|---|---|---|---|
+| R-50 | Map | AC and block boundary outlines (DataMeet / geoBoundaries), synthetic ward/panchayat cells for the fixture, `GET /acs/{n}/boundaries`, a layer toggle remembered per viewer. Migration `0022_boundaries.sql` (written as 0019; renumbered on merge). Known data problem pinned by a test: DataMeet's AC-32 outline misses Giridih town by 5.4 km. | `tests/test_boundaries.py` |
+| R-51 | Fixtures | Areas filed under their real blocks (they were round-robin), and booths sampled inside their own area polygon (they were jittered across ~60 km). Votes and metrics unchanged. | `test_fixture_parity`, Playwright |
+| R-52 | API | `/areas` offered every block to a block-scoped user. | `e2e/test_api_contract` |
+| R-53 | Map | Filters reset per AC, an empty AC fits its outline, and previous markers are kept only within one AC. | Playwright |
+| R-54 | Loaders | New `ingest/load_csv.py`: demography, candidate_profile, local_office_holder, scoped to one AC, `--dry-run`. RUN.md and the LLD had documented it without it existing. | `tests/test_ui_commands.py` |
+| R-55 | Data health | Four of the "run this to fill the gap" commands shown in the UI failed (bad flags or a missing module). | `tests/test_ui_commands.py` checks that every command the UI shows names a real module and only flags it defines. |
+| R-56 | Loaders | `fetch_sec --load-csv` now requires `--ac`. | `e2e/test_fetch_sec_load.py` |
+| R-57 | Dev stack | New `caste` step (the Community tile showed "not loaded" over 180 estimates) and `geo` step (`scripts/dev_geo.py`: synthetic area outlines and booth points, dev/test databases only). | — |
+| R-58 | Tests | The e2e `db_url` fixture returned instead of yielding when `E2E_DATABASE_URL` was set, so every e2e test errored. | — |
+
 ---
 
 ## Open

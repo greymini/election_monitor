@@ -275,14 +275,87 @@ def _clamped_electors(rng: random.Random, valid: list[int]) -> list[int]:
 # The booths
 # ---------------------------------------------------------------------------
 
-# Roughly where Giridih town sits, so markers land on the constituency rather
-# than in the sea. Jitter is applied per booth; these are not real locations.
+# Roughly where Giridih town sits. These are not real booth locations.
 CENTRE_LAT, CENTRE_LON = 24.1854, 86.3094
+
+# Synthetic ward and panchayat polygons, cut from the real CD block shapes by
+# scripts/build_boundaries.py. Every booth is placed inside its own area's
+# polygon, so a booth always sits in the ward or panchayat it is labelled with
+# and inside the block outline the map draws around it.
+#
+# This replaced two earlier layouts. The first was a uniform jitter of +/-0.3
+# degrees around the town centre that ignored the area entirely: booths of
+# "Ward 1" landed 20-40 km out in the countryside, and a block filter selected
+# markers from all over the map. The second, a grid per block, kept each area
+# together but was invented geography: it put Giridih Block's booths north of
+# the constituency's real outline. The polygons are still synthetic inside each
+# block, and real geocodes replace all of this once a PS list is loaded.
+AREA_POLYGONS = ROOT / "fixtures" / "geo" / "giridih_areas.json"
+
+
+def area_polygons() -> dict[str, dict]:
+    """area_en -> GeoJSON geometry, from the built fixture file."""
+    import json
+
+    data = json.loads(AREA_POLYGONS.read_text(encoding="utf-8"))
+    out = {
+        f["properties"]["name_en"]: f["geometry"]
+        for f in data["features"] if f["properties"]["layer"] == "area"
+    }
+    missing = [a.area_en for a in areas() if a.area_en not in out]
+    if missing:
+        raise RuntimeError(
+            f"{AREA_POLYGONS.name} has no polygon for {missing[:3]}; "
+            "run scripts/build_boundaries.py"
+        )
+    return out
+
+
+def _polygons(geometry: dict) -> list[list[list[list[float]]]]:
+    return geometry["coordinates"] if geometry["type"] == "MultiPolygon" else [geometry["coordinates"]]
+
+
+def point_in_geometry(lon: float, lat: float, geometry: dict) -> bool:
+    """Even-odd ray cast over every ring, so holes are handled. Pure Python, so
+    the fixture and its tests need no geometry library."""
+    for polygon in _polygons(geometry):
+        inside = False
+        for ring in polygon:
+            for (x1, y1), (x2, y2) in zip(ring, ring[1:] + ring[:1], strict=True):
+                if (y1 > lat) != (y2 > lat) and lon < x1 + (lat - y1) * (x2 - x1) / (y2 - y1):
+                    inside = not inside
+        if inside:
+            return True
+    return False
+
+
+def _place(rng: random.Random, uid: str, geometry: dict) -> tuple[float, float]:
+    """A booth's (lat, lon), inside its area's polygon.
+
+    Draws exactly two numbers from `rng`, as the original jitter did, so every
+    other value drawn later in the booth loop - additions, floating vote,
+    volatility - is unchanged by the move. The position itself comes from a
+    generator seeded by the booth id, so rejection sampling can take as many
+    tries as it needs without disturbing anything else.
+    """
+    rng.random()
+    rng.random()
+    local = random.Random(f"{SEED}:{uid}")
+    rings = [ring for polygon in _polygons(geometry) for ring in polygon]
+    xs = [x for ring in rings for x, _ in ring]
+    ys = [y for ring in rings for _, y in ring]
+    for _ in range(10_000):
+        lon = local.uniform(min(xs), max(xs))
+        lat = local.uniform(min(ys), max(ys))
+        if point_in_geometry(lon, lat, geometry):
+            return round(lat, 5), round(lon, 5)
+    raise RuntimeError(f"could not place {uid} inside its area")
 
 
 def booths() -> list[Booth]:
     rng = random.Random(SEED)
     area_list = areas()
+    shapes = area_polygons()
 
     # Urban booths are denser per area than rural ones, which is the one
     # structural thing about the distribution worth being true.
@@ -334,6 +407,7 @@ def booths() -> list[Booth]:
         weak_crosswalk = i % 31 == 5
         split_booth = i % 61 == 7
         no_roll_link = i % 53 == 11
+        point = None if ungeocoded else _place(rng, uid, shapes[area.area_en])
 
         out.append(Booth(
             booth_uid=uid,
@@ -345,8 +419,8 @@ def booths() -> list[Booth]:
                 f"{'Primary School' if i % 3 else 'Middle School'} "
                 f"{area.area_en} {i + 1}"
             ),
-            lat=None if ungeocoded else round(CENTRE_LAT + rng.uniform(-0.28, 0.28), 5),
-            lon=None if ungeocoded else round(CENTRE_LON + rng.uniform(-0.30, 0.30), 5),
+            lat=point[0] if point else None,
+            lon=point[1] if point else None,
             electors=electors[i],
             jmm=columns["jmm"][i],
             bjp=columns["bjp"][i],

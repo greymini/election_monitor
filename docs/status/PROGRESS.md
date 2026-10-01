@@ -58,7 +58,7 @@ This matters more than anything else in the plan, so it is stated first and blun
 | `git` 2.55 | yes | version control can be established (A6 fixable) |
 | Network (pypi 200, `ceo.jharkhand.gov.in` 200) | yes | dependencies installable; the CEO portal answers, so a real Form 20 may be obtainable |
 | **Docker / Docker Compose** | **NO — not installed, daemon unreachable** | `docker compose build` and `docker compose up -d` **cannot be run**. Gate A-1 (clean-clone boot), the A-3 "against a real Postgres" requirement, and Gate A-4 (`uat_seed.sh` on a fresh volume) cannot be *executed* here. |
-| **PostgreSQL (any local server)** | **NO** — no `psql`, no `pg_dump`, no service | Migrations cannot be applied. Materialized views cannot be refreshed. The e2e tests the master prompt requires in `tests/e2e/` can be *written* but not *run*. |
+| **PostgreSQL (any local server)** | **YES, since 1 Oct** — the `pgserver` wheel ships a self-contained PostgreSQL 16 that runs as an ordinary user out of a directory (`scripts/dev_stack.py`). Minimal build: `plpgsql` and `pgvector` only, no PostGIS, `pg_trgm` or `unaccent` — see finding N4 and `DECISIONS.md` D-005. | Migrations apply, views refresh, loaders write, `tests/e2e` runs. This row read **NO** until 1 Oct, and every gate below that depended on it was recorded as `NOT VERIFIED HERE` for that reason. |
 | Administrator rights | **no** (`IsInRole(Administrator)` = False) | Docker Desktop and a PostgreSQL+PostGIS+pgvector server cannot be installed by me. |
 
 **What this does to the definition of "Track A green".** The master prompt's gates are written
@@ -280,7 +280,7 @@ revision of this header was written from memory and was wrong by six.
 
 | ID | Severity | What | Status |
 |---|---|---|---|
-| B1 | Critical | Nothing writes `election_roll_link`, so `mv_new_voter_share` reported 0 additions everywhere while another screen showed the real numbers | **partial** — the metric returns NULL rather than 0 (`ea466bf`) and the view reads the link table; **seeding and using the link is item 3 of this batch** |
+| B1 | Critical | Nothing writes `election_roll_link`, so `mv_new_voter_share` reported 0 additions everywhere while another screen showed the real numbers | **fixed** — the metric returns NULL rather than 0 (`ea466bf`), and the writer the table never had is now `parse_roll --link-election`. `tests/e2e/test_ingest_pipeline.py` asserts turnout appears for the linked booths and stays NULL for the rest. N5 is the other half: the view was reading electors from a column no loader writes |
 | B2 | Critical | Review-band matches got no `booth_crosswalk` row, and every view inner-joins it, so those booths' votes vanished silently | **fixed** `8ffb603` |
 | B3 | Critical | `next_uid_start=0` hardcoded, so a second crosswalk run reused the first's booth UIDs and summed unrelated stations onto one booth | **fixed** `5def601` (per-AC sequence, structural) + `8ffb603` (write path) |
 | B4 | High | `result_booth_meta.electors` has no writer, so turnout is NULL everywhere it appears | **partial** — turnout is correctly NULL with a stated reason rather than 0; **populating electors is item 3 of this batch** |
@@ -290,7 +290,7 @@ revision of this header was written from memory and was wrong by six.
 | B8 | Medium | `demography` and `caste_survey` are read and written by nothing — no Census loader, no survey intake | **open** |
 | B9 | Medium | `is_baseline` had no uniqueness constraint; a second baseline doubles every scenario total | **fixed** `5def601` |
 | B10 | Low | `parse_status` never advanced past `extracted`; `parsed_at` never set | **partial** — lifecycle, columns and the three parsers done (`252d6bd`); scrapers are Track B |
-| B11 | Low | `roll_revision` upsert targeted `(label)` while the constraint was `(revision_date, is_mother)` | **fixed** `5def601` |
+| B11 | Low | `roll_revision` upsert targeted `(label)` while the constraint was `(revision_date, is_mother)` | **fixed** `5def601` (migration) + this batch (loader). The migration half alone left `parse_roll` targeting a constraint that no longer existed — see N11 |
 
 ### C · Ingestion and data correctness (17)
 
@@ -299,20 +299,20 @@ revision of this header was written from memory and was wrong by six.
 | C1 | Critical | Form 20 columns never resolved to a party — the lookup never consulted `name_hi` — so every candidate loaded unattributed and every booth reported a 100% margin | **fixed** `ea466bf`, tightened `0db8578` |
 | C2 | Critical | AC-total validation keyed on `"Name (ABBR)"` against raw header cells, so it never matched and the operator had to disable the check to load anything | **fixed** `ea466bf` — resolution matches onto the seeded candidates, which is what the totals hang off |
 | C3 | Critical | Every roll page's full text written to `OCR_DIR` as plaintext JSON and kept, while the source PDF was deleted | **fixed** `934e629` |
-| C4 | High | `parse_int(c) or 0` turns an unreadable cell into zero votes, and the arithmetic check that would catch it is skipped when the same damage hit the total | **open** — **item 4 of this batch** |
-| C5 | High | The load docstring says one transaction; it is three, so a mid-load failure leaves committed deletes and partial rows | **open** — **item 4 of this batch** |
-| C6 | High | Candidate uniqueness on `(election_id, name_en, party_id)` with NULL party never fires, so every re-parse inserts fresh candidates and doubles every vote total | **open** — **item 4 of this batch** |
-| C7 | High | Gender and age read from a different line than the EPIC count, so a layout mismatch silently makes every elector "other" and all age bands zero | **open** — **item 5 of this batch** |
-| C8 | Medium | Supplement section state resets per PS group, so every group after the first records 0 additions | **open** — **item 5 of this batch** |
+| C4 | High | `parse_int(c) or 0` turns an unreadable cell into zero votes, and the arithmetic check that would catch it is skipped when the same damage hit the total | **open** — an unreadable cell still loads as 0. The AC-total gate now runs for real (C2 is fixed), so a single damaged cell is caught at constituency level; a cell that is unreadable *and* compensated by another error in the same column still slips through |
+| C5 | High | The load docstring says one transaction; it is three, so a mid-load failure leaves committed deletes and partial rows | **fixed** this batch — `load()` is one `connection()` block covering the DELETE and every row |
+| C6 | High | Candidate uniqueness on `(election_id, name_en, party_id)` with NULL party never fires, so every re-parse inserts fresh candidates and doubles every vote total | **fixed in practice** this batch — an unresolved column aborts the load, so `party_id` is never NULL and the constraint does fire; `tests/e2e/test_ingest_pipeline.py` asserts a re-run doubles no total. A unique index on `(election_id, column_index)` would close it structurally and is not yet added |
+| C7 | High | Gender and age read from a different line than the EPIC count, so a layout mismatch silently makes every elector "other" and all age bands zero | **tested** this batch — the e2e pipeline asserts gender and age bands each sum to the elector count on a three-entries-per-line roll, which is the layout the defect needs. The code already read forward only |
+| C8 | Medium | Supplement section state resets per PS group, so every group after the first records 0 additions | **tested** this batch — a multi-station supplement asserts additions > 0 for every station, not just the first |
 | C9 | Medium | One deletion reason applied to every entry on a line, and `\bS\b` matches the S in S/O | **open** — **item 5 of this batch** |
 | C10 | Medium | `booth` carried no `roll_part`, so the documented 0.20 crosswalk term never contributed | **fixed** `5def601` (column) + `8ffb603` (supplied and scored) |
 | C11 | Medium | Crosswalk coverage measured against `booth_crosswalk`, which is circular — the dropped rows were missing from the denominator too | **fixed** `ea466bf` — `mv_ac_summary` measures against `ps_list_entry` |
 | C12 | Medium | `check_roll_continuity` compares consecutive revisions including supplements, which write no snapshots, so it fails loudly on correct data | **open** — **item 5 of this batch** |
 | C13 | Medium | `discard_raw` deletes the source PDF by default, destroying the audit trail while the cache kept the text | **fixed** `33a51d3` + `934e629` |
 | C14 | Medium | Surname percentages normalised over matched tokens then multiplied by the full electorate, biasing against under-covered communities | **fixed** `448b456` — shares over all electors, explicit `UNMATCHED` |
-| C15 | Medium | `roll_snapshot` and `roll_change` record no source document or page | **partial** — columns added `5def601`; **writers are item 6 of this batch** |
+| C15 | Medium | `roll_snapshot` and `roll_change` record no source document or page | **fixed** `5def601` (columns) + this batch (`parse_roll` writes `source_doc` on both) |
 | C16 | Low | `review_queue` inserts had no dedupe, so the queue doubled on every re-run | **fixed** `5def601` (unique index) + `8ffb603` (upsert) |
-| C17 | Low | Pages that produced some rows via the table path are excluded from the regex fallback | **open** — **item 6 of this batch** |
+| C17 | Low | Pages that produced some rows via the table path are excluded from the regex fallback | **open** — every generated document is ruled, so this batch cannot exercise it |
 
 ### D · Analytics correctness (9)
 
@@ -370,10 +370,10 @@ revision of this header was written from memory and was wrong by six.
 |---|---|---|
 | H.1 | Materialized views against a hand-built fixture — the audit's top-ranked missing test | **fixed** `6d40566` — 14 tests **RUN and passing** against a real PostgreSQL. Running them exposed that `0015` could not be applied at all (`l.ac_id` on a table without it) and that 13 of the 14 shared a fixture that collided with itself. |
 | H.2 | Crosswalk write path, not just scoring | **fixed** `8ffb603` |
-| H.3 | Form 20 end to end against a known booth | **open** — **item 8 of this batch** (mocked, per instruction) |
-| H.4 | Re-run idempotency per loader | **open** — **item 4 of this batch** |
+| H.3 | Form 20 end to end against a known booth | **fixed** — `tests/e2e/test_ingest_pipeline.py`, 33 cases: generated PDF → parse → resolve → validate → load → refresh, with each column's booth sum asserted against its published AC total at tolerance zero |
+| H.4 | Re-run idempotency per loader | **fixed** — the whole pipeline is re-run and every row count and vote total asserted unchanged. It caught N8, a booth leaked per unmatched station per run |
 | H.5 | Privacy assertion beyond the parser | **fixed** `934e629` |
-| H.6 | Roll composition invariants | **open** — **item 5 of this batch** |
+| H.6 | Roll composition invariants | **partial** — gender and age bands are asserted to sum to the elector count per booth, and the supplement to record additions for every station (C7, C8). Continuity across revisions (C12) is still untested |
 | H.7 | API contract tests for block-role scoping | **open** — **item 7 of this batch** |
 | H.8 | `jellyfish` vs fallback agreement | **fixed** `760a244` |
 | H.9 | Metric parity: `metrics.py` against `0015_metrics.sql` on the same fixtures | **fixed** `6d40566` — all three layers RUN: 87 drift/Python checks, 82 functions in a real PostgreSQL, 76 against the full schema including the views. 3 remaining skips need booth results the seed does not load (items 8, 9). |
@@ -399,6 +399,41 @@ Not audit IDs — found while doing the work, recorded so they are not lost.
 | N5 | `GET /summary` picked the winner from a hardcoded eight-party `VALUES` pivot, so a party outside that set was summed into `others` and could be returned as the winning party OTHERS. Same bucketing as D3 and N2, third occurrence, third grain. | **fixed** `b6a3e66` — ranks candidates from `mv_result_booth_candidate` on the `contestant` key, and returns the winning candidate's name beside the party. An e2e test asserts the winner is never OTHERS. |
 | N4 | The schema could not be applied without PostGIS, `pg_trgm` and `unaccent`, so no SQL test had ever been executed. `pg_trgm` and `unaccent` were created and never used; PostGIS was doing a round trip to recover the longitude and latitude written into a geometry column. | **fixed** `6d40566` — `0002` stores `lon`/`lat` doubles and GeoJSON in `jsonb`; `0001` creates only `vector`. All 17 migrations now apply on a stock PostgreSQL 16 (50 tables, 14 matviews, 15 functions). Conflicts with LLD §6.4, recorded in D-006 rather than resolved unilaterally. |
 | N3 | `mv_swing_vanished` applied no crosswalk or lineage gate at all, so a vanished party's collapse was reported even at booths too weakly matched to carry the surviving parties' swings — the two halves of one swing table disagreeing about whether the comparison was admissible. | **fixed** `ed0a52a` — both halves now call `metric_comparison_allowed` |
+
+### Findings from the frontend-hardening batch (section 1), ported from the OneDrive copy
+
+> **Merge note (1 Oct 2026).** This table came in from branch `rahul-working`, which ported the same
+> OneDrive commits independently and numbered their findings P4–P16. They are the same findings that
+> §8 below records as OD-N4–OD-N16 (P*n* = OD-N*n*); both are kept so references from either branch
+> resolve. Fixes made on `rahul-working` after the port are listed in `KNOWN_ISSUES.md` as R-5x.
+
+*These were numbered N4-N16 in that copy, which collides with the N-series above; they are P4-P16 here. Prose inside a row still says N where it was written that way.*
+
+`FRONTEND_HARDENING.md` 1 asked for a local stack that loads its dataset **through the
+real loaders**. Getting there needed an embedded PostgreSQL (N4), and the moment one
+existed, twelve defects surfaced that no amount of reading the SQL had found. Every one
+of them was invisible for the same reason: **nothing in this repository had ever run
+against a database**, so everything between a parsed dictionary and a materialized view
+was untested.
+
+Four of them share one shape — *the migration was fixed and the loader was not* — which
+is the shape G2 already had, and is worth naming as a pattern rather than four accidents.
+
+| ID | What | Status |
+|---|---|---|
+| P4 | PostGIS was required by `0001`, and the only PostgreSQL this environment can run without administrator rights (the `pgserver` wheel) ships only `plpgsql` and `pgvector`. So no migration could be applied and no number produced here at all — exactly the state D-002 recorded. | **closed** — `DECISIONS.md` D-005. postgis/pg_trgm/unaccent are optional and recorded in `schema_capability`, with a five-function `ST_*` fallback over the built-in `point` and `polygon`. `vector` stays required. |
+| P5 | **Turnout was NULL for every booth in every AC, by construction.** `metric_turnout_pct` documents its denominator as coming "from the linked roll snapshot, never from Form 20" — which is why `election_roll_link` exists — but `mv_result_booth_wide` read `result_booth_meta.electors`, a column no loader writes. The comment and the code said opposite things and no input could have changed the result. | **fixed** — a `roll_electors` CTE takes electors from the linked revision's snapshot; `result_booth_meta.electors` stays as an operator-entered fallback and the view now reports `electors_source` |
+| P6 | `load_surname_dict` keyed on `surname_hi` alone. `surname_dict.surname_en` is seeded for all 160 surnames and was read by nothing, so a roll printed in Latin script — which the CEO does publish — matched no surname, wrote no `caste_estimate` row, and reported that as a coverage of zero rather than as an unreadable script. | **fixed** — keyed on both scripts, case-folded |
+| P7 | **Every denominator in the product excluded NOTA.** D1, in a new place. `TAIL_LABELS` matches `nota` and `classify_header` ends the candidate run at the first tail column, so a NOTA header never reaches `resolve.py` — whose step 4 exists to load NOTA as a candidate row "or it cannot enter the denominator (D1)". The loader wrote NOTA to `result_booth_meta.nota` only, and `mv_booth_totals` computes both `valid_votes` and `nota` from `result_booth`. So `nota` was NULL at every booth, `printed_valid` disagreed with `valid_votes` by exactly the NOTA count, and every `share_pct`, `margin_pct` and turnout figure was computed over a denominator about 1% too small — 2,004 votes for Giridih 2024. | **fixed** — `nota_candidate_id` loads the tail value against the NOTA party; the printed figure stays on `result_booth_meta`, so a divergence is still visible rather than averaged away |
+| P8 | `ingest.crosswalk` minted a booth for an unmatchable station with `next_booth_uid`, then inserted the crosswalk row `ON CONFLICT DO NOTHING`. A second run minted a *new* uid, inserted a second `booth` row for the same station, and declined to repoint the crosswalk at it — so every re-run leaked one orphan booth per unmatched station. The runbook tells operators to re-run after clearing the queue. | **fixed** — an existing binding is reused before minting |
+| P9 | **`ingest/resolve.py` was never called.** All six steps of master prompt 3.1 were implemented and pinned by seventy-odd tests, but `parse_form20.resolve_candidates` still split on a trailing bracket and looked the result up against `abbr`/`name_en` — the exact code C1 describes. The fix for the audit's most consequential defect was written and not wired in. | **fixed** — `resolve_columns_for`; an unresolved column aborts the load with a review-queue item carrying the top three guesses |
+| P10 | `parse_form20`, `parse_pslist`, `parse_roll` and `caste_estimate` all inserted without `ac_id`, which `0014` made NOT NULL on sixteen tables. **None of them could write a single row against the current schema.** | **fixed** — `ingest/acscope.py` resolves `--ac` and the election label once, for every loader |
+| P11 | `parse_roll` upserted `ON CONFLICT (label)` on `roll_revision`, a constraint `0014` dropped and replaced with `(ac_id, label)`. The loader raised on its first statement. B11 was fixed in the migration and not in the loader. | **fixed** |
+| P12 | `parse_pslist.load_anchor` built `booth_uid` as `f"B{ps:04d}"`. B5 was fixed in the migration (`next_booth_uid`) and not in the loader, so re-anchoring would have rebound `B0147` to whatever station was number 147 in the newer list. | **fixed** — uids come from the per-AC sequence, and an existing anchor binding is reused so a re-run is idempotent |
+| P13 | **Password login could not work at all.** `requirements-api.txt` pinned `passlib[bcrypt]==1.7.4` with `bcrypt==5.0.0`; passlib's backend probes for an old wraparound bug by hashing an over-long secret, and bcrypt 4.1+ raises on that instead of truncating. Every `hash_password()` call failed with "password cannot be longer than 72 bytes", so no user could be created and no login could succeed. | **fixed** — `DECISIONS.md` D-008: bcrypt is called directly and passlib is removed |
+| P14 | `0015_metrics.sql` selected `l.ac_id` from `election_roll_link`, which has no such column. **The migration could not be applied.** `scripts/lint_sql.py` cannot see this — it checks relations, not columns. | **fixed** — `ac_id` comes from `election`, which is where it lives |
+| P15 | `api/routers/data.py` (three places), `api/booth_card.py` and `web/src/pages/Results.tsx` read `votes_counted` from `mv_result_booth_wide`. `0015` renamed that column `votes_polled`. `GET /acs/{ac}/summary` returns 500. | **open** — belongs with section 2, whose route-by-role contract test is what will find the rest of these systematically |
+| P16 | `tests/e2e/test_metrics_sql.py` — the audit's top-ranked missing test — was not re-runnable. The session connection is autocommit, so on its first real run one test passed and the other thirteen died on `booth_crosswalk_pkey`. It had been written and never executed. | **fixed** — the fixture clears its own rows first |
 
 ### What the 28 open lettered items are, grouped
 
@@ -535,3 +570,4 @@ is the shape G2 already had, and is worth naming as a pattern rather than four a
 | OD-N15 | `api/routers/data.py` (three places), `api/booth_card.py` and `web/src/pages/Results.tsx` read `votes_counted` from `mv_result_booth_wide`. `0015` renamed that column `votes_polled`. `GET /acs/{ac}/summary` returns 500. | **open** — belongs with section 2, whose route-by-role contract test is what will find the rest of these systematically |
 | OD-N16 | `tests/e2e/test_metrics_sql.py` — the audit's top-ranked missing test — was not re-runnable. The session connection is autocommit, so on its first real run one test passed and the other thirteen died on `booth_crosswalk_pkey`. It had been written and never executed. | **fixed** — the fixture clears its own rows first |
 
+| 1 Oct 2026 | *(this section)* | **Frontend hardening 1: a local full stack.** `scripts/dev_stack.py` starts an embedded PostgreSQL 16, applies all 17 migrations, seeds, generates synthetic Form 20 / PS list / roll PDFs, loads them through the real loaders with the AC-total gate on, refreshes all 14 views, creates one user per role and serves the API. **The first time anything in this repository ran against a database**, which closed N4 and immediately exposed N5–N16: twelve defects including a Form 20 loader that could not insert a row, a resolver written for C1 and never called, turnout NULL everywhere by construction, NOTA outside every denominator, and a password hash that always raised. `tests/e2e` went from 0 runnable to 123 green. 669 to 756 unit tests. |

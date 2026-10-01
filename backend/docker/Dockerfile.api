@@ -20,6 +20,8 @@ COPY analytics ./analytics
 # The first admin is created from the API image (it has bcrypt and jose):
 #   docker compose run --rm api python -m scripts.create_admin ...
 COPY scripts/__init__.py scripts/create_admin.py ./scripts/
+# /boundaries serves source warnings and unseeded blocks from the built file.
+COPY db/seed/geo ./db/seed/geo
 
 RUN useradd --create-home --uid 10001 appuser && chown -R appuser /app
 USER appuser

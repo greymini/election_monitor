@@ -28,13 +28,15 @@ def csv_file(tmp_path):
     return path
 
 
-def test_without_ac_an_ambiguous_label_is_refused(conn, csv_file, db_url, monkeypatch):
-    monkeypatch.setenv("DATABASE_URL", db_url)
-    from ingest.acscope import AmbiguousScope
-    from ingest.fetch_sec import load_csv
+def test_without_ac_the_command_is_refused(csv_file, capsys):
+    """--ac is required with --load-csv (from rahul-working): a load can no
+    longer land in a constituency nobody chose."""
+    from ingest.fetch_sec import main
 
-    with pytest.raises(AmbiguousScope):
-        load_csv(csv_file, "PANCHAYAT-2022")
+    with pytest.raises(SystemExit) as exit_info:
+        main(["--load-csv", str(csv_file), "--election", "PANCHAYAT-2022"])
+    assert exit_info.value.code == 2
+    assert "--ac" in capsys.readouterr().err
 
 
 def test_with_ac_the_rows_carry_that_constituency(conn, csv_file, db_url, monkeypatch):

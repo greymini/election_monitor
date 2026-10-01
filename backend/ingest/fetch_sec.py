@@ -28,8 +28,7 @@ log = get_logger(__name__)
 SEAT_TYPES = {"mukhiya", "ZP", "panchayat_samiti", "ward"}
 
 
-def load_csv(path: Path, election_label: str, dry_run: bool = False,
-             ac_number: int | None = None) -> dict:
+def load_csv(path: Path, election_label: str, ac_number: int, dry_run: bool = False) -> dict:
     """Load hand-transcribed local results.
 
     SEC PDFs vary too much for a reliable parser, and the volume is small (a few
@@ -38,6 +37,14 @@ def load_csv(path: Path, election_label: str, dry_run: bool = False,
 
     Columns: seat_type, seat_name, area_name, winner, runner_up, votes,
              runner_up_votes, tagged_party, tag_source, tag_confidence
+
+    Scoped to one AC. It looked the election up by label alone - but since 0014
+    every AC has its own PANCHAYAT-2022 row, so it took whichever came first -
+    and inserted without `ac_id`, which `local_result` allows to be NULL. A load
+    therefore "succeeded" into another constituency's election with no AC at
+    all, and the data-health tile, which counts rows for this AC, kept saying
+    "not loaded" however many rows went in. Area names are matched only among
+    this AC's areas for the same reason.
     """
     from common.db import connection
 
@@ -113,16 +120,16 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--discover", metavar="URL", help="page to scan for result PDFs")
     ap.add_argument("--download", action="store_true")
     ap.add_argument("--load-csv", metavar="PATH", help="load transcribed results")
-    ap.add_argument("--election", help="election label for --load-csv")
-    ap.add_argument("--ac", type=int, help="AC number; required when the label exists in several ACs")
+    ap.add_argument("--election", help="election label for --load-csv, e.g. PANCHAYAT-2022")
+    ap.add_argument("--ac", type=int, help="AC number the results belong to (needed with --load-csv)")
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args(argv)
 
     if args.load_csv:
-        if not args.election:
-            ap.error("--load-csv needs --election")
-        with job_context("ingest.fetch_sec.load_csv", election=args.election) as job:
-            stats = load_csv(Path(args.load_csv), args.election, args.dry_run, args.ac)
+        if not args.election or args.ac is None:
+            ap.error("--load-csv needs --election and --ac")
+        with job_context("ingest.fetch_sec.load_csv", election=args.election, ac=args.ac) as job:
+            stats = load_csv(Path(args.load_csv), args.election, args.ac, args.dry_run)
             job.set(**stats)
             job.log_line(str(stats))
             if stats["unmatched_area"]:

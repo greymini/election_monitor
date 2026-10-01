@@ -85,7 +85,7 @@ export default function LocalPolitics({ ac }: { ac: AcState }) {
       <h1 className="text-lg font-semibold">{t('localPolitics.heading')}</h1>
 
       {empty ? (
-        <Empty hint="No local political data is loaded. Run: python -m ingest.load_csv local_office_holder <csv>" />
+        <Empty hint={`No local political data is loaded. Run: python -m ingest.load_csv local_office_holder <csv> --ac ${ac.acNumber}`} />
       ) : (
         <>
           <section className="card overflow-x-auto px-0 py-0">

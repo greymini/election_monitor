@@ -548,6 +548,51 @@ def _split_front_matter(text: str) -> tuple[dict[str, str], str]:
     return meta, parts[2].strip()
 
 
+def load_boundaries() -> int:
+    """AC and block outlines from geo/boundaries.json (scripts/build_boundaries.py).
+
+    Only seeded blocks receive a shape: a source block the seed does not list
+    stays in the file, and on the map, but has no row here to attach to and
+    is not created - adding a block to a constituency is a seed decision, not
+    something a boundary file should do as a side effect.
+    """
+    import json
+
+    path = SEED_DIR / "geo" / "boundaries.json"
+    if not path.exists():
+        log.warning("seed file missing: geo/boundaries.json")
+        return 0
+    data = json.loads(path.read_text(encoding="utf-8"))
+    attribution = {k: v["attribution"] for k, v in data["sources"].items()}
+    acs = _ac_ids()
+    loaded = 0
+    with cursor() as cur:
+        for feature in data["features"]:
+            props = feature["properties"]
+            ac_id = acs.get(props["ac_number"])
+            if ac_id is None:
+                continue
+            values = (json.dumps(feature["geometry"]), props["bbox"],
+                      attribution[props["source"]])
+            if props["layer"] == "ac":
+                cur.execute(
+                    "UPDATE ac SET boundary = %s::jsonb, boundary_bbox = %s, "
+                    "boundary_source = %s WHERE ac_id = %s",
+                    (*values, ac_id),
+                )
+                loaded += cur.rowcount
+            elif props["layer"] == "block" and props["seeded"]:
+                cur.execute(
+                    "UPDATE block SET boundary = %s::jsonb, boundary_bbox = %s, "
+                    "boundary_source = %s WHERE ac_id = %s AND name_en = %s",
+                    (*values, ac_id, props["name_en"]),
+                )
+                loaded += cur.rowcount
+    for warning in data.get("warnings", []):
+        log.warning("boundaries AC-%s: %s", warning["ac_number"], warning["message"])
+    return loaded
+
+
 LOADERS = {
     "acs": load_acs,
     "blocks": load_blocks,
@@ -562,13 +607,14 @@ LOADERS = {
     "ac_totals": load_ac_totals,
     "news_sources": load_news_sources,
     "cards": load_knowledge_cards,
+    "boundaries": load_boundaries,
 }
 
 # Order matters: ACs before anything scoped to one, parties before aliases and
 # alliances, events before alliances and contests, elections before ac_totals.
 ORDER = ["acs", "blocks", "areas", "parties", "party_aliases", "communities",
          "elections", "party_alliances", "ac_contests", "surnames", "ac_totals",
-         "news_sources", "cards"]
+         "news_sources", "cards", "boundaries"]
 
 
 def main(argv: list[str] | None = None) -> int:

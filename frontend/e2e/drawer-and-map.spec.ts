@@ -35,7 +35,11 @@ const WIDTHS = [1440, 1024, 390]
 async function openFirstBooth(page: import('@playwright/test').Page) {
   await page.goto(`${AC}/map`)
   // Markers are SVG circles drawn by Leaflet, not DOM nodes with test ids.
-  const marker = page.locator('.leaflet-interactive').first()
+  // The booth layer only (boundary outlines are interactive paths too), and
+  // the last-drawn marker: with booths placed inside their ward polygons,
+  // neighbours share a screen pixel at the fitted zoom and a later one covers
+  // an earlier one, so `.first()` could be unclickable.
+  const marker = page.locator('.leaflet-overlay-pane path.leaflet-interactive').last()
   await expect(marker).toBeVisible()
   await marker.click()
   await expect(page.getByTestId('booth-drawer')).toBeVisible()
@@ -194,7 +198,8 @@ test.describe('map markers and tooltip', () => {
   // both screens read it.
   test('the tooltip and the booth card agree on margin and electors', async ({ page }) => {
     await page.goto(`${AC}/map`)
-    const marker = page.locator('.leaflet-interactive').first()
+    // Last-drawn booth marker: see openFirstBooth.
+    const marker = page.locator('.leaflet-overlay-pane path.leaflet-interactive').last()
     await expect(marker).toBeVisible()
 
     await marker.hover()

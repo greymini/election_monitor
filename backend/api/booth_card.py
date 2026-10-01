@@ -64,12 +64,15 @@ def build_booth_card(booth_uid: str, include_caste: bool = True,
         (booth_uid,),
     )
 
-    # New-voter share and priority are per election; the card shows the AC's
-    # baseline election, the one the priority score is computed for. Both
-    # views have one row per (election, booth), so an unfiltered query_one
-    # returned an arbitrary election's row.
+    # The baseline election's window. These selected electors_now, net_change,
+    # add_18_19, add_female and deleted_pct - columns of the view before 0015
+    # rebuilt it - so every booth card was a 500 and the map drawer could never
+    # open (the xfail NEXT_STEPS Step 1 names). Always an object, with the
+    # reason when it is empty, because the drawer renders "—" plus a reason
+    # rather than guessing why a figure is missing.
     new_voters = query_one(
-        "SELECT n.additions, n.deletions, n.electors, n.electors_start, n.new_voter_pct "
+        "SELECT n.additions, n.deletions, n.modifications, n.electors, "
+        "n.electors_start, n.new_voter_pct, n.net_roll_change_pct "
         "FROM mv_new_voter_share n JOIN election e ON e.election_id = n.election_id "
         "WHERE n.booth_uid = %s AND e.is_baseline",
         (booth_uid,),

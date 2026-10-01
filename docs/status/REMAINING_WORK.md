@@ -56,8 +56,8 @@ steps are done.
 | 3.4 | The five other ACs (31, 33, 42, 61, 65): verify the seeded totals against ECI and clear `verified=false`; then load their Form 20s and PS lists. | ECI results pages; a person to check each figure. |
 | 3.5 | Panchayat names (`db/seed/areas_panchayats.csv` is header-only for every AC). These come from the PS lists. | The PS lists from 3.1 / 3.4. |
 | 3.6 | Local election results (SEC Jharkhand), transcribed to CSV: `python -m ingest.fetch_sec --load-csv … --election PANCHAYAT-2022 --ac 32`. | jharkhandsec.gov.in results; manual transcription. |
-| 3.7 | Census 2011 village data, for the community-estimate blend. There is no loader yet (audit B8). | Census 2011 PCA + Village Directory; build a loader. |
-| 3.8 | Candidate profiles, local office holders, organisations, political events. The tables exist but have no loader; `ingest.load_csv` (named in RUN.md) does not exist. | MyNeta/ADR affidavits, TCPD Lok Dhaba; manual entry. Build `ingest/load_csv.py`. |
+| 3.7 | Census 2011 village data, for the community-estimate blend: `python -m ingest.load_csv demography FILE --ac 32`. | Census 2011 PCA + Village Directory, transcribed to CSV. |
+| 3.8 | Candidate profiles and local office holders: `python -m ingest.load_csv candidate_profile|local_office_holder FILE --ac 32` (added on `rahul-working`). Organisations and political events still have no loader. | MyNeta/ADR affidavits, TCPD Lok Dhaba; manual transcription to CSV. |
 | 3.9 | Geocoding booths (`python -m ingest.geocode`). | Nominatim (free, 1 request per second; set `NOMINATIM_USER_AGENT`). |
 
 ## 4. Features specified but not built

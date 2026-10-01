@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { CircleMarker, MapContainer, Tooltip as LeafletTooltip } from 'react-leaflet'
@@ -6,6 +6,8 @@ import type { LatLngTuple } from 'leaflet'
 
 import BaseTiles from '../components/BaseTiles'
 import BoothDrawer from '../components/BoothDrawer'
+import BoundaryLayers from '../components/BoundaryLayers'
+import type { Boundaries, LayerVisibility } from '../components/BoundaryLayers'
 import DivergingLegend from '../components/DivergingLegend'
 import FitBounds from '../components/FitBounds'
 import SequentialLegend from '../components/SequentialLegend'
@@ -109,6 +111,22 @@ const CENTRES: Record<number, [number, number]> = {
   65: [23.4400, 85.3200],
 }
 
+/** Which boundary layers are drawn. A per-viewer convenience, so it lives in
+ *  localStorage; every access is guarded because private windows throw. */
+const LAYERS_KEY = 'giridih.map.boundaries'
+const DEFAULT_LAYERS: LayerVisibility & { on: boolean } = {
+  on: true, ac: true, blocks: true, areas: true,
+}
+
+function rememberedLayers(): typeof DEFAULT_LAYERS {
+  try {
+    const raw = localStorage.getItem(LAYERS_KEY)
+    return raw ? { ...DEFAULT_LAYERS, ...JSON.parse(raw) } : DEFAULT_LAYERS
+  } catch {
+    return DEFAULT_LAYERS
+  }
+}
+
 export default function MapExplorer({ ac }: Props) {
   const { t, i18n } = useTranslation()
   const hi = i18n.language === 'hi'
@@ -119,6 +137,29 @@ export default function MapExplorer({ ac }: Props) {
   const [selected, setSelected] = useState<string | null>(null)
   const [tilesFailed, setTilesFailed] = useState(false)
   const [tileNoticeDismissed, setTileNoticeDismissed] = useState(false)
+  const [layers, setLayers] = useState(rememberedLayers)
+
+  const updateLayers = (patch: Partial<typeof DEFAULT_LAYERS>) => {
+    setLayers((current) => {
+      const next = { ...current, ...patch }
+      try {
+        localStorage.setItem(LAYERS_KEY, JSON.stringify(next))
+      } catch {
+        /* not remembered - still applied for this visit */
+      }
+      return next
+    })
+  }
+
+  // Filters belong to a constituency. Block and area ids are AC-specific, so
+  // carrying them across a switch sent another AC's block_id and drew an empty
+  // map with no explanation.
+  useEffect(() => {
+    setBlockId('')
+    setAreaId('')
+    setElection('VS-2024')
+    setSelected(null)
+  }, [ac.acNumber])
 
   const meta = useQuery<{
     blocks: Array<{ block_id: number; name_en: string; name_hi: string }>
@@ -140,11 +181,31 @@ export default function MapExplorer({ ac }: Props) {
       return api.get(ac.path(`/booths?${params.toString()}`))
     },
     enabled: ac.acNumber !== null,
-    // Keep the markers on screen while a filter change loads. Without this
-    // every new key flipped isLoading, the whole page became a spinner, and
-    // the Leaflet map unmounted and lost the user's zoom and position.
-    placeholderData: keepPreviousData,
+    // Without this every filter change was a brand-new query key with no data,
+    // so the page unmounted the whole map into a spinner and rebuilt it at the
+    // hardcoded centre before refitting. The previous markers now stay up until
+    // the filtered set arrives - but only within one constituency, so another
+    // AC's booths are never shown under this one's heading.
+    placeholderData: (previous, previousQuery) =>
+      previousQuery?.queryKey[1] === ac.acNumber ? keepPreviousData(previous) : undefined,
   })
+
+  // Outlines change only when the constituency does, so they are fetched once
+  // per AC rather than with every filter.
+  const boundaries = useQuery<Boundaries>({
+    queryKey: ['boundaries', ac.acNumber],
+    queryFn: () => api.get(ac.path('/boundaries')),
+    enabled: ac.acNumber !== null,
+    staleTime: Infinity,
+  })
+  const outline = boundaries.data?.ac ?? null
+  const outlineBounds = useMemo<[LatLngTuple, LatLngTuple] | undefined>(() => {
+    const box = (outline?.properties as { bbox?: number[] } | undefined)?.bbox
+    return box && box.length === 4 ? [[box[1], box[0]], [box[3], box[2]]] : undefined
+  }, [outline])
+  const hasSynthetic = (boundaries.data?.areas.features ?? []).some((f) => f.properties.synthetic)
+  const attribution = Object.values(boundaries.data?.sources ?? {})
+    .map((src) => src.attribution).filter(Boolean).join('; ')
 
   const spec = METRICS[metric]
   const features = query.data?.features ?? []
@@ -235,6 +296,32 @@ export default function MapExplorer({ ac }: Props) {
         </div>
       </div>
 
+      {/* Boundary toggle: one switch for all outlines, plus one per layer. */}
+      <div className="flex flex-wrap items-center gap-1.5 text-2xs" role="group"
+           aria-label={t('map.boundaries')}>
+        <button
+          type="button"
+          className="btn px-2 py-0.5 text-2xs"
+          aria-pressed={layers.on}
+          onClick={() => updateLayers({ on: !layers.on })}
+        >
+          {layers.on ? t('map.boundariesOn') : t('map.boundariesOff')}
+        </button>
+        {(['ac', 'blocks', 'areas'] as const).map((layer) => (
+          <label key={layer}
+                 className="inline-flex items-center gap-1"
+                 style={{ color: layers.on ? 'var(--text-secondary)' : 'var(--text-muted)' }}>
+            <input
+              type="checkbox"
+              checked={layers[layer]}
+              disabled={!layers.on}
+              onChange={(e) => updateLayers({ [layer]: e.target.checked })}
+            />
+            {t(layer === 'ac' ? 'map.layerAc' : layer === 'blocks' ? 'map.layerBlocks' : 'map.layerAreas')}
+          </label>
+        ))}
+      </div>
+
       {tilesFailed && !tileNoticeDismissed && (
         <div
           className="card flex items-start justify-between gap-3 px-3 py-2 text-2xs"
@@ -257,7 +344,7 @@ export default function MapExplorer({ ac }: Props) {
         <p className="card px-4 py-3 text-sm" role="status">{t('overview.noBoothsLoaded')}</p>
       )}
 
-      <div className="card map-isolate overflow-hidden px-0 py-0">
+      <div className={`card map-isolate overflow-hidden px-0 py-0${tilesFailed ? ' tiles-failed' : ''}`}>
         <div style={{ height: '62vh' }}>
           <MapContainer
             center={CENTRES[ac.acNumber] ?? CENTRES[32]}
@@ -266,7 +353,22 @@ export default function MapExplorer({ ac }: Props) {
             scrollWheelZoom
           >
             <BaseTiles onFailure={() => setTilesFailed(true)} />
-            <FitBounds points={points} />
+            <FitBounds
+              points={points}
+              fallbackBounds={outlineBounds}
+              fallback={CENTRES[ac.acNumber] ?? CENTRES[32]}
+            />
+            {layers.on && boundaries.data && (
+              <BoundaryLayers
+                data={boundaries.data}
+                visible={layers}
+                hi={hi}
+                blockId={blockId ? Number(blockId) : null}
+                areaId={areaId ? Number(areaId) : null}
+                unseededLabel={t('map.unseededBlock')}
+                syntheticLabel={t('map.syntheticArea')}
+              />
+            )}
             {placed.map((f) => {
               const p = f.properties
               const value = p[metric]
@@ -346,13 +448,28 @@ export default function MapExplorer({ ac }: Props) {
         </div>
 
         <ul className="text-2xs" style={{ color: 'var(--text-muted)' }}>
+          {query.data && query.data.meta.count === 0 && <li>{t('map.noBooths')}</li>}
+          {layers.on && boundaries.data && (
+            <>
+              {attribution && <li>{t('map.boundaryNote', { sources: attribution })}</li>}
+              {boundaries.data.warnings.map((w) => (
+                <li key={w.code + JSON.stringify(w.params ?? {})} style={{ color: 'var(--status-serious)' }}>
+                  {t(`map.warn_${w.code}`, { ...w.params, defaultValue: w.message })}
+                </li>
+              ))}
+              {layers.areas && hasSynthetic && <li>{t('map.syntheticNote')}</li>}
+              {layers.areas && boundaries.data.areas.features.length === 0 && (
+                <li>{t('map.noAreaShapes')}</li>
+              )}
+            </>
+          )}
           <li>{t('map.sizeNote')}</li>
           {query.data && query.data.meta.ungeocoded > 0 && (
             <li>
               {t('map.ungeocoded', { count: query.data.meta.ungeocoded })}
               {' '}
               <code className="whitespace-pre-wrap break-all">
-                python -m ingest.geocode --ac {ac.acNumber}
+                python -m ingest.geocode
               </code>
             </li>
           )}

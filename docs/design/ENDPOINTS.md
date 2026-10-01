@@ -17,8 +17,8 @@ against.
 
 ## Summary
 
-- **39** live routes, **31** legacy redirects
-- **33** frontend call sites
+- **40** live routes, **31** legacy redirects
+- **34** frontend call sites
 - **5** routes with no explicit response model
 - **13** routes no page calls
 - **0** frontend calls to a route that does not exist
@@ -39,9 +39,10 @@ against.
 | GET | `/acs/{ac_number}/admin/surnames` | admin | `q`? | dict | **(none)** |
 | POST | `/acs/{ac_number}/admin/surnames` | admin | — | dict | **(none)** |
 | GET | `/acs/{ac_number}/admin/usage` | admin | `days`? | dict | `frontend/src/pages/Admin.tsx:46` |
-| GET | `/acs/{ac_number}/areas` | any signed-in | — | dict | `frontend/src/pages/Booths.tsx:126`<br>`frontend/src/pages/MapExplorer.tsx:130`<br>`frontend/src/pages/Results.tsx:35` |
-| GET | `/acs/{ac_number}/booths` | any signed-in | `election_label`?, `area_id`?, `block_id`?, `metric`? | dict | `frontend/src/pages/MapExplorer.tsx:140` |
+| GET | `/acs/{ac_number}/areas` | any signed-in | — | dict | `frontend/src/pages/Booths.tsx:126`<br>`frontend/src/pages/MapExplorer.tsx:171`<br>`frontend/src/pages/Results.tsx:35` |
+| GET | `/acs/{ac_number}/booths` | any signed-in | `election_label`?, `area_id`?, `block_id`?, `metric`? | dict | `frontend/src/pages/MapExplorer.tsx:181` |
 | GET | `/acs/{ac_number}/booths/{booth_uid}/card` | any signed-in | — | dict | `frontend/src/components/BoothDrawer.tsx:123` |
+| GET | `/acs/{ac_number}/boundaries` | any signed-in | — | dict | `frontend/src/pages/MapExplorer.tsx:197` |
 | GET | `/acs/{ac_number}/candidates` | any signed-in | `election_label`? | dict | `frontend/src/pages/Candidates.tsx:69` |
 | GET | `/acs/{ac_number}/caste` | admin, strategist | `area_id`?, `booth_uid`?, `min_conf`?, `source`? | dict | `frontend/src/components/OverviewInsights.tsx:132`<br>`frontend/src/pages/Caste.tsx:30` |
 | GET | `/acs/{ac_number}/caste/correlation` | admin, strategist | `community`?, `min_conf`? | dict | `frontend/src/pages/CasteScatter.tsx:91` |

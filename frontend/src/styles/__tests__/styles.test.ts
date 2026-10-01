@@ -21,7 +21,10 @@ function files(dir: string, ext: RegExp): string[] {
 }
 
 const css = files(resolve(SRC, 'styles'), /\.css$/).map((f) => readFileSync(f, 'utf8')).join('\n')
-const code = files(SRC, /\.(ts|tsx)$/).map((f) => readFileSync(f, 'utf8')).join('\n')
+// Block comments are stripped: prose such as "`var(--token)` does not resolve"
+// is not a use of a variable.
+const code = files(SRC, /\.(ts|tsx)$/)
+  .map((f) => readFileSync(f, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')).join('\n')
 const tailwind = readFileSync(resolve(SRC, '../tailwind.config.js'), 'utf8')
 
 describe('styles', () => {
