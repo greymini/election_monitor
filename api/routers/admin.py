@@ -76,12 +76,15 @@ def fix_crosswalk(body: CrosswalkFix, user: AdminUser, ac: CurrentAC) -> dict:
                  (body.booth_uid, ac.ac_id)) is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"No booth {body.booth_uid!r}")
 
+    # `ac_id` is NOT NULL on booth_crosswalk since 0014 and was not supplied, so
+    # this handler raised on every call and the one manual override an admin has
+    # over the crosswalk did not work at all (N20).
     execute(
-        "INSERT INTO booth_crosswalk (election_id, ps_number, booth_uid, match_method, "
-        "confidence, reviewed) VALUES (%s, %s, %s, 'manual', 1.0, true) "
+        "INSERT INTO booth_crosswalk (election_id, ac_id, ps_number, booth_uid, "
+        "match_method, confidence, reviewed) VALUES (%s, %s, %s, %s, 'manual', 1.0, true) "
         "ON CONFLICT (election_id, ps_number) DO UPDATE SET booth_uid = EXCLUDED.booth_uid, "
-        "match_method = 'manual', confidence = 1.0, reviewed = true",
-        (election["election_id"], body.ps_number, body.booth_uid),
+        "match_method = 'manual', confidence = 1.0, reviewed = true, ac_id = EXCLUDED.ac_id",
+        (election["election_id"], ac.ac_id, body.ps_number, body.booth_uid),
     )
     return {"updated": True, "next": "Re-run analytics.refresh so the views pick this up."}
 

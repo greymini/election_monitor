@@ -91,8 +91,36 @@ def _as_pct_of_electors(counts: dict[int, float], electors: int | None) -> dict[
 
 
 # The explicit residual. Not a community: a statement about how much of the
-# electorate the surname dictionary could not place.
+# electorate the surname dictionary could not place. It is seeded as a
+# `community` row because `caste_estimate.community_id` is a foreign key and the
+# booth card renders it by name, but it carries category OTHER and is excluded
+# from every category rollup.
 UNMATCHED_NAME = "UNMATCHED"
+
+# Written to `caste_estimate.method_version` so a stored estimate says which
+# rule produced it. Bump it whenever the arithmetic changes: a mixture of old
+# and new rows in one table, with nothing to tell them apart, is how C14 stayed
+# invisible for as long as it did.
+#
+#   surname-1  normalised over matched tokens, no residual (pre-C14)
+#   surname-2  shares over all electors, explicit UNMATCHED residual
+METHOD_VERSION_SURNAME = "surname-2"
+METHOD_VERSION_BLEND = "blend-2"
+
+
+def unmatched_community_id(cur) -> int | None:
+    """The `community` row the residual is filed under."""
+    cur.execute("SELECT community_id FROM community WHERE name_en = %s", (UNMATCHED_NAME,))
+    row = cur.fetchone()
+    if row is None:
+        log.warning(
+            "no %r row in `community`, so the share the surname dictionary could not "
+            "place cannot be recorded and the estimates will read as a complete "
+            "picture of the booth. Add it to db/seed/communities.csv and re-seed.",
+            UNMATCHED_NAME,
+        )
+        return None
+    return row["community_id"]
 
 
 def _category_total(pct: dict[int, float], communities: dict[int, CommunityRef], category: str) -> float:
@@ -219,15 +247,38 @@ def load_surname_dict(cur) -> dict[str, list[tuple[int, float]]]:
     return out
 
 
-def write_surname_estimates(cur, surname_totals: dict[str, Counter], ac_id: int) -> int:
+def write_surname_estimates(cur, surname_totals: dict[str, Counter], ac_id: int,
+                            electors: dict[str, int] | None = None) -> int:
     """Turn per-booth surname histograms into caste_estimate(source='surname').
 
     Called by parse_roll while the histogram is still in memory. The histogram
     itself is never persisted - only the community totals it implies.
+
+    **Shares are over all electors, not over the matched tokens** (C14), and the
+    shortfall is written as an explicit UNMATCHED row. This function was the
+    other half of C14 and did not get it: `_as_pct_of_electors` was written,
+    tested and documented, while the writer parse_roll actually calls still did
+    `100.0 * value / grand` over the matched subset and wrote no residual. So a
+    booth where the dictionary placed 40% of names reported shares that summed
+    to 100%, and the bias `_as_pct_of_electors` exists to expose was presented
+    as a complete picture (N22).
+
+    `electors` is the per-booth elector count from the same roll pass. Without
+    it there is no denominator, so the function refuses to guess: it writes
+    nothing for that booth and says so.
     """
     lookup = load_surname_dict(cur)
+    electors = electors or {}
+    unmatched_id = unmatched_community_id(cur)
     rows = 0
+    skipped: list[str] = []
+
     for booth_uid, histogram in surname_totals.items():
+        booth_electors = electors.get(booth_uid)
+        if not booth_electors:
+            skipped.append(booth_uid)
+            continue
+
         totals: dict[int, float] = {}
         matched = 0.0
         confident = 0.0
@@ -243,20 +294,38 @@ def write_surname_estimates(cur, surname_totals: dict[str, Counter], ac_id: int)
 
         if not totals:
             continue
-        grand = sum(totals.values())
-        for community_id, value in totals.items():
+
+        pct = _as_pct_of_electors(totals, booth_electors)
+        matched_pct = round(min(100.0, 100.0 * matched / booth_electors), 2)
+        confidence = round(min(1.0, confident / matched if matched else 0.0), 3)
+
+        written = dict(pct)
+        if unmatched_id is not None:
+            residual = max(0.0, 100.0 - sum(pct.values()))
+            written[unmatched_id] = residual
+
+        for community_id, value in written.items():
             cur.execute(
-                "INSERT INTO caste_estimate (booth_uid, ac_id, community_id, est_count, est_pct, "
-                "confidence, source, updated_at) "
-                "VALUES (%s, %s, %s, %s, %s, %s, 'surname', now()) "
+                "INSERT INTO caste_estimate (booth_uid, ac_id, community_id, est_count, "
+                "est_pct, matched_pct, confidence, source, method_version, updated_at) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, 'surname', %s, now()) "
                 "ON CONFLICT (booth_uid, community_id, source) DO UPDATE SET "
                 "est_count = EXCLUDED.est_count, est_pct = EXCLUDED.est_pct, "
-                "confidence = EXCLUDED.confidence, updated_at = now()",
-                (booth_uid, ac_id, community_id, int(round(value)),
-                 round(100.0 * value / grand, 2) if grand else 0.0,
-                 round(min(1.0, confident / matched if matched else 0.0), 3)),
+                "matched_pct = EXCLUDED.matched_pct, confidence = EXCLUDED.confidence, "
+                "method_version = EXCLUDED.method_version, ac_id = EXCLUDED.ac_id, "
+                "updated_at = now()",
+                (booth_uid, ac_id, community_id,
+                 int(round(booth_electors * value / 100.0)), round(value, 2),
+                 matched_pct, confidence, METHOD_VERSION_SURNAME),
             )
             rows += 1
+
+    if skipped:
+        log.warning(
+            "%d booth(s) have a surname histogram but no elector count, so there is no "
+            "denominator and no estimate was written for them: %s",
+            len(skipped), ", ".join(skipped[:8]),
+        )
     return rows
 
 
@@ -332,6 +401,11 @@ def refresh(current_year: int = 2026) -> dict:
     stats = {"booths": 0, "rows": 0, "low_confidence": 0, "surveyed": 0}
     with connection() as conn, conn.cursor() as cur:
         communities = _communities(cur)
+        unmatched_id = unmatched_community_id(cur)
+        # `ac_id` is NOT NULL on caste_estimate since 0014 and this function did
+        # not supply it, so the blend pass could not write a row either (N22).
+        cur.execute("SELECT booth_uid, ac_id FROM booth")
+        ac_by_booth = {r["booth_uid"]: r["ac_id"] for r in cur.fetchall()}
         for bi in gather_inputs(cur):
             pct, confidence = blend_booth(bi, communities, current_year)
             if not pct:
@@ -341,15 +415,21 @@ def refresh(current_year: int = 2026) -> dict:
                 stats["surveyed"] += 1
             if confidence < LOW_CONFIDENCE:
                 stats["low_confidence"] += 1
-            for community_id, value in pct.items():
+            written = dict(pct)
+            if unmatched_id is not None:
+                written[unmatched_id] = max(0.0, 100.0 - sum(pct.values()))
+            for community_id, value in written.items():
                 est_count = int(round(bi.electors * value / 100.0)) if bi.electors else None
                 cur.execute(
-                    "INSERT INTO caste_estimate (booth_uid, community_id, est_count, est_pct, "
-                    "confidence, source, updated_at) VALUES (%s, %s, %s, %s, %s, 'blend', now()) "
+                    "INSERT INTO caste_estimate (booth_uid, ac_id, community_id, est_count, "
+                    "est_pct, confidence, source, method_version, updated_at) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, 'blend', %s, now()) "
                     "ON CONFLICT (booth_uid, community_id, source) DO UPDATE SET "
                     "est_count = EXCLUDED.est_count, est_pct = EXCLUDED.est_pct, "
-                    "confidence = EXCLUDED.confidence, updated_at = now()",
-                    (bi.booth_uid, community_id, est_count, round(value, 2), confidence),
+                    "confidence = EXCLUDED.confidence, method_version = EXCLUDED.method_version, "
+                    "ac_id = EXCLUDED.ac_id, updated_at = now()",
+                    (bi.booth_uid, ac_by_booth.get(bi.booth_uid), community_id, est_count,
+                     round(value, 2), confidence, METHOD_VERSION_BLEND),
                 )
                 stats["rows"] += 1
     return stats

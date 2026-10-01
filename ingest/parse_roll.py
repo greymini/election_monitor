@@ -395,6 +395,10 @@ def load(results: list[RollCounts], revision_label: str, revision_date: str,
             log.info("linked roll revision %s to %s", revision_label, link_scope)
 
         surname_totals: dict[str, Counter] = {}
+        # Electors per booth, for the surname estimator's denominator. C14: the
+        # share of a community is a share of the electorate, not of the names the
+        # dictionary happened to recognise.
+        booth_electors: dict[str, int] = {}
 
         for c in results:
             booth_uid = _booth_for_ps(cur, scope, c.ps_number) if c.ps_number else None
@@ -444,13 +448,15 @@ def load(results: list[RollCounts], revision_label: str, revision_date: str,
                      c.age_50_59, c.age_60p, source_doc),
                 )
                 stats["snapshots"] += 1
+                booth_electors[booth_uid] = c.electors
                 if write_surnames and c.surnames:
                     surname_totals[booth_uid] = c.surnames
 
         if write_surnames and surname_totals:
             from analytics.caste_estimate import write_surname_estimates
 
-            stats["surname_rows"] = write_surname_estimates(cur, surname_totals, scope.ac_id)
+            stats["surname_rows"] = write_surname_estimates(
+                cur, surname_totals, scope.ac_id, electors=booth_electors)
 
     return stats
 

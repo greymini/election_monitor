@@ -32,7 +32,7 @@ def build_booth_card(booth_uid: str, include_caste: bool = True,
         raise LookupError(booth_uid)
 
     results = query(
-        "SELECT election_label, election_type, election_year, electors, votes_counted, "
+        "SELECT election_label, election_type, election_year, electors, votes_polled, "
         "jmm, bjp, ajsu, jlkm, inc, rjd, jvm, others, nota, winner_party, runner_party, "
         "margin_votes, margin_pct, turnout_pct, source_doc, source_page, ps_numbers "
         "FROM mv_result_booth_wide WHERE booth_uid = %s "

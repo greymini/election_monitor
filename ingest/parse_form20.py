@@ -312,13 +312,29 @@ def validate(doc: Form20Document, ac_totals: dict[str, int] | None = None) -> li
     return errors
 
 
-def queue_errors(errors: list[ValidationError]) -> int:
+def queue_errors(errors: list[ValidationError], ac_id: int) -> int:
+    """Queue the rows that failed validation, for one constituency.
+
+    Two fixes, both finding N19. `ac_id` was never set, and
+    `GET /acs/{ac}/admin/review-queue` filters on it - so every row the LLD 4.2
+    arithmetic gate rejected landed in a queue the Admin page could not show.
+    An operator saw "NOT LOADING" and an empty queue.
+
+    And the insert had no conflict target against the `(kind, ref)` unique index
+    0014 added for C16, so a second run of the same failing document raised
+    instead of updating; `_run` catches that and logs "could not write to
+    review_queue", which reads like a database problem rather than a re-run.
+    """
     from common.db import execute
 
     for err in errors:
         execute(
-            "INSERT INTO review_queue (kind, ref, payload, note) VALUES (%s, %s, %s, %s)",
-            (err.kind, err.ref, json.dumps(err.payload, ensure_ascii=False, default=str), err.detail),
+            "INSERT INTO review_queue (kind, ref, ac_id, payload, note) "
+            "VALUES (%s, %s, %s, %s, %s) "
+            "ON CONFLICT (kind, ref) DO UPDATE SET payload = EXCLUDED.payload, "
+            "note = EXCLUDED.note, ac_id = EXCLUDED.ac_id",
+            (err.kind, err.ref, ac_id,
+             json.dumps(err.payload, ensure_ascii=False, default=str), err.detail),
         )
     return len(errors)
 
@@ -395,7 +411,9 @@ def queue_unresolved(doc: Form20Document, failures: list[resolve_mod.Resolution]
     for r in failures:
         execute(
             "INSERT INTO review_queue (kind, ref, ac_id, payload, note) "
-            "VALUES (%s, %s, %s, %s, %s)",
+            "VALUES (%s, %s, %s, %s, %s) "
+            "ON CONFLICT (kind, ref) DO UPDATE SET payload = EXCLUDED.payload, "
+            "note = EXCLUDED.note, ac_id = EXCLUDED.ac_id, status = 'open'",
             ("form20_column", f"{doc.source_doc}#col{r.column_index}", ac_id,
              json.dumps(resolve_mod.review_payload(r), ensure_ascii=False, default=str),
              f"Form 20 column {r.column_index} ({r.raw_header!r}) resolved to no "
@@ -699,8 +717,10 @@ def _run(args, pdf_path: Path, provenance: dict) -> int:
         if len(errors) > 20:
             log.error("  ... and %d more", len(errors) - 20)
         try:
-            queue_errors(errors)
-            log.error("queued for manual review (review_queue kind='form20_row')")
+            queue_errors(errors, scope.ac_id)
+            log.error("queued for manual review (review_queue kind='form20_row', "
+                      "AC %s) - see /acs/%s/admin/review-queue",
+                      scope.ac_number, scope.ac_number)
         except Exception as exc:
             log.error("could not write to review_queue: %s", exc)
         log.error("NOT LOADING %s - fix the rows above and re-run", pdf_path.name)

@@ -21,27 +21,20 @@ one**; set E2E_DATABASE_URL (see tests/e2e/conftest.py).
 
 from __future__ import annotations
 
-import json
-import os
 from pathlib import Path
 
 import pytest
 
+from tests.e2e import conftest as e2e
 from tests.e2e.conftest import refresh_views, requires_db
 
 pytestmark = requires_db
 
-AC = 32
-# 120 stations, close to Giridih's real count, and a roll over two of them.
-# The roll's size is what costs: pdfplumber's text extraction is linear in
-# characters, and the published electorate divided over fewer stations means
-# more electors per station, not fewer in total. Two stations is about 5,000
-# electors and a few seconds; the twelve scripts/dev_stack.py loads by default
-# is about a minute.
-BOOTHS = 120
-ROLL_BOOTHS = 2
-ELECTIONS = ["VS-2024", "VS-2019"]
-SEED = 4242
+# The shape of the dataset is declared once, in conftest, because the API
+# contract test asserts against the same load.
+AC = e2e.DATASET_AC
+BOOTHS = e2e.DATASET_BOOTHS
+ROLL_BOOTHS = e2e.DATASET_ROLL_BOOTHS
 
 # Published Giridih VS-2024 figures from db/seed/ac_totals.csv. The seed marks
 # them secondary and needing verification; this test only requires that the
@@ -51,102 +44,17 @@ PUBLISHED_2024 = {"Sudivya Kumar": 94042, "Nirbhay Kumar Shahabadi": 90204,
 PUBLISHED_NOTA_2024 = 2004
 
 
-def run_module(module: str, argv: list[str]) -> int:
-    """Call a loader's `main()` in-process, as the CLI would.
-
-    `main()` rather than the internals, so the argument parsing, the scope
-    resolution and the exit codes are all covered - those are where three of the
-    defects above lived.
-    """
-    import importlib
-
-    mod = importlib.import_module(module)
-    return mod.main([str(a) for a in argv])
-
-
 @pytest.fixture(scope="module")
-def pipeline(request, db_url, tmp_path_factory):
-    """Generate documents, load them through every loader, refresh the views.
-
-    Module-scoped: the pipeline takes a few seconds and every assertion below
-    reads the same loaded state. The session `conn` fixture has already rebuilt
-    the schema from db/migrations and loaded db/seed.
-    """
-    request.getfixturevalue("conn")
-
-    work = tmp_path_factory.mktemp("pipeline")
-    mock_dir = work / "mock"
-    # Keep the roll's page cache and any retained PDF inside the temp tree: the
-    # roll loader refuses to run when it finds roll text under OCR_DIR, and a
-    # test must not depend on - or pollute - the repository's ocr/ and raw/.
-    previous = {k: os.environ.get(k) for k in ("OCR_DIR", "RAW_DIR", "DATABASE_URL")}
-    os.environ["OCR_DIR"] = str(work / "ocr")
-    os.environ["RAW_DIR"] = str(work / "raw")
-    os.environ["DATABASE_URL"] = db_url
-
-    from common.config import get_settings
-    from common.db import close_pools
-
-    get_settings.cache_clear()
-    close_pools()
-
-    try:
-        assert run_module("ingest.mock_documents", [
-            "--ac", AC, "--out-dir", mock_dir, "--booths", BOOTHS,
-            "--roll-booths", ROLL_BOOTHS, "--seed", SEED,
-            "--elections", ",".join(ELECTIONS),
-        ]) == 0
-
-        manifest = json.loads((mock_dir / "manifest.json").read_text(encoding="utf-8"))
-        load_all(mock_dir, manifest)
-
-        from common.db import cursor
-
-        with cursor() as cur:
-            refresh_views(cur)
-        yield {"manifest": manifest, "dir": mock_dir}
-    finally:
-        close_pools()
-        for key, value in previous.items():
-            if value is None:
-                os.environ.pop(key, None)
-            else:
-                os.environ[key] = value
-        get_settings.cache_clear()
+def pipeline(loaded_dataset):
+    """The dataset `tests/e2e/conftest.py` loaded, under this module's old name."""
+    return loaded_dataset
 
 
 def load_all(mock_dir: Path, manifest: dict) -> None:
-    """The same order, and the same commands, as scripts/dev_stack.py."""
-    docs = manifest["documents"]
+    """Re-run every loader over the same documents (the idempotency test)."""
+    from tests.e2e.conftest import load_dataset
 
-    for d in [x for x in docs if x["kind"] == "ps_list"]:
-        argv = [mock_dir / d["path"], "--ac", d["ac"], "--election", d["election"],
-                "--load", "--block", d["block_id"]]
-        if d["anchor"]:
-            argv.append("--anchor")
-        assert run_module("ingest.parse_pslist", argv) == 0, d["path"]
-
-    for d in [x for x in docs if x["kind"] == "form20"]:
-        # No --skip-ac-check: the AC-total reconciliation gate has to pass.
-        assert run_module("ingest.parse_form20", [
-            mock_dir / d["path"], "--ac", d["ac"], "--election", d["election"],
-            "--load", "--replace",
-        ]) == 0, d["path"]
-
-    anchors = {d["election"] for d in docs if d["kind"] == "ps_list" and d["anchor"]}
-    for label in [e for e in manifest["elections"] if e not in anchors]:
-        assert run_module("ingest.crosswalk", [
-            "--ac", AC, "--election", label, "--apply"]) == 0, label
-
-    for kind in ("roll_mother", "roll_supplement"):
-        for d in [x for x in docs if x["kind"] == kind]:
-            argv = [mock_dir / d["path"], "--ac", d["ac"], "--election", d["election"],
-                    "--revision", d["revision"], "--date", d["date"], "--load"]
-            if d["supplement"]:
-                argv.append("--supplement")
-            else:
-                argv += ["--link-election", d["link_election"]]
-            assert run_module("ingest.parse_roll", argv) == 0, d["path"]
+    load_dataset(mock_dir, manifest)
 
 
 def one(cursor, sql, params=None):

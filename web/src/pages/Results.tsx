@@ -14,7 +14,7 @@ import type { AcState } from '../lib/ac'
 interface Row {
   booth_uid: string; ps_numbers: string | null
   area_hi: string; area_en: string; block_en: string
-  building: string | null; electors: number | null; votes_counted: number | null
+  building: string | null; electors: number | null; votes_polled: number | null
   turnout_pct: number | null
   jmm: number; bjp: number; ajsu: number; jlkm: number; others: number; nota: number
   winner_party: string | null; runner_party: string | null
@@ -56,8 +56,8 @@ export default function Results({ ac }: { ac: AcState }) {
     },
     { key: 'electors', header: t('common.electors'), numeric: true,
       render: (row) => num(row.electors) },
-    { key: 'votes_counted', header: t('common.votes'), numeric: true,
-      render: (row) => num(row.votes_counted) },
+    { key: 'votes_polled', header: t('common.votes'), numeric: true,
+      render: (row) => num(row.votes_polled) },
     { key: 'turnout_pct', header: t('common.turnout'), numeric: true,
       render: (row) => pct(row.turnout_pct) },
     { key: 'jmm', header: 'JMM', numeric: true, render: (row) => num(row.jmm) },
