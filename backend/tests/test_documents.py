@@ -12,14 +12,13 @@ Postgres; every other behaviour here is filesystem or storage only.
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
 from common.config import get_settings
 from common.storage import LocalStorage, sha256_bytes
 from ingest import documents
 from ingest.documents import DocumentNotFound, open_document
+from tests.paths import MIGRATIONS
 
 PDF = b"%PDF-1.4\nform 20, giridih, 2024\n%%EOF"
 OTHER = b"%PDF-1.4\na different document entirely\n%%EOF"
@@ -211,5 +210,5 @@ def test_advance_status_accepts_every_lifecycle_state(status, monkeypatch):
     monkeypatch.setitem(__import__("sys").modules, "common.db", _fake_rows([]))
     documents.advance_status("abc", status, "test")  # must not raise
 
-    sql = Path("db/migrations/0013_source_doc_storage.sql").read_text(encoding="utf-8")
+    sql = (MIGRATIONS / "0013_source_doc_storage.sql").read_text(encoding="utf-8")
     assert f"'{status}'" in sql

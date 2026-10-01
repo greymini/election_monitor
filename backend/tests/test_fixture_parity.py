@@ -2,7 +2,7 @@
 
 Two problems this holds shut.
 
-**N8, two fixtures disagreeing.** `web/src/fixtures/` and `tests/metric_cases.py`
+**N8, two fixtures disagreeing.** `frontend/src/fixtures/` and `tests/metric_cases.py`
 each carried their own copy of Giridih's totals and disagreed about the valid
 vote - 207,598 against 207,459 - with no test able to notice, because both round
 the published margin to 1.85%. They are generated from `fixtures/giridih.py` now,
@@ -32,9 +32,10 @@ import pytest
 
 from analytics import metrics
 from fixtures import giridih
+from tests.paths import FRONTEND_SRC  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-GENERATED = ROOT / "web" / "src" / "fixtures" / "generated.ts"
+GENERATED = FRONTEND_SRC / "fixtures" / "generated.ts"
 
 
 # ---------------------------------------------------------------------------
@@ -235,7 +236,7 @@ def test_the_fixture_response_builder_does_not_recompute_metrics():
     diverge again, and no data-level test would show it until someone compared
     two screens.
     """
-    text = (ROOT / "web" / "src" / "fixtures" / "responses.ts").read_text(encoding="utf-8")
+    text = (FRONTEND_SRC / "fixtures" / "responses.ts").read_text(encoding="utf-8")
     code = "\n".join(line.split("//", 1)[0] for line in text.splitlines())
 
     # The rounding idiom the old inline derivations used.

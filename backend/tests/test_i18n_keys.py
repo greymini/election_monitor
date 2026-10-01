@@ -7,7 +7,7 @@ key resolves, because i18next selects `openReviews_other` from a call carrying
 and the key falls through to its own name on the page while every file-level
 check still passes.
 
-So this runs i18next. The work is in `web/scripts/check-i18n.mjs`, invoked from
+So this runs i18next. The work is in `frontend/scripts/check-i18n.mjs`, invoked from
 here so it runs in the one suite rather than needing a second test command.
 Verified against a planted fault: removing `health.openReviews_other` from
 hi.json makes it report "resolved to its own name", which is the symptom that
@@ -16,13 +16,14 @@ was seen.
 
 from __future__ import annotations
 
-import pathlib
 import shutil
 import subprocess
 
 import pytest
 
-WEB = pathlib.Path(__file__).resolve().parents[1] / "web"
+from tests.paths import FRONTEND
+
+WEB = FRONTEND
 CHECKER = WEB / "scripts" / "check-i18n.mjs"
 
 
@@ -33,7 +34,7 @@ def test_the_checker_exists():
 @pytest.mark.skipif(shutil.which("node") is None, reason="node is not on PATH")
 def test_every_key_resolves_in_both_languages():
     if not (WEB / "node_modules" / "i18next").is_dir():
-        pytest.skip("web/node_modules/i18next is absent; run npm install in web/")
+        pytest.skip("frontend/node_modules/i18next is absent; run npm install in frontend/")
 
     result = subprocess.run(
         ["node", str(CHECKER)], cwd=WEB, capture_output=True, text=True, timeout=120,

@@ -36,8 +36,10 @@ from pathlib import Path
 
 import pytest
 
+from tests.paths import FRONTEND_SRC, REPO_ROOT  # noqa: E402
+
 ROOT = Path(__file__).resolve().parents[1]
-WEB_SRC = ROOT / "web" / "src"
+WEB_SRC = FRONTEND_SRC
 
 # Packages that live only in the worker image. requirements-api.txt has none of
 # them, and docker/Dockerfile.api copies only common, api, chatbot, analytics.
@@ -150,7 +152,7 @@ def frontend_endpoints() -> dict[str, set[str]]:
             if scoped:
                 raw = "/acs/{ac_number}" + raw
             calls.setdefault(normalise(raw), set()).add(
-                source.relative_to(ROOT).as_posix()
+                source.relative_to(REPO_ROOT).as_posix()
             )
     return calls
 
@@ -452,7 +454,7 @@ def test_no_page_hardcodes_election_results():
     for source in sorted(WEB_SRC.rglob("*.tsx")):
         for lineno, line in enumerate(source.read_text(encoding="utf-8").splitlines(), 1):
             if vote_like.search(line) and "t(" not in line:
-                offenders.append(f"{source.relative_to(ROOT).as_posix()}:{lineno}: {line.strip()}")
+                offenders.append(f"{source.relative_to(REPO_ROOT).as_posix()}:{lineno}: {line.strip()}")
     assert not offenders, (
         "hardcoded vote counts in the frontend:\n  " + "\n  ".join(offenders)
     )
@@ -601,7 +603,7 @@ def test_the_frontend_never_builds_an_unscoped_data_path():
                 path = match.group(2)
                 if path.startswith("/") and normalise(path) not in allowed:
                     offenders.append(
-                        f"{source.relative_to(ROOT).as_posix()}:{lineno}: {path}"
+                        f"{source.relative_to(REPO_ROOT).as_posix()}:{lineno}: {path}"
                     )
     assert not offenders, "unscoped data paths in the frontend:\n  " + "\n  ".join(offenders)
 

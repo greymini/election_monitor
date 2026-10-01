@@ -25,9 +25,10 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from fixtures import giridih  # noqa: E402
 
+# backend/scripts/ -> repository root -> frontend/
 TARGET = (
-    pathlib.Path(__file__).resolve().parents[1]
-    / "web" / "src" / "fixtures" / "generated.ts"
+    pathlib.Path(__file__).resolve().parents[2]
+    / "frontend" / "src" / "fixtures" / "generated.ts"
 )
 
 HEADER = """/* GENERATED FROM fixtures/giridih.py - DO NOT EDIT BY HAND

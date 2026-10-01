@@ -473,7 +473,7 @@ def print_report(url: str, counts: dict) -> None:
     print("  Giridih monitor - local development stack")
     print("=" * 78)
     print(f"  API            http://localhost:{API_PORT}")
-    print("  Frontend       http://localhost:5173   (npm --prefix web run dev)")
+    print("  Frontend       http://localhost:5173   (npm --prefix frontend run dev)")
     print(f"  DATABASE_URL   {url}")
     print()
     print("  Sign in with any of these. Passwords are regenerated on every")

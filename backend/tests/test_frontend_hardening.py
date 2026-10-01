@@ -16,7 +16,9 @@ import re
 
 import pytest
 
-WEB = pathlib.Path(__file__).resolve().parents[1] / "web" / "src"
+from tests.paths import FRONTEND, FRONTEND_SRC
+
+WEB = FRONTEND_SRC
 I18N = WEB / "i18n"
 
 # Only this module may name a tile server.
@@ -157,7 +159,9 @@ def test_the_tile_config_defaults_to_a_keyless_provider():
 
 
 def test_all_four_tile_variables_are_documented_in_env_example():
-    example = (pathlib.Path(__file__).resolve().parents[1] / ".env.example").read_text(
+    # Vite reads .env from its own directory, so the tile variables are
+    # documented in frontend/.env.example, not the backend one.
+    example = (FRONTEND / ".env.example").read_text(
         encoding="utf-8"
     )
     for key in ("VITE_TILE_URL", "VITE_TILE_ATTRIBUTION",

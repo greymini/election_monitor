@@ -28,6 +28,7 @@ from jose import jwt
 
 from common.config import PLACEHOLDER_SECRETS, get_settings
 from common.secrets import MIN_SECRET_BYTES, SecretError, check_jwt_secret
+from tests.paths import REPO_ROOT
 
 # A realistic `openssl rand -hex 32` output. Note "9f" * 32 would be refused,
 # correctly: 64 characters with two distinct values is not a secret.
@@ -76,9 +77,8 @@ def test_every_placeholder_in_env_example_is_refused(placeholder):
 def test_the_placeholder_list_actually_covers_env_example():
     """If a future .env.example introduces a new placeholder and nobody adds it
     here, the guard stops covering the case it exists for."""
-    from pathlib import Path
 
-    text = Path(".env.example").read_text(encoding="utf-8")
+    text = (REPO_ROOT / ".env.example").read_text(encoding="utf-8")
     for line in text.splitlines():
         if line.startswith("JWT_SECRET="):
             shipped = line.split("=", 1)[1].strip()

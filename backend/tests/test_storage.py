@@ -41,6 +41,7 @@ from common.storage import (
     sha256_bytes,
     storage_key,
 )
+from tests.paths import MIGRATIONS
 
 PDF = b"%PDF-1.4\nfake form 20 bytes\n%%EOF"
 
@@ -115,7 +116,7 @@ def test_assert_local_only_passes_for_local_and_for_other_kinds():
 def test_roll_kinds_match_the_schema_constraint():
     """If a new roll-bearing kind is added to source_doc.kind and not to
     ROLL_KINDS, the invariant silently stops covering it."""
-    sql = Path("db/migrations/0008_ops.sql").read_text(encoding="utf-8")
+    sql = (MIGRATIONS / "0008_ops.sql").read_text(encoding="utf-8")
     assert "'roll_mother'" in sql and "'roll_supplement'" in sql
     assert ROLL_KINDS == {"roll_mother", "roll_supplement"}
 

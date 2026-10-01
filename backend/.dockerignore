@@ -1,0 +1,13 @@
+# Keep the build context to source: no caches, local data, dev stack or secrets.
+**/__pycache__
+**/*.py[cod]
+.pytest_cache
+.ruff_cache
+.devstack
+tests
+raw
+ocr
+backups
+data
+.env
+*.env
