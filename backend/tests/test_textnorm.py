@@ -45,3 +45,11 @@ def test_transliteration_keeps_inherent_vowel():
 def test_last_token_for_surname_counting():
     assert t.last_token("राम प्रसाद महतो") == "महतो"
     assert t.last_token("  ") == ""
+
+
+def test_anusvara_is_the_nasal_of_the_next_consonant():
+    """ं is 'm' before a labial and 'n' otherwise (it was always 'm')."""
+    assert "champ" in t.to_latin("चंपा")
+    assert "kamb" in t.to_latin("कंबल")
+    assert "mand" in t.to_latin("मंडल")
+    assert "sanj" in t.to_latin("संजय")

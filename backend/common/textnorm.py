@@ -252,6 +252,12 @@ def to_latin(text: str | None) -> str:
         from indic_transliteration.sanscript import transliterate
 
         latin = transliterate(t, sanscript.DEVANAGARI, sanscript.ITRANS)
+        # ITRANS writes the anusvara (ं) as "M", which lowercasing turned into
+        # "m" everywhere: आनंद -> "anamd", अंसारी -> "amsari", so a Devanagari
+        # name never matched its Latin spelling. It is pronounced as the nasal
+        # of the consonant that follows - "m" before p/b/m, "n" otherwise.
+        latin = re.sub(r"M(?=[pbm])", "m", latin)
+        latin = latin.replace("M", "n")
         latin = re.sub(r"[~^\.]", "", latin)
         return _WS_RE.sub(" ", latin).strip().lower()
     except Exception:
