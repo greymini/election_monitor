@@ -12,7 +12,7 @@ assume the setup in `GETTING_STARTED.md`.
 | Frontend unit | `frontend/src/**/*.test.ts(x)` | Vitest + Testing Library (jsdom) | nothing |
 | Frontend static | `backend/tests/test_frontend_hardening.py`, `test_api_topology.py`, `test_fixture_parity.py`, `test_i18n_keys.py`; `frontend/scripts/check-i18n.mjs` | pytest / node | frontend `node_modules` for the i18n check |
 | Browser (fixtures) | `frontend/e2e/*.spec.ts` | Playwright, project `fixtures` | Chromium (or `PLAYWRIGHT_CHANNEL`) |
-| Browser (live) | `frontend/e2e/live/` | Playwright, project `live` | `make dev-stack` running. **Not written yet**; see `status/REMAINING_WORK.md` §1.1 |
+| Browser (live) | `frontend/e2e/live/` | Playwright, project `live` | `make dev-stack` running. `smoke.spec.ts`: every page × role for AC 32 and an empty AC; URL gating; booth drawer tabs; map boundary toggle; scenario; CSV export; review-queue resolve (8 tests) |
 
 ## Commands
 
@@ -21,6 +21,7 @@ make test-backend      # cd backend && pytest -q --ignore=tests/e2e
 make test-db           # cd backend && pytest -q tests/e2e tests/test_metric_functions_sql.py
 make test-frontend     # npm test && npm run build && npm run check:i18n   (in frontend/)
 make test-e2e          # npx playwright test --project=fixtures
+make test-e2e-live     # npx playwright test --project=live   (needs make dev-stack running)
 make lint              # ruff + eslint
 make test              # all except lint and live
 ```
@@ -81,7 +82,7 @@ error formatting) runs. Override a route with `mockServer({ '/acs/32/news': { st
 | i18n, styling, tiles, a11y guards | `test_i18n_keys`, `test_frontend_hardening`, `test_api_topology` | `styles/__tests__/styles.test`, `Provenance.test`; `npm run check:i18n` |
 | Dev stack | `test_dev_stack` | — |
 
-**Not covered yet** (see `status/REMAINING_WORK.md` §1): live browser tests; page tests for
+**Not covered yet** (see `status/REMAINING_WORK.md` §1): the deeper live scenarios (AC switching mid-session, expired session, hard refresh on nested routes); page tests for
 Map, Caste, CasteScatter, Transfer, LocalPolls, Factors, Scenario, Compare, Candidates,
 LocalPolitics, Admin; chatbot agent/budget/llm; news labelling and embedding; `fetch_ceo`,
 `geocode`; `preflight`.

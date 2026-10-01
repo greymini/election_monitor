@@ -52,8 +52,8 @@ test-e2e:
 	cd frontend && npx playwright test --project=fixtures
 
 # Playwright against `make dev-stack` (must already be running).
-# The live specs (frontend/e2e/live/) are not written yet - see
-# docs/status/REMAINING_WORK.md.
+# frontend/e2e/live/smoke.spec.ts: every page for every role, drawer, map
+# boundaries, scenario, CSV export, review queue.
 test-e2e-live:
 	cd frontend && npx playwright test --project=live
 

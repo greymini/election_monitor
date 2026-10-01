@@ -40,6 +40,11 @@ def check_form20_totals() -> list[Check]:
         "LEFT JOIN party p ON p.party_id = c.party_id "
         "LEFT JOIN result_booth r ON r.candidate_id = t.candidate_id "
         "WHERE t.metric = 'votes' "
+        # Only elections with booth results loaded. A seeded published total
+        # for a constituency with nothing loaded (31, 33, 42, 61, 65 today) is
+        # "not loaded", not "does not reconcile" - comparing it with a booth
+        # sum of 0 failed this check on every correct database.
+        "  AND EXISTS (SELECT 1 FROM result_booth rb WHERE rb.election_id = t.election_id) "
         "GROUP BY e.label, c.name_en, p.abbr, t.value "
         "HAVING COALESCE(SUM(r.votes), 0) <> t.value"
     )
@@ -52,15 +57,27 @@ def check_form20_totals() -> list[Check]:
 
 
 def check_row_arithmetic() -> list[Check]:
+    # NOTA is loaded as a candidate row (OD-N7) and also kept as the printed
+    # figure on result_booth_meta.nota. Candidate votes are therefore summed
+    # *without* the NOTA row, and NOTA is added once - from the row when there
+    # is one, else from meta. Adding meta.nota to a sum that already held it
+    # failed every row of every election.
     rows = query(
+        "WITH sums AS ("
+        "  SELECT r.election_id, r.ps_number, "
+        "         SUM(r.votes) FILTER (WHERE p.abbr IS DISTINCT FROM 'NOTA') AS candidates, "
+        "         SUM(r.votes) FILTER (WHERE p.abbr = 'NOTA') AS nota_row "
+        "  FROM result_booth r "
+        "  JOIN candidate c ON c.candidate_id = r.candidate_id "
+        "  LEFT JOIN party p ON p.party_id = c.party_id "
+        "  GROUP BY r.election_id, r.ps_number) "
         "SELECT e.label, m.ps_number, m.total_valid, "
-        "COALESCE(SUM(r.votes), 0) + COALESCE(m.nota, 0) AS computed "
+        "COALESCE(s.candidates, 0) + COALESCE(s.nota_row, m.nota, 0) AS computed "
         "FROM result_booth_meta m "
         "JOIN election e ON e.election_id = m.election_id "
-        "LEFT JOIN result_booth r ON r.election_id = m.election_id AND r.ps_number = m.ps_number "
+        "LEFT JOIN sums s ON s.election_id = m.election_id AND s.ps_number = m.ps_number "
         "WHERE m.total_valid IS NOT NULL "
-        "GROUP BY e.label, m.ps_number, m.total_valid, m.nota "
-        "HAVING COALESCE(SUM(r.votes), 0) + COALESCE(m.nota, 0) <> m.total_valid "
+        "  AND COALESCE(s.candidates, 0) + COALESCE(s.nota_row, m.nota, 0) <> m.total_valid "
         "LIMIT 200"
     )
     return [Check(
@@ -199,6 +216,19 @@ def check_privacy_filesystem() -> list[Check]:
     )]
 
 
+# Exact (table, column) pairs that legitimately match a pattern and are not voter
+# data. Each needs a reason; anything else that matches is reported.
+PRIVACY_EXEMPT = {
+    # Staff login identifiers: the dashboard's own users, who sign in with a
+    # phone number. Not voter data, and needed to authenticate.
+    ("app_user", "phone"),
+    ("auth_otp", "phone"),
+    # Migration checksums are hex digests; runs of 12 digits match the Aadhaar
+    # pattern by chance.
+    ("schema_migration", "checksum"),
+}
+
+
 def check_privacy_database() -> list[Check]:
     """Scan every text and jsonb column in the database for personal data.
 
@@ -243,6 +273,8 @@ def check_privacy_database() -> list[Check]:
     hits = []
     for col in columns:
         table, column = col["table_name"], col["column_name"]
+        if (table, column) in PRIVACY_EXEMPT:
+            continue
         for name, pattern in PATTERNS.items():
             # The regex runs in Postgres so the text never crosses the wire -
             # pulling every free-text column into Python to scan it would move

@@ -128,10 +128,11 @@ published; unset = source shown as text), `VITE_TILE_*` (map tiles; default Open
 
 | Command | What runs | Needs |
 |---|---|---|
-| `make test-backend` | ~940 Python unit tests | nothing |
-| `make test-db` | ~540 SQL and API tests (every route × role, views, loaders) | builds its own embedded Postgres |
+| `make test-backend` | ~960 Python unit tests | nothing |
+| `make test-db` | ~560 SQL and API tests (every route × role, views, loaders, validation) | builds its own embedded Postgres |
 | `make test-frontend` | Vitest (~60), `tsc` + build, i18n check | nothing |
 | `make test-e2e` | Playwright on fixtures (42) | Chromium |
+| `make test-e2e-live` | Playwright against the real API: every page × role, drawer, map, scenario, CSV, review queue (8) | `make dev-stack` running |
 | `make test` | all of the above | — |
 | `make lint` | ruff + ESLint | — |
 
@@ -145,12 +146,13 @@ schema. Details and the feature → test map: `docs/TESTING.md`.
 
 ## 6. Loading real data
 
-See `docs/operations/RUN.md` §4 and the CLI `--help` of each loader, run from `backend/`.
+See `docs/operations/RUN.md` §5 (every command, with real flags) and each loader's `--help`, run from `backend/`.
 In short: polling-station list (`ingest.parse_pslist --anchor`) → Form 20
 (`ingest.parse_form20`) → crosswalk older years (`ingest.crosswalk`) → rolls
-(`ingest.parse_roll`) → `analytics.refresh` → `ingest.validate`. A Form 20 load is refused
-unless booth totals match the published constituency totals exactly. Use `--ac` where a
-label exists in several constituencies (`ingest.fetch_sec`, `ingest.crosswalk`).
+(`ingest.parse_roll --link-election`) → other data (`ingest.fetch_sec`, `ingest.load_csv`) →
+`analytics.caste_estimate` → `analytics.refresh` → `ingest.validate`. A Form 20 load is refused
+unless booth totals match the published constituency totals exactly. Pass `--ac N` to every
+loader: election labels exist in all six seeded constituencies.
 No real document has been loaded yet; see `docs/status/REMAINING_WORK.md`.
 
 ## 7. Troubleshooting

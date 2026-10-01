@@ -65,6 +65,8 @@ KNOWN_NON_RELATIONS = {
     "candidate_totals",
     # GET /booths: the one election every join is to (requested, else baseline).
     "selected_election",
+    # ingest/validate.check_row_arithmetic: candidate and NOTA sums per row.
+    "sums",
     # `INSERT ... ON CONFLICT DO UPDATE SET` puts SET where a table name
     # would otherwise be.
     "set",

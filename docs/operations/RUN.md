@@ -1,401 +1,320 @@
 # RUN.md — How to run the Jharkhand Election Monitor
 
-> **Partly out of date (October 2026).** Paths changed: Python commands run from `backend/`,
-> the frontend is `frontend/`. Several commands and flags below do not exist
-> (`fetch_ceo --ac/--doc/--year`, `parse_roll --mother`, `db.link_roll`, `ingest.load_csv`,
-> `scripts/restore_drill.sh`, the TLS compose profile, Telegram alerts) and PostGIS is no longer
-> required. For running locally use `docs/GETTING_STARTED.md`; for each loader use
-> `python -m <module> --help`. Tracked as O-13 in `docs/status/KNOWN_ISSUES.md`.
+The operator's guide: every command to set up, run, load data into and operate the system.
+`docs/GETTING_STARTED.md` is the short version for developers.
 
+**How each section was checked (1 October 2026, branch `restructure-and-tests`, macOS):**
 
-This is the plain-language guide: what the system is, what each part does, and every command you need in the order you need it. The `README.md` is the technical reference; this file is for getting it running and using it.
+- **§2 and §3A–B (set up and run locally):** run in full. A Playwright live suite then checked
+  every page as each role (`frontend/e2e/live/`, 8 passed).
+- **§3C (Docker Compose):** not run, because no Docker daemon was available. The Compose file
+  passes `docker compose config`.
+- **§5 (loading real data):** every flag shown comes from the loader's own `--help`. Each loader
+  has been run end to end only on the synthetic documents `dev_stack.py` generates, since no real
+  document has been loaded yet.
 
----
-
-## 1. What this is, in one page
-
-A constituency intelligence platform for six Jharkhand assembly seats — Giridih, Gandey, Dumri, Tundi, Silli and Kanke. It takes public election documents that only exist as PDFs on government websites, turns them into a clean database, and shows the result as a dashboard where every number can be traced back to the page it came from.
-
-**What goes in**
-- Booth-wise results (ECI Form 20) for every Vidhan Sabha and Lok Sabha election since 2009
-- Electoral rolls and their supplements — only *counts* per booth (total, gender, age band, additions, deletions). No voter's name, EPIC number or address is ever stored.
-- Polling-station lists, which give the booth → village/ward → panchayat → block mapping
-- Panchayat and municipal election results (State Election Commission)
-- Census 2011 and other village-level development indicators
-- Local news (Hindi dailies, Google News, later YouTube/Telegram), labelled for place, issue, party and sentiment
-- Manual ground data: booth coordinators' reports, local office-holders, influencers, events
-
-**What comes out**
-- A booth table with everything in one row (results, swing, turnout, new voters, estimated community mix with confidence, priority score, source page)
-- A map, area rollups, booth cards, a voters view, caste/community view, LS↔VS transfer, candidate profiles, local politics, news stream, development indicators, a scenario model, and a cross-constituency comparison
-- Alerts when a new document appears on a government portal or a news item matches a rule
-
-**Two rules that shape everything**
-1. **Nothing is stored about an individual voter.** Caste and religion are estimated at booth level from aggregate patterns and always shown with a confidence score.
-2. **Nothing enters the serving tables unless it reconciles.** Booth totals must sum to the ECI-published constituency total to the vote, or the load is refused.
-
-**Parked:** a chatbot panel exists in the code but is switched off (`CHAT_ENABLED=false`). The system runs fully without it.
+All Python commands run **from `backend/`** with the virtualenv's Python. That is `../.venv/bin/python`
+on macOS/Linux and `..\.venv\Scripts\python` on Windows; it is written `python` below.
 
 ---
 
-## 2. Tech stack
+## 1. What this is
 
-| Layer | Technology | Why |
-|---|---|---|
-| Database | PostgreSQL 16 + PostGIS (geo) + pgvector (news search) | One database for everything; free |
-| Backend API | Python 3.11, FastAPI, psycopg3 | Fast to write, typed, async |
-| Background jobs | APScheduler in a worker container | Ten cron jobs on one box; no Airflow needed |
-| PDF handling | pdfplumber (text PDFs), Tesseract hin+eng via poppler (scanned pages) | Free; Devanagari-capable |
-| Text matching | Jaro-Winkler (jellyfish), custom Devanagari normalisation | Matching booth names across years |
-| News labelling | Claude Haiku via Batch API (optional key) | Cheap, Hindi-capable |
-| Embeddings | `intfloat/multilingual-e5-small`, local on CPU | Free news search |
-| Scrapers | httpx + selectolax, Playwright fallback | No public APIs exist for this data |
-| Frontend | React 18, Vite, TypeScript, Tailwind, Leaflet (OSM/CARTO tiles), Recharts, React Query, i18next | Hindi-first UI, fast, no paid map service |
-| Web server | nginx (serves the built frontend, proxies `/api`, TLS via certbot) | Standard |
-| Packaging | Docker Compose — `db`, `api`, `worker`, `web` | Single VPS deployment |
-| Backups | nightly `pg_dump` → local volume → off-host (rclone/B2) | Recoverable |
+A booth-level intelligence platform for six Jharkhand assembly constituencies: Giridih (32), Gandey
+(31), Dumri (33), Tundi (42), Silli (61) and Kanke (65). It turns public election documents that exist
+only as PDFs (ECI Form 20, polling-station lists, electoral rolls) into a database. It shows them as a
+Hindi/English dashboard where every figure traces back to its source page.
 
-Runs comfortably on one 4 vCPU / 8 GB VPS.
-
----
-
-## 3. Running it locally — one command, no Docker
-
-**This is the normal way to run the system on your own machine.** Section 4 is the
-server deployment; you do not need Docker, a PostgreSQL service or administrator rights
-for this.
-
-```powershell
-# once
-python -m venv .venv
-.venv\Scripts\python -m pip install -r requirements-dev.txt -r requirements-worker.txt
-
-# every time
-.venv\Scripts\python scripts/dev_stack.py
-```
-
-That single command:
-
-1. starts an **embedded PostgreSQL 16** (the `pgserver` wheel) out of `.devstack/pgdata`,
-   as your own user, on a port it picks itself;
-2. applies every migration in `db/migrations` and prints which optional extensions this
-   cluster has;
-3. loads `db/seed` — the six ACs, their blocks and wards, 13 parties, 80 party aliases,
-   22 communities, 176 surnames, the published AC totals;
-4. generates synthetic source documents with `ingest/mock_documents.py` — a Form 20, a
-   polling-station list per block and an electoral roll, all as real PDFs;
-5. loads them **through the real loaders**: `parse_pslist` → `parse_form20` (column
-   resolution, then the AC-total reconciliation gate, with no `--skip-ac-check`) →
-   `crosswalk` → `parse_roll`;
-6. refreshes all fourteen materialized views;
-7. creates one user per role and prints their passwords;
-8. serves the API on <http://localhost:8000>.
-
-Then, in a second terminal, the frontend against that API:
-
-```powershell
-npm --prefix web install
-npm --prefix web run dev            # http://localhost:5173, proxying /api to :8000
-```
-
-Useful variations:
-
-```powershell
-python scripts/dev_stack.py --rebuild           # throw the database away and start over
-python scripts/dev_stack.py --no-serve          # build only, leave PostgreSQL running
-python scripts/dev_stack.py --from-step form20  # re-run from one step onwards
-python scripts/dev_stack.py --url               # print DATABASE_URL
-python scripts/dev_stack.py --stop              # stop the embedded PostgreSQL
-```
-
-Everything it creates is under `.devstack/`, which is gitignored: the cluster, the
-generated documents, `state.json` (what has been built, so a re-run is fast),
-`users.json` (the dev credentials) and `jwt_secret`.
-
-### Running the database-backed tests against it
-
-`tests/e2e/` needs a real PostgreSQL and skips without one. Point it at the dev cluster:
-
-```powershell
-python scripts/dev_stack.py --no-serve
-$env:E2E_DATABASE_URL = "postgresql://postgres:@127.0.0.1:<port>/giridih_test"
-.venv\Scripts\python -m pytest tests/e2e -v
-```
-
-Take the port from `python scripts/dev_stack.py --url`. The database name must contain
-`test`: these tests drop and rebuild the schema, and the fixture refuses any URL that
-does not look like a throwaway.
-
-### What is real in a dev stack, and what is not
-
-| | |
+| Folder | What it holds |
 |---|---|
-| **Real** | The schema, every loader, every metric formula, every API route, the UI, and the published AC totals from `db/seed/ac_totals.csv` — which that file itself marks as secondary and needing verification against ECI/CEO Jharkhand. |
-| **Synthetic** | Every booth-level number. Polling-station names, buildings, villages and panchayats are invented and obviously so (`Testpur`, `Mockganj`, `Fixturebad`). Elector records use a `ZZZ` EPIC prefix, which the ECI does not issue. Every generated page carries a "SYNTHETIC TEST DOCUMENT" banner. |
-| **Empty, on purpose** | Only AC 32 has booth-level data. ACs 33 and 65 have AC-level published totals and nothing below them; 31, 42 and 61 have nothing at all. That spread is deliberate — it is what the frontend's empty states have to be tested against. |
-| **Partly empty** | The generated roll covers the first `--roll-booths` booths (12 by default), because a roll PDF enumerating Giridih's 304,898 electors would run to about 4,500 pages. Booths outside it have no electors and therefore no turnout, which is the correct behaviour (NULL, not zero) and worth seeing on the page. |
-| **Not exercised** | Devanagari. `common/pdf_writer.py` has the base-14 fonts only, so every generated document is in Latin script. The Devanagari paths in `ingest/resolve.py` and `ingest/parse_roll.py` are covered by unit tests instead. There is also no OCR path: the generated PDFs all have a clean text layer. |
+| `backend/` | FastAPI API, loaders (`ingest/`), analytics, news, worker, the parked chatbot, migrations and seeds (`db/`), scripts, tests |
+| `frontend/` | React + Vite dashboard, unit tests, Playwright specs |
+| `docs/` | Design, operations (this file), status |
 
-### Why an embedded PostgreSQL
+Two rules shape everything:
+1. **No individual voter data is stored.** Rolls become per-booth counts, and roll PDFs never leave
+   the host.
+2. **Nothing loads unless it reconciles.** Form 20 booth totals must equal the published constituency
+   totals to the vote.
 
-`DECISIONS.md` D-002 records that this build environment has no Docker, no PostgreSQL
-service and no administrator rights, so every acceptance gate whose proof needed a
-running database was reported as `NOT VERIFIED HERE`. The `pgserver` wheel removes that
-constraint: migrations apply, views refresh, the loaders run and the API answers from
-real rows, all as an ordinary user.
+## 2. One-time setup
 
-Its bundled server is minimal — `plpgsql` and `pgvector`, with no PostGIS, `pg_trgm` or
-`unaccent`. `0001_extensions.sql` detects what it has and `0002_geography.sql` declares
-its two geometry columns accordingly, so this is the same schema as the deployment
-rather than a reduced one. `DECISIONS.md` D-005 has the detail and what the fallback
-gives up.
+Requirements: Python 3.11, Node 20+ (22 tested), Git. Docker is optional (§3C). No PostgreSQL install
+is needed for local work, because `pgserver` provides an embedded PostgreSQL 16 with pgvector.
 
----
+**macOS / Linux** — from the repository root:
+```bash
+make setup
+```
+That runs:
+```bash
+python3.11 -m venv .venv
+.venv/bin/python -m pip install -r backend/requirements-dev.txt -r backend/requirements-worker.txt
+npm --prefix frontend ci
+cd frontend && npx playwright install chromium
+```
 
-## 4. First-time setup on a server
+**Windows (PowerShell)** — from the repository root:
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python -m pip install -r backend\requirements-dev.txt -r backend\requirements-worker.txt
+npm --prefix frontend ci
+cd frontend; npx playwright install chromium; cd ..
+```
+If the Chromium download is blocked, use an installed browser for Playwright with
+`PLAYWRIGHT_CHANNEL=msedge` (or `chrome`).
 
-Prerequisites: Docker and Docker Compose installed; a domain pointed at the server if you want TLS.
+## 3. Running it
+
+### A. Frontend only, on mock data (no backend)
 
 ```bash
-# 1. Get the code
-git clone <your-private-remote> election-monitor
-cd election-monitor
+make dev-fixtures                        # = cd frontend && VITE_FIXTURES=1 npm run dev
+```
+PowerShell: `cd frontend; $env:VITE_FIXTURES="1"; npm run dev`
 
-# 2. Configure
+Open <http://localhost:5173>. You are a fixture admin and every page carries a "fixture data" banner.
+
+### B. Full local stack (the normal way to develop and demo)
+
+**Terminal 1 — database and API:**
+```bash
+make dev-stack                           # = cd backend && ../.venv/bin/python scripts/dev_stack.py
+```
+PowerShell: `cd backend; ..\.venv\Scripts\python scripts\dev_stack.py`
+
+The first run takes 1–3 minutes. It runs these steps in order:
+
+| Step | What it does |
+|---|---|
+| `migrate` | applies all migrations, 0001–0022 |
+| `seed` | loads parties, constituencies, blocks, boundaries and knowledge cards |
+| `generate` | makes synthetic Form 20 / PS-list / roll PDFs for AC 32 |
+| `ps_list` → `form20` → `crosswalk` → `roll` | loads those PDFs **through the real loaders** |
+| `caste` | runs the community estimate |
+| `geo` | adds synthetic area outlines and booth points (dev databases only) |
+| `refresh` | refreshes the 14 views |
+| `users` | creates one user per role |
+
+It then serves the API at <http://localhost:8000>, with `/health` and API docs at `/docs`.
+The last thing it prints is the logins, which are also saved in `backend/.devstack/users.json`:
+
+| Role | Phone | Sees |
+|---|---|---|
+| admin | 9000000001 | everything, including Admin (review queue, jobs, usage) |
+| strategist | 9000000002 | all analysis including community estimates; no Admin |
+| block | 9000000003 | only Giridih Block (72 booths); no community estimates, Transfer or Scenario |
+
+Passwords are regenerated by `--rebuild`.
+
+**Terminal 2 — dashboard** (a fresh terminal, so `VITE_FIXTURES` is not set):
+```bash
+make dev-frontend                        # = npm --prefix frontend run dev
+```
+Open <http://localhost:5173> and sign in. The dev server forwards `/api` to `:8000`.
+
+Only Giridih (AC 32) has booth data. The other five constituencies have seeded constituency-level
+figures (marked unverified) and show "not loaded" states.
+
+**`dev_stack.py` options** (run from `backend/`):
+```bash
+python scripts/dev_stack.py --rebuild          # drop the database and build again (new passwords)
+python scripts/dev_stack.py --no-serve         # build, leave PostgreSQL running, do not start the API
+python scripts/dev_stack.py --from-step geo    # resume a build from one step
+python scripts/dev_stack.py --url              # print DATABASE_URL for the embedded database
+python scripts/dev_stack.py --stop             # stop the embedded PostgreSQL
+```
+Ctrl-C in terminal 1 stops the API and PostgreSQL. All the stack's state lives in
+`backend/.devstack/` (git-ignored); deleting that folder resets everything.
+
+### C. Docker Compose (single server)
+
+> Not run on this branch (no Docker daemon was available); `docker compose config` validates.
+> Run it once before relying on it — tracked as O-19 in `docs/status/KNOWN_ISSUES.md`.
+
+```bash
 cp .env.example .env
-# Edit .env — at minimum:
-#   POSTGRES_PASSWORD=<strong>
-#   JWT_SECRET=$(openssl rand -hex 32)        # the API refuses to start with a weak or placeholder secret
-#   READONLY_DB_PASSWORD=<strong>
-#   CHAT_ENABLED=false
-#   STORAGE_BACKEND=local                    # where source PDFs live
-#   STORAGE_BACKEND_FORM20=s3                # published documents can go to a bucket
-#   S3_ENDPOINT= / S3_BUCKET= / S3_ACCESS_KEY= / S3_SECRET_KEY= / S3_PREFIX=raw
-#   ANTHROPIC_API_KEY=                       # optional — only for news labelling
-#   TELEGRAM_BOT_TOKEN= / TELEGRAM_CHAT_ID=  # optional — alerts
-#   DOMAIN=monitor.example.in                # for TLS
-
-# 3. Build and start the database
+#   POSTGRES_PASSWORD=<strong>   JWT_SECRET=$(openssl rand -hex 32)   READONLY_DB_PASSWORD=<strong>
+#   DATABASE_URL / READONLY_DB_URL must use host `db` and the same passwords
 docker compose build
 docker compose up -d db
-docker compose logs -f db          # wait for "database system is ready to accept connections"
-
-# 4. Create the schema and load reference data (parties, communities, surnames, the six ACs, blocks/wards)
 docker compose run --rm worker python -m db.apply_migrations --seed
-
-# 5. Create the first admin user
-docker compose run --rm worker python scripts/create_admin.py --phone 91XXXXXXXXXX --name "Admin"
-
-# 6. Start everything
+docker compose run --rm api python -m scripts.create_admin --phone 9XXXXXXXXX --name "Admin" \
+    --role admin --generate-password
 docker compose up -d
-docker compose ps                  # all four services should be "running (healthy)"
+docker compose ps                         # db, api, worker, web
+```
+The dashboard is on port 80, and the API on `127.0.0.1:8000` (and via nginx at `/api/`).
 
-# 7. Open
-#   http://<server>/           dashboard (Hindi by default; toggle EN top right)
-#   http://<server>/api/health returns 200 with {"status":"ok","database":true},
-#                              or 503 if it cannot reach the database
+Notes for running without the worker, and for TLS:
+- **Without the `worker` service** (`docker compose up -d db api web`), nothing refreshes the views.
+  Run `docker compose run --rm worker python -m analytics.refresh` after every load.
+- **TLS** is not configured. nginx listens on 80 only (open item O-17).
+
+## 4. Configuration
+
+**Backend** settings live in the root `.env` (template: `.env.example`). The Python code reads the
+process environment only. Compose passes `.env` through, and `dev_stack.py` sets what it needs, so
+you export variables yourself only when running a command by hand against another database.
+
+| Variable | Required | Purpose |
+|---|---|---|
+| `DATABASE_URL` | yes | PostgreSQL 16 with the `vector` extension |
+| `JWT_SECRET` | yes | ≥ 32 bytes and not a placeholder; the API refuses to start otherwise |
+| `CHAT_ENABLED` | | default `false`; the chatbot is parked |
+| `ANTHROPIC_API_KEY` | | news labelling (and chat if enabled) |
+| `READONLY_DB_URL`, `READONLY_DB_PASSWORD` | | the chatbot's read-only role |
+| `STORAGE_BACKEND`, `STORAGE_BACKEND_<KIND>`, `S3_*` | | where source PDFs live; roll PDFs are always local |
+| `RAW_DIR`, `OCR_DIR`, `BACKUP_DIR` | | default `raw`, `ocr`, `backups`, relative to `backend/` |
+| `NOMINATIM_USER_AGENT` | | needed for `ingest.geocode` |
+
+**Frontend** settings live in `frontend/.env` (template: `frontend/.env.example`; Vite reads only that
+folder). The keys are:
+
+| Variable | Purpose |
+|---|---|
+| `VITE_FIXTURES` | mock data |
+| `VITE_API_BASE` | API path, default `/api` |
+| `VITE_API_URL` | dev proxy target, default `http://localhost:8000` |
+| `VITE_SOURCE_DOCS_URL` | where source PDFs are published; unset = source shown as text |
+| `VITE_TILE_*` | map tiles; default OpenStreetMap |
+
+## 5. Loading real data
+
+Run from `backend/` with `DATABASE_URL` set to the target database. Check it first with
+`python scripts/preflight.py`, which writes nothing.
+
+Every loader has `--dry-run`, so run it dry, read the report, then run it for real. Most loaders take
+`--ac N`, which is required when the election label exists in several constituencies (it does for all
+six seeded ones). Parsers accept a PDF as a path, as `--doc <sha256>` or as `--key <storage key>`.
+
+**5.1 Find and download source PDFs**
+```bash
+python -m ingest.fetch_ceo --discover <CEO-Jharkhand page URL>                 # list what it finds
+python -m ingest.fetch_ceo --discover <URL> --kind ps_list --download          # kinds: form20, roll_mother, roll_supplement, ps_list, other
+python -m ingest.extract_pdf raw/ps_list/<file>.pdf --kind ps_list --register  # text layer, OCR fallback, source_doc row
 ```
 
-### Running without the worker
-
-The API reads everything from the database and needs no worker: `docker compose up -d db api web`
-is a complete serving stack. What you give up is the schedule. **Nothing then refreshes the
-materialized views**, so after every load you must run the refresh yourself:
-
+**5.2 Polling-station list — do this first.** The newest list creates the booths.
 ```bash
-docker compose run --rm worker python -m analytics.refresh   # or from a laptop, see 5.6
+python -m ingest.parse_pslist raw/ps_list/<2024>.pdf --ac 32 --election VS-2024 --dry-run
+python -m ingest.parse_pslist raw/ps_list/<2024>.pdf --ac 32 --election VS-2024 --load --anchor --block <block_id>
 ```
 
-Until it runs, the overview, booth table, map, area rollup, transfer and priority pages return
-empty rather than stale — they read materialized views, and an unrefreshed view has no rows. The
-news crawl, nightly backup and portal watchers also do not run; see §6 for running any of them
-by hand.
-
-TLS (once DNS points at the box): `docker compose --profile tls up -d certbot` then `docker compose restart web`.
-
----
-
-## 5. Loading data — the Phase 0 sequence
-
-All commands run inside the worker. Prefix each with `docker compose run --rm worker` (or open a shell once: `docker compose run --rm worker bash`).
-
-Every loader supports `--dry-run` (shows what would happen, writes nothing). Run dry first, then
-for real.
-
-> **`--ac`.** Every parser takes it now, and so does `ingest.crosswalk`, which requires
-> it. A polling-station number is only unique within a constituency, and since migration
-> 0014 an election *label* is too: all six ACs have a contest labelled `VS-2024`. Give
-> `--ac` and the loader knows which one the document is about; leave it off and it
-> resolves the label only if exactly one constituency has it, and otherwise refuses and
-> names the candidates rather than guessing. Guessing would load one constituency's booth
-> results against another's election, and every view downstream would still be internally
-> consistent.
->
-> `ingest.validate` and `analytics.caste_estimate` still do not accept it.
-
-Each parser takes the document three ways. A path works as it always did; the other two exist so
-ingestion can run from a laptop against a remote `DATABASE_URL`, without a local copy of `raw/`:
-
+**5.3 Form 20 (booth results).** Refused unless every booth adds up and the totals equal the published
+AC totals; failures go to the Admin review queue with the page number.
 ```bash
-python -m ingest.parse_form20 raw/form20/2024-VS/32/giridih.pdf --election VS-2024   # a path
-python -m ingest.parse_form20 --doc 3f9a2c1e --election VS-2024                      # by sha256
-python -m ingest.parse_form20 --key form20/2024-VS/32/giridih.pdf --election VS-2024  # by key
+python -m ingest.parse_form20 raw/form20/<2024>.pdf --ac 32 --election VS-2024 --dry-run
+python -m ingest.parse_form20 raw/form20/<2024>.pdf --ac 32 --election VS-2024 --load
 ```
+Use `--replace` to reload an election. Use `--skip-ac-check` only where no published total exists.
 
-`--doc` takes the sha256 (or an unambiguous prefix) of a registered document and asks the database
-where the bytes are, so it works whichever backend holds them. It verifies the bytes against the
-digest that was registered and refuses to parse on a mismatch — an overwritten object is not the
-document your AC totals were reconciled against.
-
-### 5.1 Polling-station list (the backbone — do this first)
-
+**5.4 Older elections: load their PS list, then crosswalk onto the anchor booths**
 ```bash
-python -m ingest.fetch_ceo --ac 32 --doc pslist --year 2024        # downloads to raw/JH/32/pslist/2024/
-python -m ingest.extract_pdf raw/JH/32/pslist/2024/*.pdf
-python -m ingest.parse_pslist --ac 32 --election VS-2024 --anchor   # mints booth UIDs like 32-B0147
-```
-The anchor list is the "current truth" for booth identity. Re-anchoring later needs `--re-anchor` and goes through the crosswalk; it will not silently rebind booths.
-
-### 5.2 Booth-wise results (Form 20)
-
-```bash
-python -m ingest.fetch_ceo --ac 32 --doc form20 --year 2024 --type VS
-python -m ingest.extract_pdf raw/JH/32/form20/2024-VS/*.pdf
-python -m ingest.parse_form20 --ac 32 --election VS-2024 --dry-run   # shows per-booth checks and AC reconciliation
-python -m ingest.parse_form20 --ac 32 --election VS-2024 --load
-```
-The load refuses if any candidate column can't be matched to a party, if any booth's arithmetic fails, or if the constituency total differs from the ECI figure by even one vote. Failures go to the review queue (`/admin/review-queue`) with the page number.
-
-Repeat for `--year 2019`, then LS: `--type LS --year 2024` (the Lok Sabha Form 20 is per parliamentary seat; the parser extracts this AC's segment).
-
-### 5.3 Booth crosswalk (linking booths across years)
-
-```bash
-python -m ingest.fetch_ceo --ac 32 --doc pslist --year 2019
-python -m ingest.extract_pdf raw/JH/32/pslist/2019/*.pdf
-python -m ingest.parse_pslist --ac 32 --election VS-2019          # no --anchor: goes to ps_list_entry only
-python -m ingest.crosswalk --ac 32 --election VS-2019 --dry-run    # shows auto / review / new counts
+python -m ingest.parse_pslist raw/ps_list/<2019>.pdf --ac 32 --election VS-2019 --load
+python -m ingest.crosswalk --ac 32 --election VS-2019 --report      # dry run: auto / review / new counts
 python -m ingest.crosswalk --ac 32 --election VS-2019 --apply
+python -m ingest.parse_form20 raw/form20/<2019>.pdf --ac 32 --election VS-2019 --load
 ```
-Matches ≥ 0.85 are auto-accepted; 0.65–0.85 are written with `reviewed=false` and queued for a human; below 0.65 become new booths. **Clear the review queue** in `/admin/crosswalk` before trusting any 2019→2024 swing — it's a few dozen booths and an afternoon.
+Matches with a score of at least 0.85 are accepted automatically. Those from 0.65 to 0.85 go to the
+review queue, and anything lower becomes a new booth. **Clear the queue (Admin → review)** before
+trusting any swing figure.
 
-### 5.4 Electoral roll (counts only)
-
+**5.5 Electoral rolls (counts only; the PDF stays on this host)**
 ```bash
-python -m ingest.fetch_ceo --ac 32 --doc roll --revision latest
-python -m ingest.parse_roll --ac 32 --revision 2026-07 --mother --dry-run
-python -m ingest.parse_roll --ac 32 --revision 2026-07 --mother --load
-python -m ingest.parse_roll --ac 32 --revision 2026-09 --supplement --load
-python -m db.link_roll --election VS-2024 --revision 2024-10        # which roll each election was fought on
+python -m ingest.parse_roll raw/rolls/<mother>.pdf --ac 32 --election VS-2024 \
+    --revision 2026-SSR --date 2026-01-01 --link-election VS-2024 --load
+python -m ingest.parse_roll raw/rolls/<supplement>.pdf --ac 32 --election VS-2024 \
+    --revision 2026-SUP-1 --date 2026-06-01 --supplement --load
+python -m ingest.validate --privacy        # scans disk and database for EPIC / phone / Aadhaar patterns; must be clean
 ```
-Roll PDFs are never cached as text, and the PDF itself is **kept** (`RETAIN_RAW_ROLLS=true`, now
-the default) at 0600 with directories at 0700. The previous default deleted the source PDF while
-the extracted page text stayed on disk, which destroyed the auditable original and retained the
-personal data.
+`--link-election` records which roll an election was fought on. Turnout and new-voter share need it.
+If old roll text is found on disk the loader refuses to run; clear it with
+`python scripts/purge_roll_cache.py --delete`.
 
-The roll load **refuses to run** (exit 3) if the disk scan finds any leftover roll text from a
-host that ran the old code. Clear it first with `python scripts/purge_roll_cache.py --delete`.
-
-Electoral rolls are also refused any remote storage backend. `STORAGE_BACKEND=s3` does not carry
-them with it: a roll load aborts with `RollStorageViolation` rather than uploading names, EPIC
-numbers and addresses to a bucket. After any roll load run the privacy check:
+**5.6 Everything else**
 ```bash
-python -m ingest.validate --ac 32 --privacy      # scans disk and DB for EPIC patterns; must report clean
+python -m ingest.fetch_sec --load-csv data/sec/<file>.csv --election PANCHAYAT-2022 --ac 32   # local results (hand-transcribed CSV)
+python -m ingest.load_csv demography          data/<census>.csv     --ac 32   # Census 2011 village figures
+python -m ingest.load_csv candidate_profile   data/<candidates>.csv --ac 32
+python -m ingest.load_csv local_office_holder data/<office>.csv     --ac 32
+python -m ingest.geocode                         # Nominatim, 1 request/s, every AC; --pin <uid> --lat --lon to set one by hand
+python -m analytics.caste_estimate               # community estimate, every AC
+python -m analytics.refresh                      # rebuild the views (the worker does this daily)
+python -m ingest.validate --strict --verbose     # the full check report
+python -m scripts.build_boundaries               # rebuild map outlines from DataMeet/geoBoundaries (--offline: use raw/geo only)
 ```
+CSV columns for each `load_csv` kind are listed by `python -m ingest.load_csv --help`.
 
-### 5.5 Running ingestion from a laptop
+On the dev stack, `ingest.validate` reports two checks as failing, and both are expected:
+- **`crosswalk_quality`:** the synthetic station names are deliberately perturbed, so fewer than
+  90% of stations auto-match.
+- **`roll_continuity`:** the check compares every roll revision, supplements included, across all
+  constituencies (open item O-06).
 
-Nothing needs to run on the server. Point the tools at the database and the document store:
+All the other checks pass, including `--privacy`.
 
-```bash
-export DATABASE_URL='postgresql://user:pass@host:5432/giridih?sslmode=require'
-export STORAGE_BACKEND=local STORAGE_BACKEND_FORM20=s3
-export S3_ENDPOINT=... S3_BUCKET=... S3_ACCESS_KEY=... S3_SECRET_KEY=... S3_PREFIX=raw
-
-python scripts/preflight.py        # checks all of the above and says how to fix each problem
-```
-
-`preflight` checks the connection (without printing your password back), warns if a remote host
-has no `sslmode`, confirms `postgis` and `vector` are present, reports pending migrations and row
-counts, shows which backend each document kind routes to, reaches the bucket, and checks the PDF
-toolchain. It writes nothing, so it is safe against production. Exit code 1 means something in the
-list will stop a load.
-
-Use `sslmode=require` at minimum for a remote database; `verify-full` with a CA bundle if you have
-one. Without it the connection — and every booth-level figure crossing it — may be in cleartext.
-
-### 5.6 Everything else
-
-```bash
-python -m ingest.fetch_sec --ac 32 --election PANCHAYAT-2022 --load-csv data/sec/giridih_panchayat_2022.csv
-python -m ingest.load_csv candidate_profile   data/candidates/2024_ac32.csv --ac 32
-python -m ingest.load_csv demography          data/indicators/census2011_ac32.csv --ac 32
-python -m ingest.load_csv local_office_holder data/local/ac32_mukhiya_2022.csv --ac 32
-python -m ingest.geocode                                            # Nominatim, 1 req/s; every AC
-python -m analytics.caste_estimate                                  # blends every AC
-python -m analytics.refresh                                         # rebuild all materialized views
-python -m ingest.validate --strict --verbose                        # full check report, every AC
-```
-
-Then repeat 4.1–4.5 with `--ac 31`, `33`, `42`, `61`, `65`.
-
----
+Then repeat §5.2–5.6 for each other constituency with its own `--ac`.
 
 ## 6. Day-to-day operations
 
 ```bash
-docker compose logs -f api worker            # live logs
-docker compose run --rm worker python -m worker.run news.crawl     # run any scheduled job by hand
-docker compose run --rm worker python -m worker.run --list         # list job names
-docker compose run --rm worker python -m ingest.validate --all     # validation across all ACs
-docker compose run --rm worker python -m worker.run ops.backup     # backup now
-bash scripts/restore_drill.sh                                       # prove a backup restores (do this once a month)
-docker compose pull && docker compose build && docker compose up -d # update after a code change
+python -m worker.run --list                    # job names
+python -m worker.run news.crawl                # run one job now (Docker: docker compose run --rm worker python -m worker.run <job>)
+python -m db.apply_migrations --status         # pending migrations
+python -m db.apply_migrations                  # apply them (add --seed to reload seeds)
+python -m scripts.create_admin --phone 9XXXXXXXXX --name "Name" --role strategist --generate-password
+python -m scripts.create_admin --phone 9XXXXXXXXX --name "Name" --role block --block <block_id> --generate-password
 ```
 
-Scheduled jobs (all IST): news crawl every 30 min · news labelling hourly · portal watchers 06:00 · MV refresh 07:30 and after every load · backup 03:00 · usage report 08:00. Status at `/admin/jobs`; failures also go to the Telegram alert group if configured.
+The worker's schedule (Asia/Kolkata):
 
----
+| Job | When |
+|---|---|
+| `news.crawl` | every 4 h |
+| `news.label_batch` | 01:00 (needs `ANTHROPIC_API_KEY`) |
+| `news.label_collect` | 07:00 |
+| `news.embed` | 07:15 |
+| `ceo.check_new_supplement` | 06:00 |
+| `analytics.refresh` | 07:30 |
+| `analytics.caste_estimate` | 07:45 |
+| `ops.backup` | 03:00 |
+| `ops.purge_prompts` | 03:30 |
+| `ops.usage_report` | 08:00 |
 
-## 7. Using the dashboard
+Job status is under **Admin → jobs**.
 
-- **Pick a constituency** with the switcher top-left; the choice is in the URL so views can be shared.
-- **Overview** shows the headline result, 20-year trend and a *data health strip* — green ticks for what's loaded, red for what isn't, with the command to fix it.
-- **Booths** is the main working table. Pick columns, filter by block/panchayat/party/margin, sort, export CSV. The link icon on each row opens the exact Form 20 page.
-- **Map** — choose metric, year, block. Blue/red is who leads; grey means the booth has no data for that year.
-- **Voters** — additions and deletions per booth per roll revision, age and gender split.
-- **Caste** — estimated community shares with confidence bands; grey = too uncertain to use. The scatter shows community share against party share with a plain-language caveat.
-- **Transfer** — Lok Sabha vs Vidhan Sabha in the same year, booth by booth. Blank means one leg isn't loaded, not zero.
-- **Candidates, Local politics, News, Indicators, Scenario, Compare** — as named.
-- **Admin** — sources per constituency and their parse status, review queue, crosswalk editor, surname dictionary, alert rules, jobs, usage.
+## 7. Tests
 
-Roles: `admin` sees everything; `strategist` sees everything except admin tools; `block` sees only their block and cannot see the caste module.
-
----
+```bash
+make test           # backend unit + DB tests, Vitest, build, i18n check, Playwright on fixtures
+make lint           # ruff + eslint
+make test-e2e-live  # Playwright against a running `make dev-stack` (every page, every role)
+```
+See `docs/TESTING.md` for the layout and the feature → test map.
 
 ## 8. When something goes wrong
 
-| Symptom | Likely cause | Do |
-|---|---|---|
-| API won't start, log says JWT_SECRET | placeholder or short secret in `.env` | `openssl rand -hex 32` into `JWT_SECRET`, restart |
-| Migration fails on `postgis` | wrong DB image | `docker compose build db && docker compose up -d db` |
-| Form 20 load says "unresolved column" | a candidate/party spelling not in `party_alias` | add the spelling to `db/seed/party_alias.csv`, `--seed`, retry |
-| Load says AC total mismatch | wrong `ac_totals.csv` row, or a missing page | check `/admin/review-queue`; compare with ECI page |
-| Map shows all booths grey | that year not loaded or crosswalk not applied | run 4.2/4.3 for that year |
-| Swing looks impossible | unreviewed crosswalk matches | clear `/admin/crosswalk` review items |
-| New voters zero everywhere | `election_roll_link` not set | `python -m db.link_roll …` |
-| Source shows `drifted` in `/admin/sources` | government site changed layout | update `scrapers/sources.yaml` selectors and the recorded fixture; do **not** force-parse |
-| Privacy check fails | roll text on disk or a PII string in a free-text field | `scripts/purge_roll_cache.py`; find and delete the offending record; investigate how it got in |
-| `/api/health` returns 503 | the API cannot reach the database | `docker compose ps db`; check `DATABASE_URL`. The body names the exception class only — the full error is in the API log |
-| Roll load says `RollStorageViolation` | a roll kind is configured for a remote backend | Unset `STORAGE_BACKEND_ROLL_MOTHER` / `..._ROLL_SUPPLEMENT`, or set them to `local`. The guard is not the problem: rolls must not leave the host |
-| `parse_form20 --doc` says the digest does not match | the stored object is not the document that was registered | Do not force it. Re-fetch, or register the new bytes as a separate document and reconcile its AC totals before loading |
-| Every page is empty right after a load | the materialized views have not been refreshed | `python -m analytics.refresh`. With no worker deployed this is a manual step after every load |
-| `--ac` is rejected as an unknown argument | the multi-AC spine is not in yet | Leave the flag off; the loaders work on the single seeded constituency |
-
----
+| Symptom | Cause / fix |
+|---|---|
+| API exits mentioning `JWT_SECRET` | Set ≥ 32 random bytes: `python -c "import secrets; print(secrets.token_hex(32))"` |
+| `dev_stack.py`: address in use on :8000 | Another API is running: stop it, or `python scripts/dev_stack.py --stop` |
+| `npm run dev`: port 5173 in use | Vite uses a strict port; stop the other dev server |
+| Dashboard: "Could not load the list of constituencies" | The API is not running on :8000 (or `VITE_API_URL` points elsewhere) |
+| Every page empty right after a load | Views not refreshed: `python -m analytics.refresh` |
+| Form 20 load: "unresolved column" | A party/candidate spelling is missing from `db/seed/party_alias.csv`; add it, `python -m db.apply_migrations --seed`, retry |
+| Form 20 load: AC total mismatch | Wrong `db/seed/ac_totals.csv` row or a missing page; see Admin → review |
+| A loader says the label exists in several constituencies | Add `--ac N` |
+| Map shows every booth grey | That election is not loaded, or its crosswalk is not applied (§5.4) |
+| Swing looks impossible | Unreviewed crosswalk matches; clear Admin → review |
+| New voters "—" everywhere | No roll linked to the election: `parse_roll ... --link-election <label>` |
+| Roll load refuses to run | Old roll text on disk: `python scripts/purge_roll_cache.py --delete` |
+| `/health` returns 503 | The API cannot reach the database; check `DATABASE_URL` (the log has the full error) |
+| Playwright cannot download Chromium | `PLAYWRIGHT_CHANNEL=msedge` (or `chrome`) |
 
 ## 9. Things to remember
 
-- Raw government PDFs under `raw/` are kept forever. They are the audit trail and the only way to re-parse if a site disappears.
-- Every figure the system shows should be verified against the source page before it is used in a decision. The system makes that a one-click check; it does not remove the responsibility.
-- Seed rows for the five newer constituencies carry `verified=false` until someone has checked them against ECI. The overview shows a small "unverified" badge until then.
+- Raw government PDFs under `raw/` are the audit trail; keep them.
+- All booth-level figures in a dev stack are **synthetic**. The five newer constituencies stay
+  `verified=false` until someone checks their seeds against ECI.
+- Check every figure against its source page before a decision relies on it.

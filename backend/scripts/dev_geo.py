@@ -45,9 +45,21 @@ GEOCODE_SOURCE = "synthetic"
 GEOCODE_CONF = 0.05
 
 
+def database_name(url: str) -> str:
+    """The database a connection URL names.
+
+    Not `url.rsplit("/")`: pgserver on macOS and Linux connects over a Unix
+    socket and puts the socket directory in the query string
+    (postgresql://postgres:@/giridih_dev?host=/path/.devstack/pgdata), so the
+    last path segment of the whole string is the socket directory, "pgdata".
+    """
+    from psycopg.conninfo import conninfo_to_dict
+
+    return str(conninfo_to_dict(url).get("dbname") or "")
+
+
 def refuse_unless_dev() -> None:
-    url = get_settings().database_url
-    name = url.rsplit("/", 1)[-1].split("?", 1)[0]
+    name = database_name(get_settings().database_url)
     if "dev" not in name and "test" not in name:
         raise SystemExit(
             f"refusing to write synthetic geography into database {name!r}; "

@@ -88,6 +88,17 @@ that passes both branches' tests (see the merge commit). His additional work:
 | R-57 | Dev stack | New `caste` step (the Community tile showed "not loaded" over 180 estimates) and `geo` step (`scripts/dev_geo.py`: synthetic area outlines and booth points, dev/test databases only). | — |
 | R-58 | Tests | The e2e `db_url` fixture returned instead of yielding when `E2E_DATABASE_URL` was set, so every e2e test errored. | — |
 
+### Found while running the merged app (Phase B, 1 Oct 2026)
+
+| ID | Area | What | Test |
+|---|---|---|---|
+| R-60 | `scripts/dev_geo.py` | The dev stack's `geo` step refused to run on macOS/Linux: it read the database name by splitting the URL on its last "/", which in pgserver's Unix-socket URL is the socket directory ("pgdata"). The same bug as R-07, in a script written on Windows. | `tests/test_dev_geo.py` |
+| R-61 | `ingest/validate.py` | `form20_ac_totals` compared the seeded published totals of constituencies with nothing loaded against a booth sum of 0, so it failed on every correct database. | `tests/e2e/test_validate.py` |
+| R-62 | `ingest/validate.py` | `form20_row_arithmetic` added the printed NOTA on top of a candidate sum that already included the NOTA row (since OD-N7), so every row failed. | same |
+| R-63 | `ingest/validate.py` | `--privacy`, which RUN.md says must report clean, could never pass: it flagged staff login phones and a migration checksum (hex digits matching the Aadhaar pattern). Exact `(table, column)` exemptions with reasons; a real leak is still found. | same |
+| R-64 | Docs | `docs/operations/RUN.md` rewritten. Every flag shown comes from the loader's own `--help`, and the run steps were executed on this branch. Closes O-13. | — |
+| R-65 | Tests | Live Playwright suite against the real API: every page for every role on a loaded and an empty constituency, URL gating, drawer tabs, map boundaries, scenario, CSV export, review-queue resolve. | `frontend/e2e/live/smoke.spec.ts` |
+
 ---
 
 ## Open
@@ -109,7 +120,7 @@ feature broken or misleading. Low = polish.
 | O-10 | Medium | AC switcher | Lists every AC to a block user, who then gets 403 on the others. | Filter by `/acs[].accessible`. |
 | O-11 | Medium | News | Labelling needs `ANTHROPIC_API_KEY`. The schedule is every 4 h and nightly, not the 30 min and hourly that `RUN.md` claims. | A key; decide the schedule. |
 | O-12 | Medium | Semantic search | The API image has no `news.embed` or sentence-transformers, so news search always ranks by date. | Ship the model in the API image, or embed queries in the worker. |
-| O-13 | Medium | Docs | `docs/operations/RUN.md` still describes flags and commands that do not exist (`fetch_ceo --ac/--doc/--year`, `parse_roll --mother`, `db.link_roll`, `ingest.load_csv`, `restore_drill.sh`, TLS profile, Telegram). | Rewrite against the CLIs (`--help`). It is flagged at the top of the file. |
+| O-13 | — | Docs | ~~RUN.md described non-existent commands.~~ **Fixed** (R-64). | — |
 | O-14 | Low | Theme | Charts keep the old palette after a theme toggle until the next render. | Re-render on theme change. |
 | O-15 | Low | Lint | 7 `react-hooks/exhaustive-deps` warnings (memo churn) remain. | Memoise the inputs. |
 | O-16 | Low | Two tabs | Two tabs on different ACs can swap AC on navigation, because nav links read localStorage. | Carry `?ac=` on nav links, or put the AC in the route (N13). |
