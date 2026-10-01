@@ -9,6 +9,17 @@ jellyfish==1.2.1
 # The Form 20 / PS list / roll end-to-end tests parse real PDF fixtures.
 pdfplumber==0.11.10
 
+# scripts/dev_stack.py: a self-contained PostgreSQL 16 that runs as an ordinary
+# user out of a directory, with no Docker, no service and no administrator
+# rights. This is what makes it possible to apply a migration, refresh a view
+# and run tests/e2e in this environment at all - DECISIONS.md D-002 recorded
+# every one of those gates as NOT VERIFIED HERE for want of a database.
+#
+# Its bundled server is minimal: plpgsql and pgvector only, no PostGIS, no
+# pg_trgm, no unaccent. Finding N4 and the header of 0001_extensions.sql are
+# about living with that; the deployment image still has all four.
+pgserver==0.1.4
+
 pytest==9.1.1
 pytest-asyncio==1.4.0
 ruff==0.16.8

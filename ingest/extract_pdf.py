@@ -56,11 +56,19 @@ def extract_document(
     do_ocr: bool = True,
     max_pages: int | None = None,
     cache: bool = True,
+    tables: bool = True,
 ) -> list[PageText]:
     """Extract every page. Uses the on-disk cache unless force=True.
 
     `cache=False` keeps every page in memory and writes nothing. Roll parsing
     passes it, and audit finding C3 is why.
+
+    `tables=False` skips the lattice table pass. An electoral roll is flowed
+    text with no ruling lines, so the pass finds nothing and costs about as much
+    as the text extraction itself - roughly half the runtime of a roll load, on
+    a document that can run to several hundred pages. `parse_roll` reads
+    `page.text` only, so there is nothing to lose. Form 20 and the PS list leave
+    it on: for them the ruled table is the preferred extraction path.
 
     This function wrote each page's complete extracted text to
     `OCR_DIR/<stem>-<sha12>/page_NNNN.json` before any parser saw it, and
@@ -111,9 +119,9 @@ def extract_document(
             raw = page.extract_text() or ""
             text = normalize_block(raw)
             if len(text.strip()) >= settings.pdf_text_min_chars:
-                tables = _extract_tables(page)
+                page_tables = _extract_tables(page) if tables else []
                 pt = PageText(page_no=page_no, text=text, source="text_layer",
-                              char_count=len(text), tables=tables)
+                              char_count=len(text), tables=page_tables)
             else:
                 pt = PageText(page_no=page_no, text=text, source="empty", char_count=len(text))
                 ocr_needed.append(page_no)

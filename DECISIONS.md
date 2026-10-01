@@ -233,3 +233,86 @@ product whose availability depended on an unauthenticated free tier, and the
 failure mode was silent: watermarked tiles still render, so nothing errored and
 no test noticed. Two tests now guard it — one fails if `cartocdn` appears
 anywhere in the source, one fails if a tile URL appears outside `lib/tiles.ts`.
+
+---
+
+*D-008 to D-010 were written in the OneDrive copy as D-006 to D-008 and renumbered when ported on 1 Oct 2026. Its D-005 (PostGIS made optional through ST_* shims over the built-in geometric types) was not ported: D-006 above had already removed PostGIS by storing lon/lat and GeoJSON, and the two cannot coexist.*
+
+---
+
+## D-008 · The dev dataset is generated as PDFs and loaded through the real loaders
+
+**Conflict.** `FRONTEND_HARDENING.md` 1 asks for a local stack carrying "the fixture dataset
+**into the database through the real loaders** (mock Form 20 → parser → validation → promote, not
+direct inserts)". The repository had no way to produce a PDF, and the fast route - insert into
+`result_booth` and refresh - was sitting there.
+
+**Chosen.** `common/pdf_writer.py` (a 200-line ruled-table and flowed-text PDF writer, no new
+dependency) and `ingest/mock_documents.py`, which reads the published AC totals out of
+`result_ac_total` and renders a Form 20 whose per-column booth sums equal them exactly by
+largest-remainder apportionment, plus a polling-station list per block and an electoral roll.
+`scripts/dev_stack.py` then runs the documented CLIs as subprocesses - the same commands `RUN.md`
+tells an operator to type, argument parsing included - with no `--skip-ac-check` anywhere.
+
+**Why.** Direct inserts would have skipped column resolution, the AC-total reconciliation gate, the
+crosswalk and the roll aggregation: every layer where this system's defects actually live. C1 -
+every candidate loaded with a NULL party and every booth reporting a 100% margin - survived a green
+test suite precisely because every test stopped at a parsed-dictionary boundary. Going in through
+the front door found, on the first run, that `parse_form20` never called the resolver written to
+fix C1, that three loaders omitted an `ac_id` their tables require, and that `passlib` could not
+hash a password at all.
+
+Running the loaders as subprocesses rather than importing them is deliberate: an in-process call
+would let `dev_stack.py` drift into being a second, friendlier pipeline that works where the
+documented one does not.
+
+**Would change the answer.** A real Form 20 in `raw/`. The generated document is a test fixture,
+not a substitute: a real CEO PDF is worse than this in ways no generator will guess (skew, merged
+cells, OCR-only pages, Devanagari headers), and `UAT_READINESS.md` keeps every figure derived from
+mock data marked as such.
+
+---
+
+## D-009 · The generated roll covers a few booths, not the whole electorate
+
+**Conflict.** Turnout needs electors per booth, electors come from the roll, and the roll's grain
+is one elector per line. Giridih's published electorate is 304,898, so a complete mock roll is
+roughly 4,500 pages - minutes of `pdfplumber` on every `--rebuild`, for synthetic names. But the
+Form 20 must still reconcile to the published AC totals, so the vote totals cannot be scaled down
+to match a smaller roll.
+
+**Chosen.** The roll covers the first `--roll-booths` booths (12 by default) at a realistic
+elector density. The rest have NULL electors and therefore NULL turnout.
+
+**Why.** It is the honest outcome and the more useful one: `metric_turnout_pct` is documented to
+return NULL where electors are unknown (B4), and a dev stack where every booth has turnout would
+never show that rule working. Both states now appear on the same page, which is what the frontend
+has to render correctly.
+
+**Would change the answer.** A summary-level roll loader. A real SSR publishes per-part totals as
+well as the full roll, and a loader for those would give full coverage for a fraction of the pages.
+Not worth building before the pages that consume it are finished.
+
+---
+
+## D-010 · `bcrypt` is called directly; `passlib` is removed
+
+**Conflict.** `requirements-api.txt` pinned `passlib[bcrypt]==1.7.4` and `api/deps.py` hashed
+through a `CryptContext`. With the resolved `bcrypt==5.0.0`, **every call to `hash_password`
+raised** `ValueError: password cannot be longer than 72 bytes`: passlib's bcrypt backend probes for
+an old wraparound bug by hashing an over-long secret while it initialises, and bcrypt 4.1+ raises
+on that instead of truncating. No user could be created and no password login could succeed.
+
+**Chosen.** Call `bcrypt` directly - `hashpw`/`checkpw`, cost 12, with explicit UTF-8-safe
+truncation at 72 bytes - and drop `passlib` from the requirements.
+
+**Why.** Pinning `bcrypt<4.1` would also have worked and was the smaller diff, but it keeps a
+dependency whose last release was 2020 and whose only job here is to call the library we already
+have. The hashes are the same `$2b$` strings passlib produced, so nothing already stored is
+invalidated. The explicit truncation is better behaviour than passlib's too: a long passphrase now
+logs in instead of returning a 500.
+
+**Why nobody noticed.** The tests that touch auth build their JWTs directly and never hash a
+password, and until the embedded server existed `scripts/create_admin.py` had never been run. A
+test now asserts that a password round-trips.
+

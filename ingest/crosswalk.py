@@ -349,8 +349,25 @@ def apply_matches(election_label: str, ac_id: int, ac_number: int,
             else:
                 # Genuinely new or unmatchable: mint a booth so its votes are
                 # not silently dropped from the AC totals.
-                cur.execute("SELECT next_booth_uid(%s) AS uid", (ac_number,))
-                new_uid = cur.fetchone()["uid"]
+                #
+                # An existing binding is reused first. `next_booth_uid` mints a
+                # fresh uid on every call, and the crosswalk insert below is
+                # `ON CONFLICT ... DO NOTHING` - so a second run minted a new
+                # uid, inserted a second `booth` row for the same station, and
+                # then declined to repoint the crosswalk at it. Every re-run
+                # leaked one orphan booth per unmatched station, and the runbook
+                # tells operators to re-run after fixing the queue (finding N8).
+                cur.execute(
+                    "SELECT booth_uid FROM booth_crosswalk "
+                    "WHERE election_id = %s AND ps_number = %s",
+                    (eid, m.ps_number),
+                )
+                existing = cur.fetchone()
+                if existing is not None:
+                    new_uid = existing["booth_uid"]
+                else:
+                    cur.execute("SELECT next_booth_uid(%s) AS uid", (ac_number,))
+                    new_uid = cur.fetchone()["uid"]
 
                 cur.execute(
                     "SELECT area_id FROM booth WHERE ac_id = %s ORDER BY booth_uid LIMIT 1",

@@ -65,8 +65,8 @@ LIMIT 30;
 -- Read as ECOLOGICAL CORRELATION. It says nothing about how any individual or
 -- any community voted (HLD 5, 10).
 SELECT c.name_en AS community,
-       ROUND(CORR(ce.est_pct, w.jmm::NUMERIC / NULLIF(w.votes_counted, 0) * 100)::NUMERIC, 3) AS corr_jmm,
-       ROUND(CORR(ce.est_pct, w.bjp::NUMERIC / NULLIF(w.votes_counted, 0) * 100)::NUMERIC, 3) AS corr_bjp,
+       ROUND(CORR(ce.est_pct, w.jmm::NUMERIC / NULLIF(w.votes_polled, 0) * 100)::NUMERIC, 3) AS corr_jmm,
+       ROUND(CORR(ce.est_pct, w.bjp::NUMERIC / NULLIF(w.votes_polled, 0) * 100)::NUMERIC, 3) AS corr_bjp,
        COUNT(*) AS booths
 FROM caste_estimate ce
 JOIN community c ON c.community_id = ce.community_id
@@ -75,4 +75,4 @@ JOIN election e ON e.election_id = w.election_id AND e.is_baseline
 WHERE ce.source = 'blend' AND ce.confidence >= 0.4
 GROUP BY c.name_en
 HAVING COUNT(*) >= 30
-ORDER BY ABS(COALESCE(CORR(ce.est_pct, w.jmm::NUMERIC / NULLIF(w.votes_counted, 0) * 100), 0)) DESC;
+ORDER BY ABS(COALESCE(CORR(ce.est_pct, w.jmm::NUMERIC / NULLIF(w.votes_polled, 0) * 100), 0)) DESC;

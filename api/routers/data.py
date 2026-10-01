@@ -55,8 +55,8 @@ def summary(user: CurrentUser, ac: CurrentAC) -> dict:
     #
     # Two caveats, both being fixed in A-3 and neither introduced here: the party
     # columns are a fixed pivot (jmm/bjp/ajsu/jlkm/inc/rjd/jvm/others), so a
-    # winner outside that set lands in `others`; and `votes_counted` excludes
-    # NOTA while `total_valid` includes it, which is audit finding D1. Percentages
+    # winner outside that set lands in `others`; and `votes_polled` excludes
+    # NOTA while `valid_votes` includes it, which is audit finding D1. Percentages
     # are therefore deliberately not computed here - the frontend shows vote
     # counts, and METRICS.md will own the percentage definitions.
     elections = query(

@@ -75,8 +75,10 @@ def _fake_extract(monkeypatch, recorder: list[dict]):
     """
     from ingest import extract_pdf
 
-    def fake(pdf_path, force=False, do_ocr=True, max_pages=None, cache=True):
-        recorder.append({"path": pdf_path, "cache": cache, "force": force})
+    def fake(pdf_path, force=False, do_ocr=True, max_pages=None, cache=True,
+             tables=True):
+        recorder.append({"path": pdf_path, "cache": cache, "force": force,
+                         "tables": tables})
         pages = [FakePage(1, ROLL_PAGE), FakePage(2, ROLL_PAGE.replace("12", "13"))]
         if cache:
             # Reproduce the leak faithfully, so a test that expects no files on

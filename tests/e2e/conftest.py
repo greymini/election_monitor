@@ -153,3 +153,121 @@ def refresh_views(cur) -> None:
 
     for view in VIEWS:
         cur.execute(f"REFRESH MATERIALIZED VIEW {view}")
+
+# ---------------------------------------------------------------------------
+# One loaded dataset, shared
+# ---------------------------------------------------------------------------
+
+# Giridih, at close to its real station count, with a roll over two of them.
+# The roll is what costs: pdfplumber's text extraction is linear in characters,
+# and the published electorate divided over fewer stations means more electors
+# per station, not fewer overall.
+DATASET_AC = 32
+DATASET_BOOTHS = 120
+DATASET_ROLL_BOOTHS = 2
+DATASET_ELECTIONS = ["VS-2024", "VS-2019"]
+DATASET_SEED = 4242
+
+# A constituency that is seeded and deliberately never loaded, so the empty
+# state is a real state rather than a hypothetical one.
+EMPTY_AC = 42
+
+
+def run_loader(module: str, argv: list) -> int:
+    """Call a loader's `main()` in-process, as its CLI would.
+
+    `main()` rather than the internals, so argument parsing, scope resolution
+    and exit codes are covered too - three of the defects this suite found
+    lived in exactly those.
+    """
+    import importlib
+
+    return importlib.import_module(module).main([str(a) for a in argv])
+
+
+def load_dataset(mock_dir, manifest: dict) -> None:
+    """The same order, and the same commands, as scripts/dev_stack.py."""
+    docs = manifest["documents"]
+
+    for d in [x for x in docs if x["kind"] == "ps_list"]:
+        argv = [mock_dir / d["path"], "--ac", d["ac"], "--election", d["election"],
+                "--load", "--block", d["block_id"]]
+        if d["anchor"]:
+            argv.append("--anchor")
+        assert run_loader("ingest.parse_pslist", argv) == 0, d["path"]
+
+    for d in [x for x in docs if x["kind"] == "form20"]:
+        # No --skip-ac-check: the AC-total reconciliation gate has to pass.
+        assert run_loader("ingest.parse_form20", [
+            mock_dir / d["path"], "--ac", d["ac"], "--election", d["election"],
+            "--load", "--replace",
+        ]) == 0, d["path"]
+
+    anchors = {d["election"] for d in docs if d["kind"] == "ps_list" and d["anchor"]}
+    for label in [e for e in manifest["elections"] if e not in anchors]:
+        assert run_loader("ingest.crosswalk", [
+            "--ac", DATASET_AC, "--election", label, "--apply"]) == 0, label
+
+    for kind in ("roll_mother", "roll_supplement"):
+        for d in [x for x in docs if x["kind"] == kind]:
+            argv = [mock_dir / d["path"], "--ac", d["ac"], "--election", d["election"],
+                    "--revision", d["revision"], "--date", d["date"], "--load"]
+            if d["supplement"]:
+                argv.append("--supplement")
+            else:
+                argv += ["--link-election", d["link_election"]]
+            assert run_loader("ingest.parse_roll", argv) == 0, d["path"]
+
+
+@pytest.fixture(scope="session")
+def loaded_dataset(conn, db_url, tmp_path_factory):
+    """Generate synthetic source documents, load them, refresh the views.
+
+    Session-scoped: the load takes half a minute and both `test_ingest_pipeline`
+    and `test_api_contract` read the same state. The `conn` fixture has already
+    rebuilt the schema from db/migrations and loaded db/seed.
+    """
+    import json
+    import os
+
+    work = tmp_path_factory.mktemp("dataset")
+    mock_dir = work / "mock"
+    # Keep the page cache and any retained PDF inside the temp tree: the roll
+    # loader refuses to run when it finds roll text under OCR_DIR, and a test
+    # must neither depend on nor pollute the repository's ocr/ and raw/.
+    previous = {k: os.environ.get(k) for k in ("OCR_DIR", "RAW_DIR", "DATABASE_URL")}
+    os.environ["OCR_DIR"] = str(work / "ocr")
+    os.environ["RAW_DIR"] = str(work / "raw")
+    os.environ["DATABASE_URL"] = db_url
+
+    from common.config import get_settings
+    from common.db import close_pools
+
+    get_settings.cache_clear()
+    close_pools()
+
+    try:
+        assert run_loader("ingest.mock_documents", [
+            "--ac", DATASET_AC, "--out-dir", mock_dir, "--booths", DATASET_BOOTHS,
+            "--roll-booths", DATASET_ROLL_BOOTHS, "--seed", DATASET_SEED,
+            "--elections", ",".join(DATASET_ELECTIONS),
+        ]) == 0
+
+        manifest = json.loads((mock_dir / "manifest.json").read_text(encoding="utf-8"))
+        load_dataset(mock_dir, manifest)
+
+        from common.db import cursor
+
+        with cursor() as cur:
+            refresh_views(cur)
+        yield {"manifest": manifest, "dir": mock_dir, "ac": DATASET_AC,
+               "booths": DATASET_BOOTHS, "roll_booths": DATASET_ROLL_BOOTHS,
+               "elections": DATASET_ELECTIONS, "empty_ac": EMPTY_AC}
+    finally:
+        close_pools()
+        for key, value in previous.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+        get_settings.cache_clear()

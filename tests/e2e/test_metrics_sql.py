@@ -42,6 +42,44 @@ BOOTHS_PREV = {
 }
 
 
+# Rows this fixture creates, in the order they must be deleted. The session
+# connection is autocommit, so nothing rolls back between tests: the fixture has
+# to be able to run again over its own output. It could not, which is why the
+# first test passed and the other thirteen died on booth_crosswalk_pkey the
+# moment this file was first run against a real database.
+TEST_CANDIDATE_SUFFIX = " candidate"
+
+
+def _clear(cursor, ac_id: int) -> None:
+    """Remove this fixture's rows, leaving the seed untouched.
+
+    Only candidates whose name ends in " candidate" are deleted: the seeded
+    candidates from db/seed/ac_totals.csv carry the published AC totals that
+    `mv_ac_summary` and the Form 20 cross-check hang off, and dropping them
+    would make several tests pass for the wrong reason.
+    """
+    cursor.execute("DELETE FROM result_booth      WHERE ac_id = %s", (ac_id,))
+    cursor.execute("DELETE FROM result_booth_meta WHERE ac_id = %s", (ac_id,))
+    cursor.execute("DELETE FROM booth_crosswalk   WHERE ac_id = %s", (ac_id,))
+    cursor.execute("DELETE FROM ps_list_entry     WHERE ac_id = %s", (ac_id,))
+    cursor.execute(
+        "DELETE FROM candidate WHERE ac_id = %s AND name_en LIKE %s",
+        (ac_id, f"%{TEST_CANDIDATE_SUFFIX}"),
+    )
+    # The roll chain, link first. Several assertions here are about what the
+    # views do with *no* roll - "no link means no new-voter rows at all, rather
+    # than rows of zero" (B1) - so a link left behind by another module makes
+    # them pass or fail on test order. tests/e2e/test_ingest_pipeline.py loads a
+    # real roll into this same database, which is how that first came up.
+    cursor.execute(
+        "DELETE FROM election_roll_link WHERE election_id IN "
+        "(SELECT election_id FROM election WHERE ac_id = %s)", (ac_id,))
+    cursor.execute("DELETE FROM roll_snapshot WHERE ac_id = %s", (ac_id,))
+    cursor.execute("DELETE FROM roll_change   WHERE ac_id = %s", (ac_id,))
+    cursor.execute("DELETE FROM roll_revision WHERE ac_id = %s", (ac_id,))
+    cursor.execute("DELETE FROM booth         WHERE ac_id = %s", (ac_id,))
+
+
 @pytest.fixture(scope="module")
 def loaded(conn):
     """Build a minimal but complete AC: two elections, three booths, a roll.
@@ -60,6 +98,7 @@ def loaded(conn):
     with conn.cursor() as cursor:
         cursor.execute("SELECT ac_id FROM ac WHERE ac_number = 32")
         ac_id = cursor.fetchone()["ac_id"]
+        _clear(cursor, ac_id)
 
         cursor.execute(
             "SELECT election_id, label FROM election WHERE ac_id = %s AND label IN "

@@ -28,7 +28,14 @@ from pathlib import Path
 
 from common.logging_setup import get_logger
 from common.textnorm import normalize_digits, normalize_text, parse_int
-from ingest.documents import DocumentNotFound, add_document_arguments, advance_status, open_document
+from ingest import resolve as resolve_mod
+from ingest.acscope import AmbiguousScope, add_ac_argument, resolve_election
+from ingest.documents import (
+    DocumentNotFound,
+    add_document_arguments,
+    advance_status,
+    open_document,
+)
 
 log = get_logger(__name__)
 
@@ -305,13 +312,29 @@ def validate(doc: Form20Document, ac_totals: dict[str, int] | None = None) -> li
     return errors
 
 
-def queue_errors(errors: list[ValidationError]) -> int:
+def queue_errors(errors: list[ValidationError], ac_id: int) -> int:
+    """Queue the rows that failed validation, for one constituency.
+
+    Two fixes, both finding N19. `ac_id` was never set, and
+    `GET /acs/{ac}/admin/review-queue` filters on it - so every row the LLD 4.2
+    arithmetic gate rejected landed in a queue the Admin page could not show.
+    An operator saw "NOT LOADING" and an empty queue.
+
+    And the insert had no conflict target against the `(kind, ref)` unique index
+    0014 added for C16, so a second run of the same failing document raised
+    instead of updating; `_run` catches that and logs "could not write to
+    review_queue", which reads like a database problem rather than a re-run.
+    """
     from common.db import execute
 
     for err in errors:
         execute(
-            "INSERT INTO review_queue (kind, ref, payload, note) VALUES (%s, %s, %s, %s)",
-            (err.kind, err.ref, json.dumps(err.payload, ensure_ascii=False, default=str), err.detail),
+            "INSERT INTO review_queue (kind, ref, ac_id, payload, note) "
+            "VALUES (%s, %s, %s, %s, %s) "
+            "ON CONFLICT (kind, ref) DO UPDATE SET payload = EXCLUDED.payload, "
+            "note = EXCLUDED.note, ac_id = EXCLUDED.ac_id",
+            (err.kind, err.ref, ac_id,
+             json.dumps(err.payload, ensure_ascii=False, default=str), err.detail),
         )
     return len(errors)
 
@@ -332,97 +355,280 @@ def split_candidate_label(label: str) -> tuple[str, str | None]:
     return label, None
 
 
-def resolve_candidates(doc: Form20Document, election_id: int) -> list[int]:
-    """Create or find a candidate row per column; return candidate_ids in order."""
-    from common.db import cursor
+class UnresolvedColumns(Exception):
+    """At least one header column could not be resolved, so nothing loads.
+
+    Master prompt 3.1 step 6, and the reason `ingest/resolve.py` exists. The
+    behaviour it replaces was to log a warning and load the column with a NULL
+    party, which is how a 100% margin reached every booth on the dashboard (C1).
+    """
+
+    def __init__(self, failures: list[resolve_mod.Resolution]) -> None:
+        self.failures = failures
+        super().__init__(f"{len(failures)} Form 20 column(s) could not be resolved")
+
+
+def resolve_columns_for(doc: Form20Document, election_id: int,
+                        cur) -> list[resolve_mod.Resolution]:
+    """Master prompt 3.1, applied to this document's candidate columns.
+
+    This is the call that was missing. `ingest/resolve.py` implements all six
+    steps and `tests/test_resolve.py` pins them with seventy-odd cases, but
+    nothing in the loader ever imported the module: `resolve_candidates` still
+    split on a trailing bracket and looked the result up against `abbr` and
+    `name_en`, which is the code the audit describes under C1. The fix was
+    written and never wired in - the same shape of mistake as G2.
+    """
+    party_by_alias = resolve_mod.load_party_aliases(cur)
+    seeded = resolve_mod.load_seeded_candidates(cur, election_id)
+    if not seeded:
+        log.warning(
+            "no seeded candidates for election %s, so a column can only resolve by "
+            "bracketed party or as NOTA. Add the published AC totals to "
+            "db/seed/ac_totals.csv so the names have something to match against.",
+            election_id,
+        )
+    resolutions = resolve_mod.resolve_columns(doc.candidate_columns, party_by_alias, seeded)
+    for r in resolutions:
+        if r.resolved:
+            log.info("  col %2d  %-38s -> %-24s %-6s (%s%s)",
+                     r.column_index, r.raw_header[:38], r.name, r.party_abbr or "?",
+                     r.method, f" {r.score:.3f}" if r.score is not None else "")
+    failures = resolve_mod.unresolved(resolutions)
+    if failures:
+        for r in failures:
+            log.error("  col %2d  %r UNRESOLVED: %s", r.column_index, r.raw_header,
+                      "; ".join(r.reject_reasons) or "nothing came close")
+        raise UnresolvedColumns(failures)
+    return resolutions
+
+
+def queue_unresolved(doc: Form20Document, failures: list[resolve_mod.Resolution],
+                     ac_id: int) -> int:
+    """One review-queue item per unresolved column, with the top three guesses."""
+    from common.db import execute
+
+    for r in failures:
+        execute(
+            "INSERT INTO review_queue (kind, ref, ac_id, payload, note) "
+            "VALUES (%s, %s, %s, %s, %s) "
+            "ON CONFLICT (kind, ref) DO UPDATE SET payload = EXCLUDED.payload, "
+            "note = EXCLUDED.note, ac_id = EXCLUDED.ac_id, status = 'open'",
+            ("form20_column", f"{doc.source_doc}#col{r.column_index}", ac_id,
+             json.dumps(resolve_mod.review_payload(r), ensure_ascii=False, default=str),
+             f"Form 20 column {r.column_index} ({r.raw_header!r}) resolved to no "
+             f"candidate and no party"),
+        )
+    return len(failures)
+
+
+NOTA_CANDIDATE_NAME = "NOTA"
+
+
+def nota_candidate_id(election_id: int, ac_id: int, cur) -> int:
+    """The candidate row NOTA's votes are loaded against.
+
+    Finding N7, and it is D1 in a new place. The master prompt is explicit that
+    there is one denominator everywhere - valid votes **including** NOTA - and
+    `ingest/resolve.py` step 4 says so too: "NOTA in either script resolves to
+    the NOTA party, and loads as a candidate row - it has to, or it cannot enter
+    the denominator (D1)".
+
+    That branch is unreachable. `TAIL_LABELS` matches `\bnota\b`, and
+    `classify_header` ends the candidate run at the first recognised tail
+    column, so a NOTA header is classified as a tail value before the resolver
+    ever sees it. The loader then wrote it to `result_booth_meta.nota` only -
+    and no denominator reads that column. `mv_booth_totals` computes
+    `valid_votes` as `SUM(votes)` over `mv_result_booth_party`, and `nota` as
+    the NOTA-party slice of the same sum, both of which need a row in
+    `result_booth`.
+
+    So with NOTA loaded only to the meta table: `valid_votes` excluded NOTA,
+    `nota` came out NULL for every booth, `printed_valid` disagreed with
+    `valid_votes` by exactly the NOTA count, and every `share_pct`, `margin_pct`
+    and turnout figure in the product was computed over a denominator about one
+    percent too small. For Giridih 2024 that is 2,004 votes.
+
+    The printed value stays on `result_booth_meta.nota` as well. It is the
+    figure on the page, `validate()` checks the row arithmetic against it, and
+    having both lets a divergence be seen rather than averaged away.
+    """
+    cur.execute("SELECT party_id FROM party WHERE abbr = 'NOTA'")
+    row = cur.fetchone()
+    if row is None:
+        raise ValueError(
+            "the party table has no NOTA row, so NOTA votes cannot enter the "
+            "denominator. Add it to db/seed/parties.csv and re-seed."
+        )
+    cur.execute(
+        "INSERT INTO candidate (election_id, ac_id, name_en, party_id) "
+        "VALUES (%s, %s, %s, %s) "
+        "ON CONFLICT (election_id, name_en, party_id) DO UPDATE SET ac_id = EXCLUDED.ac_id "
+        "RETURNING candidate_id",
+        (election_id, ac_id, NOTA_CANDIDATE_NAME, row["party_id"]),
+    )
+    return cur.fetchone()["candidate_id"]
+
+
+def candidate_ids_for(resolutions: list[resolve_mod.Resolution], election_id: int,
+                      ac_id: int, cur) -> list[int]:
+    """A candidate_id per column, in column order.
+
+    A resolution that matched a seeded candidate reuses that row, so the booth
+    votes land against the same candidate the published AC total hangs off -
+    which is what makes the reconciliation check mean anything (C2). NOTA and
+    independents get their own rows, because both have to rank individually: in
+    the denominator for NOTA (D1), and separately from one another for
+    independents (D3).
+    """
+    cur.execute("SELECT party_id, abbr FROM party")
+    party_ids = {row["abbr"]: row["party_id"] for row in cur.fetchall()}
 
     ids: list[int] = []
-    with cursor() as cur:
-        cur.execute("SELECT party_id, abbr, name_en FROM party")
-        parties = cur.fetchall()
-        by_abbr = {p["abbr"].lower(): p["party_id"] for p in parties}
-        by_name = {p["name_en"].lower(): p["party_id"] for p in parties}
-
-        for index, label in enumerate(doc.candidate_columns):
-            name, party_text = split_candidate_label(label)
-            party_id = None
-            if party_text:
-                key = party_text.lower()
-                party_id = by_abbr.get(key) or by_name.get(key)
-                if party_id is None:
-                    log.warning("column %r: party %r not in the party table - left unattributed",
-                                label, party_text)
-            cur.execute(
-                "INSERT INTO candidate (election_id, name_en, party_id, column_index) "
-                "VALUES (%s, %s, %s, %s) "
-                "ON CONFLICT (election_id, name_en, party_id) DO UPDATE SET "
-                "column_index = EXCLUDED.column_index RETURNING candidate_id",
-                (election_id, name or label, party_id, index),
+    for r in resolutions:
+        if r.candidate_id is not None:
+            cur.execute("UPDATE candidate SET column_index = %s WHERE candidate_id = %s",
+                        (r.column_index, r.candidate_id))
+            ids.append(r.candidate_id)
+            continue
+        party_id = party_ids.get(r.party_abbr) if r.party_abbr else None
+        if r.party_abbr and party_id is None:
+            # resolve.py only emits abbreviations it read out of the party table,
+            # so this cannot happen through that path - but a missing row would
+            # load votes against a NULL party, so it is an error, not a warning.
+            raise ValueError(
+                f"column {r.column_index} resolved to party {r.party_abbr!r}, which is "
+                f"not in the party table. Add it to db/seed/parties.csv and re-seed."
             )
-            ids.append(cur.fetchone()["candidate_id"])
+        cur.execute(
+            "INSERT INTO candidate (election_id, ac_id, name_en, party_id, column_index) "
+            "VALUES (%s, %s, %s, %s, %s) "
+            "ON CONFLICT (election_id, name_en, party_id) DO UPDATE SET "
+            "column_index = EXCLUDED.column_index, ac_id = EXCLUDED.ac_id "
+            "RETURNING candidate_id",
+            (election_id, ac_id, r.name, party_id, r.column_index),
+        )
+        ids.append(cur.fetchone()["candidate_id"])
     return ids
 
 
-def load(doc: Form20Document, election_label: str, replace: bool = False) -> int:
-    """Load a validated document. Whole thing in one transaction."""
+def load(doc: Form20Document, election_id: int, ac_id: int,
+         candidate_ids: list[int], nota_id: int | None = None,
+         replace: bool = False) -> int:
+    """Load a validated document. The whole thing in one transaction (C5).
+
+    It was three before: one connection for the election lookup, a second inside
+    `resolve_candidates`, and a third for the rows. With `--replace` the DELETE
+    therefore committed on its own, so a failure while writing rows left the
+    election with no results at all and a half-filled table. One `connection()`
+    block now covers every write; psycopg commits it on a clean exit and rolls
+    all of it back on any exception.
+
+    `ac_id` is written explicitly on both tables. 0014 made it NOT NULL on
+    `candidate`, `result_booth` and `result_booth_meta`, and this function never
+    supplied it - so the loader could not have inserted a single row against the
+    current schema. Nothing caught that, because until now no test or command in
+    this repo had ever reached a database.
+    """
     from common.db import connection
 
     with connection() as conn, conn.cursor() as cur:
-        cur.execute("SELECT election_id FROM election WHERE label = %s", (election_label,))
-        row = cur.fetchone()
-        if row is None:
-            raise ValueError(f"unknown election label {election_label!r} - add it to db/seed/elections.csv")
-        election_id = row["election_id"]
-
         if replace:
             cur.execute("DELETE FROM result_booth WHERE election_id = %s", (election_id,))
             cur.execute("DELETE FROM result_booth_meta WHERE election_id = %s", (election_id,))
 
-    candidate_ids = resolve_candidates(doc, election_id)
-
-    with connection() as conn, conn.cursor() as cur:
         for r in doc.rows:
             # strict=True: every candidate column must get a value. Rows are
             # padded at parse time, so a mismatch here means a real defect.
             for cid, votes in zip(candidate_ids, r.votes, strict=True):
                 cur.execute(
-                    "INSERT INTO result_booth (election_id, ps_number, candidate_id, votes) "
-                    "VALUES (%s, %s, %s, %s) "
-                    "ON CONFLICT (election_id, ps_number, candidate_id) DO UPDATE SET votes = EXCLUDED.votes",
-                    (election_id, r.ps_number, cid, votes),
+                    "INSERT INTO result_booth (election_id, ac_id, ps_number, candidate_id, votes) "
+                    "VALUES (%s, %s, %s, %s, %s) "
+                    "ON CONFLICT (election_id, ps_number, candidate_id) DO UPDATE "
+                    "SET votes = EXCLUDED.votes",
+                    (election_id, ac_id, r.ps_number, cid, votes),
+                )
+            # NOTA as a candidate row, so it is inside valid_votes (D1/N7).
+            if nota_id is not None and r.nota is not None:
+                cur.execute(
+                    "INSERT INTO result_booth (election_id, ac_id, ps_number, candidate_id, votes) "
+                    "VALUES (%s, %s, %s, %s, %s) "
+                    "ON CONFLICT (election_id, ps_number, candidate_id) DO UPDATE "
+                    "SET votes = EXCLUDED.votes",
+                    (election_id, ac_id, r.ps_number, nota_id, r.nota),
                 )
             cur.execute(
-                "INSERT INTO result_booth_meta (election_id, ps_number, total_valid, nota, rejected, "
-                "tendered, source_doc, source_page) VALUES (%s, %s, %s, %s, %s, %s, %s, %s) "
-                "ON CONFLICT (election_id, ps_number) DO UPDATE SET total_valid = EXCLUDED.total_valid, "
-                "nota = EXCLUDED.nota, rejected = EXCLUDED.rejected, tendered = EXCLUDED.tendered, "
-                "source_doc = EXCLUDED.source_doc, source_page = EXCLUDED.source_page, loaded_at = now()",
-                (election_id, r.ps_number, r.total_valid, r.nota, r.rejected, r.tendered,
-                 doc.source_doc, r.page_no),
+                "INSERT INTO result_booth_meta (election_id, ac_id, ps_number, total_valid, "
+                "nota, rejected, tendered, source_doc, source_page) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) "
+                "ON CONFLICT (election_id, ps_number) DO UPDATE SET "
+                "total_valid = EXCLUDED.total_valid, nota = EXCLUDED.nota, "
+                "rejected = EXCLUDED.rejected, tendered = EXCLUDED.tendered, "
+                "source_doc = EXCLUDED.source_doc, source_page = EXCLUDED.source_page, "
+                "loaded_at = now()",
+                (election_id, ac_id, r.ps_number, r.total_valid, r.nota, r.rejected,
+                 r.tendered, doc.source_doc, r.page_no),
             )
     return len(doc.rows)
 
 
-def published_ac_totals(election_label: str) -> dict[str, int]:
-    """AC totals from result_ac_total, keyed by the label the Form 20 column uses."""
-    from common.db import query
+def ac_totals_by_column(doc: Form20Document, resolutions: list[resolve_mod.Resolution],
+                        election_id: int, cur) -> dict[str, int]:
+    """Published AC totals, keyed by the header cell each one should match.
 
-    rows = query(
-        "SELECT c.name_en, p.abbr, t.metric, t.value FROM result_ac_total t "
-        "JOIN election e ON e.election_id = t.election_id "
-        "LEFT JOIN candidate c ON c.candidate_id = t.candidate_id "
-        "LEFT JOIN party p ON p.party_id = c.party_id "
-        "WHERE e.label = %s AND t.metric IN ('votes', 'nota')",
-        (election_label,),
+    This is C2. The old `published_ac_totals` built keys of the form
+    "Sudivya Kumar (JMM)" and `validate()` compared them against the raw header
+    cells - which on a real Form 20 read "Sudivya Kumar", or the same name in
+    Devanagari. Nothing ever matched, every published total was reported as "no
+    such column in the document", and the only way to load anything was
+    `--skip-ac-check`: the one check the README calls the gate to trust,
+    routinely disabled.
+
+    Keying off the resolution instead compares the column the resolver chose
+    against the total that column's candidate published, whatever script the
+    header was printed in.
+    """
+    cur.execute(
+        "SELECT candidate_id, metric, value FROM result_ac_total "
+        "WHERE election_id = %s AND metric IN ('votes', 'nota')",
+        (election_id,),
     )
-    out: dict[str, int] = {}
-    for r in rows:
-        if r["metric"] == "nota":
-            out["NOTA"] = r["value"]
-        elif r["name_en"]:
-            key = f"{r['name_en']} ({r['abbr']})" if r["abbr"] else r["name_en"]
-            out[key] = r["value"]
-    return out
+    by_candidate: dict[int, int] = {}
+    nota_total: int | None = None
+    for row in cur.fetchall():
+        if row["metric"] == "nota" and row["candidate_id"] is None:
+            nota_total = row["value"]
+        elif row["metric"] == "votes" and row["candidate_id"] is not None:
+            by_candidate[row["candidate_id"]] = row["value"]
+
+    totals: dict[str, int] = {}
+    for r in resolutions:
+        header = doc.candidate_columns[r.column_index]
+        if r.candidate_id is not None and r.candidate_id in by_candidate:
+            totals[header] = by_candidate[r.candidate_id]
+
+    unchecked = [doc.candidate_columns[r.column_index] for r in resolutions
+                 if doc.candidate_columns[r.column_index] not in totals]
+
+    # NOTA is a tail column, not a candidate column: `TAIL_LABELS` matches it
+    # and `classify_header` stops the candidate run at the first tail column, so
+    # a NOTA header never reaches the resolver. `validate()` exposes the summed
+    # tail under the literal key "NOTA", which is the key the published total
+    # has to be filed under for the comparison to happen at all.
+    if nota_total is not None:
+        if "nota" in doc.tail_order:
+            totals["NOTA"] = nota_total
+        else:
+            log.warning("a published NOTA total of %d exists for this election but the "
+                        "document has no NOTA column, so it cannot be cross-checked",
+                        nota_total)
+    if unchecked:
+        log.warning(
+            "%d of %d column(s) have no published AC total, so their booth sums are "
+            "not cross-checked: %s", len(unchecked), len(resolutions),
+            ", ".join(repr(u) for u in unchecked[:8]),
+        )
+    return totals
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -432,6 +638,7 @@ def main(argv: list[str] | None = None) -> int:
     # says which backend holds the bytes, so no local raw/ tree is needed.
     add_document_arguments(ap)
     ap.add_argument("--election", required=True, help="election label, e.g. VS-2024")
+    add_ac_argument(ap)
     ap.add_argument("--load", action="store_true", help="write to the database")
     ap.add_argument("--replace", action="store_true", help="delete existing rows for this election first")
     ap.add_argument("--dry-run", action="store_true", help="parse and validate only (default)")
@@ -451,11 +658,11 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _run(args, pdf_path: Path, provenance: dict) -> int:
+    from common.db import cursor
+
     doc = parse_pdf(pdf_path, force=args.force)
     log.info("%s: %d row(s), %d candidate column(s), method=%s",
              pdf_path.name, len(doc.rows), len(doc.candidate_columns), doc.method)
-    for i, col in enumerate(doc.candidate_columns):
-        log.info("  col %2d  %s", i, col)
     for w in doc.warnings:
         log.warning("  %s", w)
 
@@ -468,17 +675,39 @@ def _run(args, pdf_path: Path, provenance: dict) -> int:
             "rows": [vars(r) for r in doc.rows],
         }, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    ac_totals = None
-    if not args.skip_ac_check:
+    # Resolution comes before validation, and both come before any write. The
+    # AC-total check cannot be keyed on anything until the columns are known
+    # (C2), and master prompt 3.1 step 6 says an unresolved column aborts the
+    # load - so there is no point validating arithmetic for a document we do not
+    # understand the columns of.
+    try:
+        with cursor() as cur:
+            scope = resolve_election(cur, args.election, ac_number=args.ac)
+            log.info("loading into %s", scope)
+            resolutions = resolve_columns_for(doc, scope.election_id, cur)
+            ac_totals = (None if args.skip_ac_check
+                         else ac_totals_by_column(doc, resolutions, scope.election_id, cur)
+                         or None)
+    except UnresolvedColumns as exc:
         try:
-            ac_totals = published_ac_totals(args.election) or None
-            if ac_totals:
-                log.info("checking against %d published AC total(s)", len(ac_totals))
-            else:
-                log.warning("no published AC totals for %s - loading without the cross-check. "
-                            "Add them to db/seed/ac_totals.csv.", args.election)
-        except Exception as exc:
-            log.warning("could not read published AC totals (%s); continuing without them", exc)
+            queue_unresolved(doc, exc.failures, scope.ac_id)
+            log.error("queued %d column(s) for manual review "
+                      "(review_queue kind='form20_column')", len(exc.failures))
+        except Exception as queue_exc:
+            log.error("could not write to review_queue: %s", queue_exc)
+        log.error("NOT LOADING %s - every column must resolve to a candidate or a "
+                  "party first (master prompt 3.1)", pdf_path.name)
+        _advance(provenance, "failed")
+        return 1
+    except (AmbiguousScope, ValueError) as exc:
+        log.error("%s", exc)
+        return 2
+
+    if ac_totals:
+        log.info("checking booth sums against %d published AC total(s)", len(ac_totals))
+    elif not args.skip_ac_check:
+        log.warning("no published AC totals for %s - loading without the cross-check. "
+                    "Add them to db/seed/ac_totals.csv.", args.election)
 
     errors = validate(doc, ac_totals)
     if errors:
@@ -488,8 +717,10 @@ def _run(args, pdf_path: Path, provenance: dict) -> int:
         if len(errors) > 20:
             log.error("  ... and %d more", len(errors) - 20)
         try:
-            queue_errors(errors)
-            log.error("queued for manual review (review_queue kind='form20_row')")
+            queue_errors(errors, scope.ac_id)
+            log.error("queued for manual review (review_queue kind='form20_row', "
+                      "AC %s) - see /acs/%s/admin/review-queue",
+                      scope.ac_number, scope.ac_number)
         except Exception as exc:
             log.error("could not write to review_queue: %s", exc)
         log.error("NOT LOADING %s - fix the rows above and re-run", pdf_path.name)
@@ -499,10 +730,24 @@ def _run(args, pdf_path: Path, provenance: dict) -> int:
     log.info("validation passed")
     _advance(provenance, "validated")
     if args.load and not args.dry_run:
-        n = load(doc, args.election, replace=args.replace)
-        log.info("loaded %d booth row(s) for %s", n, args.election)
+        with cursor() as cur:
+            candidate_ids = candidate_ids_for(resolutions, scope.election_id,
+                                              scope.ac_id, cur)
+            # Only when the document actually prints a NOTA column. A Form 20
+            # from before 2013 has none, and inventing a zero row would put a
+            # contestant that did not exist on the ballot into the denominator.
+            nota_id = (nota_candidate_id(scope.election_id, scope.ac_id, cur)
+                       if "nota" in doc.tail_order else None)
+        if nota_id is None:
+            log.warning("%s prints no NOTA column, so no NOTA row is loaded. Check the "
+                        "document: every election from 2013 onwards has one.",
+                        doc.source_doc)
+        n = load(doc, scope.election_id, scope.ac_id, candidate_ids, nota_id=nota_id,
+                 replace=args.replace)
+        log.info("loaded %d booth row(s) for %s", n, scope)
         _advance(provenance, "loaded")
-        log.info("now run: python -m ingest.crosswalk --election %s", args.election)
+        log.info("now run: python -m ingest.crosswalk --ac %s --election %s",
+                 scope.ac_number, args.election)
     else:
         log.info("dry run - nothing written. Re-run with --load to write.")
     return 0
