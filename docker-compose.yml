@@ -90,6 +90,7 @@ services:
       - models:/models
       - ./backend/ingest:/app/ingest:ro
       - ./backend/news:/app/news:ro
+      - ./backend/chatbot:/app/chatbot:ro
       - ./backend/analytics:/app/analytics:ro
       - ./backend/common:/app/common:ro
       - ./backend/worker:/app/worker:ro

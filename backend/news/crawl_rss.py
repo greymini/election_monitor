@@ -52,6 +52,42 @@ def is_relevant(title: str, summary: str, keywords: list[str]) -> bool:
     return any(k in haystack for k in keywords)
 
 
+def ac_keywords() -> dict[int, set[str]]:
+    """Folded place names per constituency: its own name and its blocks' and
+    areas' names, in both scripts. Generic names ('Ward 7') and very short ones
+    are skipped, as in geo_keywords."""
+    keys: dict[int, set[str]] = {}
+
+    def add(ac_id: int, name: str | None) -> None:
+        folded = fold(name or "")
+        if folded and len(folded) > 4 and not folded.startswith(("ward", "वार्ड")):
+            keys.setdefault(ac_id, set()).add(folded)
+
+    try:
+        for row in query("SELECT ac_id, name_en, name_hi FROM ac WHERE is_active"):
+            add(row["ac_id"], row["name_en"])
+            add(row["ac_id"], row["name_hi"])
+        for row in query("SELECT ac_id, name_en, name_hi FROM block "
+                         "UNION ALL SELECT ac_id, name_en, name_hi FROM area"):
+            add(row["ac_id"], row["name_en"])
+            add(row["ac_id"], row["name_hi"])
+    except Exception as exc:
+        log.warning("could not load constituency names for news tagging (%s)", exc)
+    return keys
+
+
+def tag_acs(title: str, summary: str, ac_keys: dict[int, set[str]]) -> list[int]:
+    """The constituencies an article names, by place-name match.
+
+    /acs/{ac}/news filters on news_item.ac_ids, and nothing used to write it,
+    so every crawled item was invisible on every constituency's page. This is
+    a keyword tag - the labelling job can refine it - and an item that names
+    no constituency stays untagged rather than being guessed into one.
+    """
+    haystack = fold(f"{title} {summary}")
+    return sorted(ac for ac, names in ac_keys.items() if any(n in haystack for n in names))
+
+
 def fetch_feed(url: str, timeout: int, user_agent: str) -> list[dict[str, Any]]:
     import feedparser
     import httpx
@@ -87,6 +123,7 @@ def fetch_feed(url: str, timeout: int, user_agent: str) -> list[dict[str, Any]]:
 def crawl(limit: int | None = None) -> dict:
     settings = get_settings()
     keywords = geo_keywords()
+    per_ac = ac_keywords()
     sources = query("SELECT source_id, name, url, kind, lang FROM news_source WHERE is_active")
     stats = {"sources": len(sources), "fetched": 0, "relevant": 0,
              "inserted": 0, "duplicates": 0, "failed_sources": 0}
@@ -117,7 +154,8 @@ def crawl(limit: int | None = None) -> dict:
                 break
             if not item["url"] or not item["title"]:
                 continue
-            if not is_relevant(item["title"], item["summary"], keywords):
+            ac_ids = tag_acs(item["title"], item["summary"], per_ac)
+            if not ac_ids and not is_relevant(item["title"], item["summary"], keywords):
                 continue
             stats["relevant"] += 1
 
@@ -128,11 +166,11 @@ def crawl(limit: int | None = None) -> dict:
             h = simhash(item["title"])
             row = query_one(
                 "INSERT INTO news_item (url, url_hash, title_hash, simhash, published, source, "
-                "title, body) VALUES (%s, %s, %s, %s, %s, %s, %s, %s) "
+                "title, body, ac_ids) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) "
                 "ON CONFLICT (url) DO NOTHING RETURNING news_id",
                 (item["url"], url_hash(item["url"]), title_hash(item["title"]),
                  to_signed_64(h), item["published"], source["name"],
-                 item["title"], item["summary"]),
+                 item["title"], item["summary"], ac_ids),
             )
             if row:
                 stats["inserted"] += 1

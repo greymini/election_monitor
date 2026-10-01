@@ -1,5 +1,6 @@
 ---
 slug: bypoll-context
+ac: 32
 topic: context
 title_en: Why there is a bypoll
 title_hi: उपचुनाव की पृष्ठभूमि

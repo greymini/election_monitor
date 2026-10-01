@@ -1,5 +1,6 @@
 ---
 slug: geography
+ac: 32
 topic: geography
 title_en: How AC-32 is built up
 title_hi: विधानसभा 32 की भौगोलिक संरचना

@@ -127,7 +127,8 @@ def config() -> dict:
     # figure.
     try:
         acs_list = query(
-            "SELECT ac_number, name_en, name_hi, reservation, verified "
+            "SELECT ac_number, name_en, name_hi, reservation, verified, "
+            "EXISTS (SELECT 1 FROM booth b WHERE b.ac_id = ac.ac_id) AS has_booths "
             "FROM ac WHERE is_active ORDER BY ac_number"
         )
     except Exception as exc:
@@ -138,7 +139,11 @@ def config() -> dict:
     return {
         "chat_enabled": settings.chat_enabled,
         "acs": acs_list,
-        "default_ac": acs_list[0]["ac_number"] if acs_list else None,
+        # The first AC with booths loaded, else the first listed. It used to be
+        # the first by number - 31, Gandey, which has no booth data - so a
+        # first-time visitor landed on an empty dashboard.
+        "default_ac": next((a["ac_number"] for a in acs_list if a["has_booths"]),
+                           acs_list[0]["ac_number"] if acs_list else None),
         "version": app.version,
         "build_time": BUILD_TIME,
     }

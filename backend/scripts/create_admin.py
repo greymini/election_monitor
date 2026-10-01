@@ -14,8 +14,13 @@ import getpass
 import secrets
 import string
 import sys
+from pathlib import Path
 
-from common.db import query_one
+# Run as a file (`python scripts/create_admin.py`), sys.path[0] is scripts/,
+# so `import common` failed; `python -m scripts.create_admin` worked. Both do now.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from common.db import query_one  # noqa: E402
 from common.logging_setup import get_logger, setup_logging
 
 log = get_logger(__name__)

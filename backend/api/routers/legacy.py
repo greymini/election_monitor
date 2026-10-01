@@ -51,15 +51,27 @@ MOVED = (
 
 
 def _redirect(request: Request, target: str) -> RedirectResponse:
+    """308 to `/acs/32{target}`, as a *relative* Location.
+
+    nginx serves the API under /api/ and strips the prefix, so an absolute
+    `/acs/32/...` sent a browser to the frontend's SPA fallback (index.html,
+    200). A relative reference climbs out of the request's own path and is
+    resolved by the client against the URL it actually used - so it lands on
+    /api/acs/32/... behind the proxy and on /acs/32/... without it.
+    """
+    depth = request.url.path.rstrip("/").count("/") - 1
     query = request.url.query
-    location = f"/acs/{DEFAULT_AC}{target}" + (f"?{query}" if query else "")
+    location = ("../" * depth) + f"acs/{DEFAULT_AC}{target}" + (f"?{query}" if query else "")
     log.info("legacy path %s -> %s", request.url.path, location)
     return RedirectResponse(location, status_code=HTTP_308_PERMANENT_REDIRECT)
 
 
 def _register(path: str) -> None:
-    async def handler(request: Request, _path: str = path) -> RedirectResponse:
-        return _redirect(request, _path)
+    # `path` is closed over, not a default argument: FastAPI exposes every
+    # handler parameter, so `_path: str = path` was a query parameter a caller
+    # could set to choose the redirect target.
+    async def handler(request: Request) -> RedirectResponse:
+        return _redirect(request, path)
 
     # Both verbs for every path: a GET-only route would answer a legacy POST
     # with 405, which is a less useful signal than a redirect.
@@ -74,6 +86,9 @@ for _path in MOVED:
 
 @router.api_route("/booths/{booth_uid}/card", methods=["GET"], include_in_schema=False)
 async def legacy_booth_card(booth_uid: str, request: Request) -> RedirectResponse:
+    # Pre-multi-AC uids were `B0042`; they are `32-B0042` now (0014).
+    if not booth_uid.startswith(f"{DEFAULT_AC}-"):
+        booth_uid = f"{DEFAULT_AC}-{booth_uid}"
     return _redirect(request, f"/booths/{booth_uid}/card")
 
 

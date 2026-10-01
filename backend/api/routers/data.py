@@ -254,34 +254,48 @@ def booths_geojson(
         clauses.append("b.area_id = %s")
         params.append(area_id)
 
-    # The metric columns live on mv_booth_priority, which is baseline-only by
-    # construction. Asking for a different election has to change which rows are
-    # joined, not just the label in the response.
-    if election_label:
-        clauses.append("p.election_label = %s")
-        params.append(election_label)
     where = " AND ".join(clauses)
 
+    # One election - the one asked for, else the baseline - and every join is
+    # to that election. Result figures come from mv_result_booth_wide, which
+    # has every election; the priority-only inputs come from mv_booth_priority,
+    # which is baseline-only and so is NULL for any other year (grey on the
+    # map, which is the honest answer). This used to filter on
+    # mv_booth_priority.election_label, so any non-baseline election returned
+    # no booths at all; and it joined booth_crosswalk on PS number with no
+    # election, so a booth appeared once per election that used its number.
     rows = query(
         f"""
+        WITH selected_election AS (
+            SELECT election_id, label FROM election
+            WHERE ac_id = %s AND (label = %s OR (%s::TEXT IS NULL AND is_baseline))
+        )
         SELECT b.booth_uid, b.ps_name_hi, b.building, b.village_or_locality,
                b.current_ps_number, b.geocode_conf,
                b.lon, b.lat,
                a.area_id, a.name_hi AS area_hi, a.name_en AS area_en, a.kind AS area_kind,
                a.block_id,
-               p.margin_pct, p.signed_margin_pct, p.turnout_pct, p.new_voter_pct,
-               p.priority_score, p.floating_pct, p.margin_stddev, p.electors,
-               p.winner_party, p.runner_party, p.election_label,
+               w.margin_pct, w.signed_margin_pct, w.turnout_pct, p.new_voter_pct,
+               p.priority_score, p.floating_pct, p.margin_stddev, w.electors,
+               w.winner_party, w.runner_party,
+               CASE WHEN w.booth_uid IS NOT NULL THEN sel.label END AS election_label,
                x.confidence AS crosswalk_confidence, x.reviewed AS crosswalk_reviewed
         FROM booth b
         JOIN area a ON a.area_id = b.area_id
+        LEFT JOIN selected_election sel ON true
+        LEFT JOIN mv_result_booth_wide w ON w.booth_uid = b.booth_uid
+                                        AND w.election_id = sel.election_id
         LEFT JOIN mv_booth_priority p ON p.booth_uid = b.booth_uid
-        LEFT JOIN booth_crosswalk x ON x.booth_uid = b.booth_uid
-                                   AND x.ps_number = b.current_ps_number
+                                     AND p.election_id = sel.election_id
+        LEFT JOIN LATERAL (
+            SELECT MIN(confidence) AS confidence, BOOL_AND(reviewed) AS reviewed
+            FROM booth_crosswalk
+            WHERE booth_uid = b.booth_uid AND election_id = sel.election_id
+        ) x ON true
         WHERE {where}
         ORDER BY b.booth_uid
         """,
-        params,
+        [ac.ac_id, election_label, election_label] + params,
     )
 
     features = []
@@ -354,8 +368,15 @@ def results_by_booth(election_label: str, user: CurrentUser, ac: CurrentAC,
         JOIN booth b ON b.booth_uid = w.booth_uid
         JOIN area a ON a.area_id = w.area_id
         JOIN block bl ON bl.block_id = a.block_id
-        LEFT JOIN booth_crosswalk x ON x.booth_uid = w.booth_uid
-                                   AND x.election_id = w.election_id
+        -- One row per booth: a merge maps several PS numbers to one booth in
+        -- the same election, and a plain join repeated the booth per number.
+        -- The weakest link and whether all of them are reviewed is what a
+        -- reader of the table needs.
+        LEFT JOIN LATERAL (
+            SELECT MIN(confidence) AS confidence, BOOL_AND(reviewed) AS reviewed
+            FROM booth_crosswalk
+            WHERE booth_uid = w.booth_uid AND election_id = w.election_id
+        ) x ON true
         WHERE {' AND '.join(clauses)}
         ORDER BY w.booth_uid
         """,

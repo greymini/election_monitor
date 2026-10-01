@@ -1,5 +1,6 @@
 ---
 slug: ls-vs-split-2024
+ac: 32
 topic: transfer
 title_en: The 2024 Lok Sabha / Vidhan Sabha split
 title_hi: 2024 लोकसभा बनाम विधानसभा का अंतर

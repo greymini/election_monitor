@@ -1,5 +1,6 @@
 ---
 slug: baseline-2024
+ac: 32
 topic: results
 title_en: VS-2024 baseline for AC-32 Giridih
 title_hi: गिरिडीह विधानसभा 2024 का आधार परिणाम

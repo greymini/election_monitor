@@ -422,8 +422,14 @@ def test_a_legacy_path_redirects_into_the_scoped_one(client, tokens, ids, endpoi
     assert response.status_code in {307, 308}, (
         f"{endpoint} returned {response.status_code}, not a redirect"
     )
-    location = response.headers.get("location", "")
-    assert location.startswith("/acs/"), f"{endpoint} redirected to {location!r}"
+    # Relative since the nginx /api prefix fix (tests/test_legacy_redirects.py):
+    # resolve it the way a browser does before checking where it lands.
+    from urllib.parse import urljoin, urlsplit
+
+    location = urljoin(f"http://testserver{path}", response.headers.get("location", ""))
+    assert urlsplit(location).path.startswith("/acs/"), f"{endpoint} redirected to {location!r}"
+    assert client.get(location, headers={"Authorization": f"Bearer {tokens['admin']}"}
+                      ).status_code < 500
 
 
 # ---------------------------------------------------------------------------

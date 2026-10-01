@@ -184,13 +184,15 @@ def tool_search_news(query: str, date_from: str | None = None, date_to: str | No
     return "\n\n".join(lines), False
 
 
-def tool_get_booth_card(booth_uid: str, **_) -> tuple[str, bool]:
-    from api.booth_card import build_booth_card
+def tool_get_booth_card(booth_uid: str, role: str = "strategist", **_) -> tuple[str, bool]:
+    import api.booth_card
 
     try:
-        card = build_booth_card(booth_uid)
+        # The dashboard hides community estimates from block users (deps.sees_caste);
+        # the assistant must not hand them over instead.
+        card = api.booth_card.build_booth_card(booth_uid, include_caste=role != "block")
     except LookupError:
-        return f"No booth {booth_uid!r}. Booth ids look like B0042.", True
+        return f"No booth {booth_uid!r}. Booth ids look like 32-B0042.", True
     except Exception as exc:
         log.warning("get_booth_card failed: %s", exc)
         return f"Could not build the booth card: {str(exc).splitlines()[0][:200]}", True
@@ -214,10 +216,20 @@ DISPATCH = {
 }
 
 
-def execute(name: str, arguments: dict) -> tuple[str, bool]:
+# Tools a block-level user may not call. run_sql reads caste_estimate and every
+# block, which the dashboard keeps from them (audit E2).
+BLOCKED_FOR_BLOCK_ROLE = {"run_sql"}
+
+
+def execute(name: str, arguments: dict, role: str = "strategist") -> tuple[str, bool]:
     fn = DISPATCH.get(name)
     if fn is None:
         return f"Unknown tool {name!r}.", True
+    if role == "block" and name in BLOCKED_FOR_BLOCK_ROLE:
+        return (f"{name} is not available to block-level users. Use the booth card or "
+                f"the news search instead."), True
+    if name == "get_booth_card":
+        arguments = {**(arguments or {}), "role": role}
     try:
         return fn(**(arguments or {}))
     except TypeError as exc:

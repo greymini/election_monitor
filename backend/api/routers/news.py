@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
 from api.deps import CurrentAC, CurrentUser
-from common.db import execute, query
+from common.db import execute, query, query_one
 from common.logging_setup import get_logger
 from common.pii import PiiRejected, screen
 
@@ -37,7 +37,7 @@ def news_list(user: CurrentUser, ac: CurrentAC, q: str | None = None,
     one the crawl still works but nothing is ever labelled, and the page was
     permanently empty with no explanation - the filter on labelled_at looked
     like "no news" rather than "no key". Unlabelled items are keyword-tagged to
-    an AC and the UI marks them as such.
+    an AC by the crawl (news.crawl_rss.tag_acs) and the UI marks them as such.
     """
     clauses, params = ["ac_ids @> ARRAY[%s]::INT[]"], [ac.ac_id]
     if not include_unlabelled:
@@ -102,15 +102,17 @@ def issue_clusters(user: CurrentUser, ac: CurrentAC,
         "by_week": query(
             "SELECT date_trunc('week', published)::date AS week, COUNT(*) AS items "
             "FROM news_item WHERE published >= %s AND labelled_at IS NOT NULL "
+            "  AND ac_ids @> ARRAY[%s]::INT[] "
             "GROUP BY week ORDER BY week",
-            (since,),
+            (since, ac.ac_id),
         ),
         "by_party": query(
             "SELECT party, COUNT(*) AS mentions "
             "FROM news_item, UNNEST(parties) AS party "
             "WHERE published >= %s AND labelled_at IS NOT NULL "
+            "  AND ac_ids @> ARRAY[%s]::INT[] "
             "GROUP BY party ORDER BY mentions DESC",
-            (since,),
+            (since, ac.ac_id),
         ),
     }
 
@@ -139,6 +141,23 @@ def create_ground_report(body: GroundReport, user: CurrentUser, ac: CurrentAC) -
         screen(body.text, field="report")
     except PiiRejected as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from None
+
+    # The booth or area must be in this AC, and in the reporter's own block for
+    # a block user. Unchecked, an unknown uid hit the foreign key (a 500) and a
+    # valid uid from another AC or block was stored against this one.
+    target = None
+    if body.booth_uid:
+        target = query_one("SELECT b.ac_id, a.block_id FROM booth b "
+                           "JOIN area a ON a.area_id = b.area_id WHERE b.booth_uid = %s",
+                           (body.booth_uid,))
+    elif body.area_id is not None:
+        target = query_one("SELECT ac_id, block_id FROM area WHERE area_id = %s",
+                           (body.area_id,))
+    if (body.booth_uid or body.area_id is not None) and (
+            target is None or target["ac_id"] != ac.ac_id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such booth or area in this constituency")
+    if target is not None and user.role == "block" and target["block_id"] != user.block_id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "That booth is outside your block")
 
     execute(
         "INSERT INTO ground_report (ac_id, booth_uid, area_id, reporter_id, text, issues, "

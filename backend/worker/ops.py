@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import gzip
 import json
+import os
 import shutil
 import subprocess
 from datetime import date, datetime, timedelta
@@ -31,9 +32,18 @@ def backup() -> dict:
     if shutil.which("pg_dump") is None:
         raise RuntimeError("pg_dump not found - it ships in the worker image (postgresql-client)")
 
+    # The password goes in PGPASSWORD, not on the command line, where any user
+    # on the host could read it from `ps` for the length of the dump (G2).
+    from psycopg.conninfo import conninfo_to_dict, make_conninfo
+
+    params = conninfo_to_dict(settings.database_url)
+    password = params.pop("password", None)
+    env = dict(os.environ)
+    if password:
+        env["PGPASSWORD"] = str(password)
     dump = subprocess.run(
-        ["pg_dump", "--no-owner", "--no-acl", settings.database_url],
-        capture_output=True, timeout=1800,
+        ["pg_dump", "--no-owner", "--no-acl", "--dbname", make_conninfo(**params)],
+        capture_output=True, timeout=1800, env=env,
     )
     if dump.returncode != 0:
         raise RuntimeError(f"pg_dump failed: {dump.stderr.decode(errors='replace')[:500]}")

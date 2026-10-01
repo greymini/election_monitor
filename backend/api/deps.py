@@ -163,10 +163,16 @@ def current_user(
     except JWTError as exc:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired token") from exc
 
+    try:
+        user_id = int(payload.get("sub", 0))
+    except (TypeError, ValueError):
+        # A well-signed token with a malformed subject is still not a session;
+        # int() raising here was a 500.
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid token subject") from None
     row = query_one(
         "SELECT user_id, name, role, block_id, daily_token_budget FROM app_user "
         "WHERE user_id = %s AND is_active",
-        (int(payload.get("sub", 0)),),
+        (user_id,),
     )
     if row is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User not found or disabled")

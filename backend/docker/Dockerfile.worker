@@ -19,11 +19,18 @@ RUN pip install --no-cache-dir -r requirements-worker.txt
 COPY common ./common
 COPY ingest ./ingest
 COPY news ./news
+# news/label_batch.py and label_collect.py use chatbot.llm and chatbot.budget;
+# without this both labelling jobs died with ModuleNotFoundError.
+COPY chatbot ./chatbot
 COPY analytics ./analytics
 COPY worker ./worker
 COPY db ./db
 
-RUN useradd --create-home --uid 10002 worker && mkdir -p /models /data && chown -R worker /app /models /data
+# The volume mount points must exist, owned by the worker, before the volumes
+# are attached: otherwise Docker creates them as root and every write fails (A3).
+RUN useradd --create-home --uid 10002 worker \
+    && mkdir -p /models /data/raw /data/ocr /data/backups \
+    && chown -R worker /app /models /data
 USER worker
 
 CMD ["python", "-m", "worker.scheduler"]

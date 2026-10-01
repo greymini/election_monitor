@@ -109,7 +109,7 @@ def ask(question: str, history: list[dict] | None = None, user_id: int | None = 
             if getattr(block, "type", "") != "tool_use":
                 continue
             t0 = time.perf_counter()
-            result, is_error = tool_mod.execute(block.name, dict(block.input or {}))
+            result, is_error = tool_mod.execute(block.name, dict(block.input or {}), role=role)
             elapsed = time.perf_counter() - t0
 
             answer.tool_calls.append(ToolCall(block.name, dict(block.input or {}),

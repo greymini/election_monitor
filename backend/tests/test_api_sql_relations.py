@@ -63,6 +63,8 @@ KNOWN_NON_RELATIONS = {
     # From the N5 fix: /summary ranks candidates now rather than a hardcoded
     # eight-party pivot, and the ranking reads this CTE.
     "candidate_totals",
+    # GET /booths: the one election every join is to (requested, else baseline).
+    "selected_election",
     # `INSERT ... ON CONFLICT DO UPDATE SET` puts SET where a table name
     # would otherwise be.
     "set",
