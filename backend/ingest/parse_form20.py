@@ -514,7 +514,7 @@ def candidate_ids_for(resolutions: list[resolve_mod.Resolution], election_id: in
 
 def load(doc: Form20Document, election_id: int, ac_id: int,
          candidate_ids: list[int], nota_id: int | None = None,
-         replace: bool = False) -> int:
+         replace: bool = False, cur=None) -> int:
     """Load a validated document. The whole thing in one transaction (C5).
 
     It was three before: one connection for the election lookup, a second inside
@@ -530,45 +530,55 @@ def load(doc: Form20Document, election_id: int, ac_id: int,
     current schema. Nothing caught that, because until now no test or command in
     this repo had ever reached a database.
     """
+    if cur is not None:
+        # The caller owns the transaction (ingest/load_form20_tables.py writes
+        # booths, candidates and published totals in the same one).
+        return _write_rows(cur, doc, election_id, ac_id, candidate_ids, nota_id, replace)
+
     from common.db import connection
 
-    with connection() as conn, conn.cursor() as cur:
-        if replace:
-            cur.execute("DELETE FROM result_booth WHERE election_id = %s", (election_id,))
-            cur.execute("DELETE FROM result_booth_meta WHERE election_id = %s", (election_id,))
+    with connection() as conn, conn.cursor() as cursor:
+        return _write_rows(cursor, doc, election_id, ac_id, candidate_ids, nota_id, replace)
 
-        for r in doc.rows:
-            # strict=True: every candidate column must get a value. Rows are
-            # padded at parse time, so a mismatch here means a real defect.
-            for cid, votes in zip(candidate_ids, r.votes, strict=True):
-                cur.execute(
-                    "INSERT INTO result_booth (election_id, ac_id, ps_number, candidate_id, votes) "
-                    "VALUES (%s, %s, %s, %s, %s) "
-                    "ON CONFLICT (election_id, ps_number, candidate_id) DO UPDATE "
-                    "SET votes = EXCLUDED.votes",
-                    (election_id, ac_id, r.ps_number, cid, votes),
-                )
-            # NOTA as a candidate row, so it is inside valid_votes (D1/N7).
-            if nota_id is not None and r.nota is not None:
-                cur.execute(
-                    "INSERT INTO result_booth (election_id, ac_id, ps_number, candidate_id, votes) "
-                    "VALUES (%s, %s, %s, %s, %s) "
-                    "ON CONFLICT (election_id, ps_number, candidate_id) DO UPDATE "
-                    "SET votes = EXCLUDED.votes",
-                    (election_id, ac_id, r.ps_number, nota_id, r.nota),
-                )
+
+def _write_rows(cur, doc: Form20Document, election_id: int, ac_id: int,
+                candidate_ids: list[int], nota_id: int | None, replace: bool) -> int:
+    if replace:
+        cur.execute("DELETE FROM result_booth WHERE election_id = %s", (election_id,))
+        cur.execute("DELETE FROM result_booth_meta WHERE election_id = %s", (election_id,))
+
+    for r in doc.rows:
+        # strict=True: every candidate column must get a value. Rows are
+        # padded at parse time, so a mismatch here means a real defect.
+        for cid, votes in zip(candidate_ids, r.votes, strict=True):
             cur.execute(
-                "INSERT INTO result_booth_meta (election_id, ac_id, ps_number, total_valid, "
-                "nota, rejected, tendered, source_doc, source_page) "
-                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) "
-                "ON CONFLICT (election_id, ps_number) DO UPDATE SET "
-                "total_valid = EXCLUDED.total_valid, nota = EXCLUDED.nota, "
-                "rejected = EXCLUDED.rejected, tendered = EXCLUDED.tendered, "
-                "source_doc = EXCLUDED.source_doc, source_page = EXCLUDED.source_page, "
-                "loaded_at = now()",
-                (election_id, ac_id, r.ps_number, r.total_valid, r.nota, r.rejected,
-                 r.tendered, doc.source_doc, r.page_no),
+                "INSERT INTO result_booth (election_id, ac_id, ps_number, candidate_id, votes) "
+                "VALUES (%s, %s, %s, %s, %s) "
+                "ON CONFLICT (election_id, ps_number, candidate_id) DO UPDATE "
+                "SET votes = EXCLUDED.votes",
+                (election_id, ac_id, r.ps_number, cid, votes),
             )
+        # NOTA as a candidate row, so it is inside valid_votes (D1/N7).
+        if nota_id is not None and r.nota is not None:
+            cur.execute(
+                "INSERT INTO result_booth (election_id, ac_id, ps_number, candidate_id, votes) "
+                "VALUES (%s, %s, %s, %s, %s) "
+                "ON CONFLICT (election_id, ps_number, candidate_id) DO UPDATE "
+                "SET votes = EXCLUDED.votes",
+                (election_id, ac_id, r.ps_number, nota_id, r.nota),
+            )
+        cur.execute(
+            "INSERT INTO result_booth_meta (election_id, ac_id, ps_number, total_valid, "
+            "nota, rejected, tendered, source_doc, source_page) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) "
+            "ON CONFLICT (election_id, ps_number) DO UPDATE SET "
+            "total_valid = EXCLUDED.total_valid, nota = EXCLUDED.nota, "
+            "rejected = EXCLUDED.rejected, tendered = EXCLUDED.tendered, "
+            "source_doc = EXCLUDED.source_doc, source_page = EXCLUDED.source_page, "
+            "loaded_at = now()",
+            (election_id, ac_id, r.ps_number, r.total_valid, r.nota, r.rejected,
+             r.tendered, doc.source_doc, r.page_no),
+        )
     return len(doc.rows)
 
 
