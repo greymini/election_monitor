@@ -203,16 +203,61 @@ Scrapers · Scenario · Performance.
 
 ---
 
+## 4A. What this session actually established
+
+Written at the end of the session, because the single most useful thing to carry forward is
+not what was built but what turned out to be untrue.
+
+**Nothing in this project had ever been executed.** Not one migration had been applied, no
+SQL test had run, no API query had touched a schema, and no page had been opened in a
+browser. Every green tick up to this point came from static checks: `lint_sql.py`, which says
+in its own output that it "does not prove the SQL applies"; `ruff`; a type-check; and unit
+tests over pure functions. The work of this session was mostly removing the obstacles to
+running things, and then reading what fell out.
+
+What was blocking it, and what it cost:
+
+| Blocker | Removed by | What it had been hiding |
+|---|---|---|
+| Migration `0001` required PostGIS, `pg_trgm` and `unaccent`; no pip-installable Postgres has them | N4 — two were never used, and PostGIS was a round trip to recover the longitude and latitude written into a geometry column | `0015_metrics.sql` could not be applied **at all**: it selected `l.ac_id` from a table with no such column. The first `apply_migrations` run against any database would have stopped there. |
+| No API query had ever run against a schema | `tests/e2e/test_api_routes_run.py` | N7 and N11: `GET /summary` and `GET /caste` each named columns that do not exist — a 500 on the landing page and on the caste page, on every request. |
+| Nothing had ever created a user or logged in | the same test, which needed a session | N12: `hash_password` raised for **every** password at any length. `passlib` was pinned, `bcrypt` was not, and pip resolved a version passlib cannot read. Nobody could be created and nobody could log in. |
+| No page had been opened in a browser | Playwright on Edge, Chromium having refused to download | N14, a direct navigation to `/admin` redirecting to the Overview; N15, a fabricated priority score; and the stale fixture counts that prompted this work. |
+
+Three habits that paid, worth keeping:
+
+1. **A skipped test is not a passing test.** `tests/e2e/test_api_routes_run.py` reported 14
+   passes on its first run while checking nothing, because its auth helper assumed email
+   login where the app uses phone, and every test skipped. Thirteen of the fourteen view
+   tests had been reporting "skipped" for the same reason for the whole project.
+2. **Guards must read code, not prose.** Four of the section 3 guards failed on their first
+   run by matching the comments that explained the fixes. They strip comments now.
+3. **Counts in a document rot.** The health cards reported 8 booths after the fixture became
+   305 because they were literals; the ledger header in this file was once written from
+   memory and was wrong by six. Both are now computed from their source.
+
+---
+
 ## 5. Audit ID ledger — all 70 findings
 
 Every ID in `AUDIT_REPORT.md`, with its status now. `fixed` carries the commit that
 closed it. Real Form 20 loading is deferred and will be mocked, so nothing here is
 blocked on obtaining a document.
 
-**Of the 70 lettered findings: 32 fixed · 9 partial · 29 open.** Of the 29 open, 5 are deployment items the
-operator has scoped out, 8 are ops work not yet started, and 4 are proposed deferrals —
-leaving 12 that this batch closes. Section H adds 9 testing items: 3 fixed, 2 partial,
-4 open. Three findings from this batch that are not audit IDs are listed as N1–N3 below.
+**Of the 70 lettered findings: 33 fixed · 9 partial · 28 open.** Of the 28 open, 5 are deployment
+items the operator has scoped out, 8 are ops work not yet started, and 4 are proposed deferrals.
+Section H adds 9 testing items: **5 fixed, 4 open** — H.1 and H.9 moved from partial to fixed once
+the schema could be applied and the SQL actually ran.
+
+Beyond the audit, **15 findings came out of this work and are listed as N1–N15 below: 13 fixed, 2
+open.** They are not a separate category of seriousness — N12 (nobody could log in) and N7 and N11
+(two endpoints that returned 500 on every request) are as severe as anything the audit found. They
+are listed apart only because the audit did not name them, and every one of them was invisible
+until something was actually executed: a migration applied, a query run against a real schema, a
+page opened in a browser.
+
+Every count above is recomputed from the table rows rather than written by hand. An earlier
+revision of this header was written from memory and was wrong by six.
 
 ### A · Structure and build (12)
 
@@ -350,18 +395,23 @@ Not audit IDs — found while doing the work, recorded so they are not lost.
 | N9 | Fixture data was in the production bundle: a static import put the module in the graph before the `VITE_FIXTURES` branch could fold away, taking the main chunk from 123 kB to 319 kB. | **fixed** `b6e9af6` — a dynamic `import()` inside the branch. Production main chunk **113 kB with no fixture chunk at all**; fixture mode gets a separate 227 kB chunk on demand. |
 | N8 | Two fixtures disagreed about Giridih 2024's valid votes — the frontend's 207,598 against `metric_cases`'s 207,459 — with no test able to notice, because both round the margin to the published 1.85%. | **fixed** `b6a3e66` — one source, `fixtures/giridih.py`, which `scripts/generate_fixtures.py` emits the frontend's copy from and `tests/metric_cases.py` imports. 207,598 chosen; still unverified against a document, and a `--check` test fails if the generated file drifts. |
 | N7 | `GET /summary` selected `w.votes_counted` and `w.total_valid`, which do not exist on the rebuilt `mv_result_booth_wide` — a live 500 on the landing page, invisible because no test had ever run an API query against a real schema. | **fixed** `3a2bb14` — mapped to `votes_polled`/`valid_votes`; `votes_counted` also excluded NOTA and so understated the turnout numerator. The systematic guard is section 2's per-route test. |
-| N6 | `check_privacy_database` enumerates text and jsonb columns from `information_schema.columns`, which in PostgreSQL **excludes materialized views**. The 14 matviews are denormalised copies of everything the system holds, and none is scanned. | **open** — the scan must read `pg_attribute` for `relkind IN ('r','m','v')`. Found while debugging a probe that returned no columns for a matview. |
-| N5 | `GET /summary` picks the winner from a hardcoded eight-party `VALUES` pivot, so a party outside that set is summed into `others` and can be returned as the winning party OTHERS. Same bucketing as D3 and N2, third occurrence, third grain. | **open** — belongs with item 9's full candidate lists, alongside N2's AC-grain fix. |
+| N6 | `check_privacy_database` enumerated text and jsonb columns from `information_schema.columns`, which in PostgreSQL **excludes materialized views**. The 14 matviews are denormalised copies of everything the system holds, and none was scanned for personal data. | **fixed** `b6a3e66` — reads `pg_attribute`/`pg_class` for `relkind IN ('r','p','m','v')`. Found while debugging a probe that returned no columns for a matview. |
+| N5 | `GET /summary` picked the winner from a hardcoded eight-party `VALUES` pivot, so a party outside that set was summed into `others` and could be returned as the winning party OTHERS. Same bucketing as D3 and N2, third occurrence, third grain. | **fixed** `b6a3e66` — ranks candidates from `mv_result_booth_candidate` on the `contestant` key, and returns the winning candidate's name beside the party. An e2e test asserts the winner is never OTHERS. |
 | N4 | The schema could not be applied without PostGIS, `pg_trgm` and `unaccent`, so no SQL test had ever been executed. `pg_trgm` and `unaccent` were created and never used; PostGIS was doing a round trip to recover the longitude and latitude written into a geometry column. | **fixed** `6d40566` — `0002` stores `lon`/`lat` doubles and GeoJSON in `jsonb`; `0001` creates only `vector`. All 17 migrations now apply on a stock PostgreSQL 16 (50 tables, 14 matviews, 15 functions). Conflicts with LLD §6.4, recorded in D-006 rather than resolved unilaterally. |
-| N3 | `mv_swing_vanished` applied no crosswalk or lineage gate at all, so a vanished party's collapse was reported even at booths too weakly matched to carry the surviving parties' swings — the two halves of one swing table disagreeing about whether the comparison was admissible. | **fixed** — both halves now call `metric_comparison_allowed` |
+| N3 | `mv_swing_vanished` applied no crosswalk or lineage gate at all, so a vanished party's collapse was reported even at booths too weakly matched to carry the surviving parties' swings — the two halves of one swing table disagreeing about whether the comparison was admissible. | **fixed** `ed0a52a` — both halves now call `metric_comparison_allowed` |
 
-### What the 29 open lettered items are, grouped
+### What the 28 open lettered items are, grouped
 
-- **This batch will close:** A1, B1, B4, B5, C4, C5, C6, C7, C8, C9, C12, C15, C17, E4, H.3, H.4, H.6, H.7 — plus the parity test and mock generator, which are new work rather than audit IDs.
+- **Still to do in the current plan:** B1, B4, B5, C4, C5, C6, C7, C8, C9, C12, C15, C17, E4, H.3, H.4, H.6, H.7. A1 and H.1 closed this session.
 - **Deployment, scoped out by the operator:** A2, A3, A4, A10, G1.
 - **Ops, not yet started:** A8, A9, A11, G2, G3, G4, G5, G6.
 - **Proposed deferrals:** B7, E6, E7, F6.
 - **Blocked on other work:** B8 (needs Census/survey loaders, Track B), E2 (chatbot is parked and not to be touched), F5 (trivial, bundled with A8).
+
+### The two open N findings
+
+- **N10 — no panchayats are seeded for any AC.** `db/seed/areas_panchayats.csv` is header-only for all six, so the area filter only ever offers Giridih's 36 wards and the two rural blocks have no areas at all: a booth loaded into one has nowhere to sit. Belongs with the complete per-AC seeds.
+- **N13 — the AC is not in the frontend URL.** Routes are top-level (`/map`, `/booths`) with the constituency held in the switcher, so `/acs/32/booths?sort=margin` does not load that view. `FRONTEND_HARDENING.md` section 4 requires that it does.
 
 ---
 
@@ -414,6 +464,7 @@ Not audit IDs — found while doing the work, recorded so they are not lost.
 | 30 Sep 2026 | `32a96f0` | **N1 and N2 closed.** A missing crosswalk link now means "cannot compare" in Python too and cannot be omitted (`TypeError`); `mv_ac_summary` ranks candidates on the booth view's `contestant` key instead of bucketing independents into one party row. 669 to 677 tests. |
 | 30 Sep 2026 | `1430f7c` | **Item 2: A1 and the first real SQL run.** `docker/Dockerfile.db` gives PostGIS + pgvector and fails the build if any of 0001's four extensions is missing (written, **never built** - no Docker). `pgserver` made the generated metric functions executable without Docker: **82 tests RUN and passing** against a real PostgreSQL 16 - the item 1 SQL had never run before this. The 93 e2e view tests and the DB privacy scan stay NOT RUN; they need the full schema, so PostGIS. N4 recorded. 677 to 759 tests. |
 | 30 Sep 2026 | `6d40566` | **N4 closed, and the schema applied for the first time.** PostGIS, pg_trgm and unaccent dropped as requirements (the latter two were never used); `lon`/`lat` doubles and GeoJSON `jsonb` replace the geometry columns. All 17 migrations apply on a stock PostgreSQL 16. Two defects surfaced at once: `0015` could not be applied at all, and 13 of 14 view tests shared a self-colliding fixture. A1 and H.1 closed. 759/94 to **849 passed / 4 skipped**. Conflicts with LLD 6.4 - see D-006. |
+| 1 Oct 2026 | `79b59ce` | **LLD amended for D-006**, operator-signed. The design text is left as written and an Amendments section says what was built instead and which is authoritative. `FRONTEND_HARDENING.md` committed at `44b113c`. |
 | 30 Sep 2026 | `3a2bb14` | **FRONTEND_HARDENING section 3: the 14 fixes.** The `{{count}}` interpolation, date language, `p?` provenance, the margin sentence, wrapping CLI commands, plurals, the platform name, grouped nav, the theme button; CARTO removed for env-driven tiles with an OSM default and a failure fallback, a party-coloured ramp, `fitBounds`, the grey legend entry, filter grammar. 23 static guards. N5–N8 recorded. 849 to 872 tests. |
 | 30 Sep 2026 | `b6a3e66` | **fix(ui): the ten reported screen defects.** Drawer portalled, scroll-locked and above Leaflet; legend labelled; commands truncated; i18n verified through real i18next; **305-booth fixture from one source** shared with the metric tests (N8 closed); N5 and N6 fixed. Three found while verifying: **N12, nobody could log in** (passlib/bcrypt), N11 a second dead endpoint, N10 no panchayats seeded anywhere. 872 to 913 tests. |
 | 1 Oct 2026 | `b6e9af6` | **fix(ui): Overview reworked.** Health counts derived from the 305-booth source (they were literals); data operations moved to Admin; margin card restructured; captions name the real source; five analytical sections. N9 closed - production main chunk 319 to 113 kB with no fixture chunk. **Playwright on Edge: 42/42 pass**, and found N14 (`/admin` redirected home) and N15 (a fabricated priority score). |

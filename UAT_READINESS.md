@@ -1,17 +1,35 @@
 # UAT_READINESS.md
 
-**NOT READY — interim report, 30 Sep 2026.** Done: version control and A7, the
-deployment-topology work, E1, the multi-AC spine, the whole of master prompt §3, the
-dashboard against fixtures, and C3/C13/E5. Not done: A1 (PostGIS image), E4 (login rate
-limit), A3, the UAT scaffolding (A-4), and **no Form 20 has ever been loaded**, so no
-booth-level figure in this system has been produced from a real document. Giridih has **not** been run on a real Form 20 — no Form 20
-PDF is present in `raw/` and the parser defects C1/C2 that would block the load are still
-open.
+**NOT READY — interim report, 1 Oct 2026.**
 
-**No database and no Docker were available in the build environment**, so every check whose
-proof requires a running stack is recorded below as `NOT VERIFIED HERE` with the command the
-UAT operator must run. Nothing in this file is marked PASS unless a command or test that I
-ran produced the evidence quoted. See `DECISIONS.md` D-002.
+**What changed since the last revision, and it is the important part: things started
+running.** The schema had never once been applied anywhere; no SQL test, no API query and no
+page had ever been executed. N4 removed the PostGIS, `pg_trgm` and `unaccent` requirements —
+two of which were created and never used — so all 17 migrations now apply on a stock
+PostgreSQL 16 with pgvector, which `pgserver` provides over pip with no Docker and no
+administrator. Playwright drives the installed Microsoft Edge, since its own Chromium will
+not download here. The suite went from 759 passed / 94 skipped to **913 passed / 4 skipped**,
+plus **42 browser specs**, and nothing is skipped for want of an environment any more.
+
+**Running them found eleven defects that review had not**, now N5–N15 in `PROGRESS.md`. The
+three worth naming here: **nobody could log in** — `hash_password` raised for every password
+at any length, because `passlib` was pinned and `bcrypt` was not; and **two endpoints
+returned 500 on every request**, `GET /summary` and `GET /caste`, each naming columns that do
+not exist. Every one of them was invisible to inspection and obvious the moment something
+executed.
+
+**Still not done.** E4 (login rate limit), A3, the UAT scaffolding (A-4), and the local dev
+stack. Most importantly: **no Form 20 has ever been loaded.** Every booth-level figure in
+this system is generated — reconciled to the published constituency totals, and invented. No
+figure here is evidence of anything about Giridih, and the parser defects C1/C2 that would
+block a real load are still open.
+
+**Docker is still unavailable**, so `docker compose build` has never run; that now blocks
+only the image itself rather than the whole test suite. Nothing in this file is marked PASS
+unless a command or test that I ran produced the evidence quoted, and the two things that
+cannot be run here — the Docker build, and the database privacy scan, which would report a
+false PASS over an empty schema — say so rather than being left to look finished. See
+`DECISIONS.md` D-002 and D-006.
 
 > This report is itself an output of the system and must be reviewed by a human for accuracy
 > and completeness before it is relied on.
@@ -115,11 +133,13 @@ There are two implementations that must agree, so there are four suites.
 
 | Suite | What it checks | Status |
 |---|---|---|
-| `tests/test_metrics.py` (60 tests) | `analytics/metrics.py` against hand-computed fixtures: every row of §3.2, every NULL rule in it, and the specific audit finding each rule prevents | **RUN — 60 passed** |
-| `tests/test_metric_parity.py` (87 tests) | the Python side against the shared hand-computed cases; that `0015_metrics.sql`'s generated block matches `analytics/metric_sql.py`; and that no view restates a formula, weight or threshold that belongs to a generated function | **RUN — 82 passed** |
+| `tests/test_metrics.py` (63 tests) | `analytics/metrics.py` against hand-computed fixtures: every row of §3.2, every NULL rule in it, and the specific audit finding each rule prevents | **RUN — 63 passed** |
+| `tests/test_metric_parity.py` (87 tests) | the Python side against the shared hand-computed cases; that `0015_metrics.sql`'s generated block matches `analytics/metric_sql.py`; and that no view restates a formula, weight or threshold that belongs to a generated function | **RUN — 87 passed** |
 | `tests/test_metric_functions_sql.py` (82 tests) | the generated metric functions **executed in a real PostgreSQL 16**, started in-process by `pgserver` with only the function block applied: every §3.2 metric three ways — hand-computed, Python, SQL — plus IMMUTABLE and COMMENT in the catalogue, and argument resolution at the types the views pass | **RUN — 82 passed** |
 | `tests/e2e/test_metrics_sql.py` (14 tests) | the same fixtures through the **views** in `db/migrations/0015_metrics.sql` | **RUN — 14 passed** |
-| `tests/e2e/test_metric_parity_sql.py` (79 tests) | the cases again against the full schema, plus a row-by-row recomputation of `mv_result_booth_wide` and the N2 check that the AC winner equals the booth-table sum | **RUN — 76 passed, 3 skipped** (the 3 need booth results the seed does not load — items 8 and 9, not an environment gap) |
+| `tests/e2e/test_metric_parity_sql.py` (79 tests) | the cases again against the full schema, plus a row-by-row recomputation of `mv_result_booth_wide` and the N2 check that the AC winner equals the booth-table sum | **RUN — 76 passed, 3 skipped** (the 3 need booth results the seed does not load — a data gap, not an environment one) |
+| `tests/e2e/test_api_routes_run.py` (14 tests) | every read route executed against the real schema, for a real logged-in user: no 5xx, the response shape present, and no number reported where nothing is loaded | **RUN — 14 passed.** Found N7 and N11, two endpoints that returned 500 on every request, and N12, which meant nobody could log in at all |
+| `tests/test_fixture_parity.py` (24 tests) | that the frontend fixture and `tests/metric_cases.py` come from one source and have not drifted; that 305 booths of 800–1,500 electors reconcile exactly to the published AC totals; and that the derived metrics are the product's own, not the fixture's arithmetic | **RUN — 24 passed** |
 
 ### The schema has now been applied, and everything runs
 
@@ -147,7 +167,7 @@ having done it:
   shared dataset and did not remove it, so the AC-summary count assertion read 4 where
   the fixture builds 3. Both were invisible while the suite reported "skipped".
 
-Suite: **759 passed / 94 skipped → 849 passed / 4 skipped.** The remaining 4 are data
+Suite: **759 passed / 94 skipped → 913 passed / 4 skipped.** The remaining 4 are data
 gaps, not environment gaps, and each names what would close it.
 
 ### What changed in item 2, and what did not
@@ -172,7 +192,7 @@ The wiring is now verified too, by the e2e suites above — which as of N4 need 
 Docker. Run everything with:
 
 ```bash
-pytest tests/ -q              # expect 849 passed, 4 skipped
+pytest tests/ -q              # expect 913 passed, 4 skipped
 ```
 
 To run against the real image instead of the in-process server — the only way to
@@ -236,7 +256,7 @@ the privacy test exercised the parser functions in isolation.
 | No finding echoes the matched value | **PASS** — asserted |
 | Roll load refuses on a dirty disk | **PASS** — exits 3 |
 | Free-text ingress screened (E5) | **PASS** — `/ground-reports` returns 422 |
-| **Database scan against a real database** | **NOT RUN, but no longer blocked.** The schema applies now (N4), so this is runnable for the first time; it has not been wired into the suite yet. Note it will scan an empty database until a load happens, and an empty scan reporting PASS is a false pass — so it needs to run *after* the mock Form 20 load of item 8 to mean anything. The filesystem half runs here and passes. |
+| **Database scan against a real database** | **NOT RUN, and deliberately not claimed.** The schema applies now (N4) so it is runnable for the first time, and N6 fixed a real hole in it — it read `information_schema.columns`, which excludes materialized views, so the 14 matviews were never scanned. But it would scan an empty database until a load happens, and an empty scan reporting PASS is a false pass. It has to run *after* the mock Form 20 load to mean anything. The filesystem half runs here and passes. |
 
 **No roll has been loaded, and none should be until an operator runs** `python -m
 ingest.validate --privacy` **on the target host and it exits zero.** The load now
@@ -363,11 +383,11 @@ Two audit claims the auditor could not execute, now verified empirically:
 
 | Gate | Latest result |
 |---|---|
-| `pytest -q` | **849 passed, 4 skipped** (was 96 at baseline) |
+| `pytest -q` | **913 passed, 4 skipped** (was 96 at baseline) |
 | `ruff check .` | **clean** |
 | `python scripts/lint_sql.py` | **17 migrations, no problems**. Verified against deliberately broken input: it catches transaction control inside a migration and a reference to a relation no earlier migration creates. |
 | `npm run build` | **clean** |
-| `docker compose build` | **NOT RUN — Docker not installed, no rights to install it.** `docker/Dockerfile.db` (A1) is therefore written and reviewed but never built; its build-time check that all four extensions are present has never executed. |
+| `docker compose build` | **NOT RUN — Docker not installed, no rights to install it.** `docker/Dockerfile.db` is written and reviewed but never built. It matters less than it did: N4 removed the PostGIS requirement, so the schema now applies on a stock PostgreSQL 16 with pgvector and every SQL test runs without Docker. The image remains the only way to exercise PostGIS, should a spatial query ever be added. |
 
 Of the 4 skipped: 3 need booth results the seed does not load (items 8 and 9) and one
 is `Login`, exempted from the "every page fetches from the API" check because it posts
