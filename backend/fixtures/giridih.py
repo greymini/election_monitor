@@ -3,30 +3,30 @@
 **Why this module exists.** There were two fixtures: eight hand-written booths in
 `web/src/fixtures/index.ts` for the frontend, and a handful of constants in
 `tests/metric_cases.py` for the metric tests. They disagreed about the
-constituency's valid votes - 207,598 against 207,459 - and neither was wrong
-enough to fail a test, because both round the published margin to 1.85%. That was
-finding N8. Two fixtures cannot be kept in step by intention; they have to be
-generated from one thing, which is this.
+constituency's valid votes, and neither was wrong enough to fail a test (finding
+N8). Two fixtures cannot be kept in step by intention; they are generated from
+this one.
 
-`scripts/generate_fixtures.py` emits `web/src/fixtures/generated.ts` from here,
-and `tests/metric_cases.py` imports from here. A test asserts the generated
-TypeScript matches what this module produces, so editing one side and forgetting
-the other fails rather than drifts - the same arrangement as
-`analytics/metric_sql.py` and the metrics migration.
+`scripts/generate_fixtures.py` emits `frontend/src/fixtures/generated.ts` from
+here, and `tests/metric_cases.py` imports from here. A test asserts the generated
+TypeScript matches what this module produces.
 
-**What is real and what is not.** The AC totals below are the published Giridih
-2024 figures. Everything per-booth is *invented*, deterministically, to add up to
-them. A booth-level number from this module is not evidence of anything: no Form
-20 has been parsed. The generated banner says so on every page, and every booth
-name is unmistakably synthetic for the same reason.
+**What is real and what is not.** Since the real Form 20 load:
 
-**On area names.** The 36 wards are the real ones, read from
-`db/seed/areas_wards.csv` so they cannot drift from the seed. The rural areas are
-*not* real: `db/seed/areas_panchayats.csv` is header-only for all six ACs, so
-this system does not know the real panchayat names for any of them (finding N9).
-Rather than invent Jharkhand place names - which the master prompt forbids, and
-which would be indistinguishable from real data once loaded - the rural areas are
-named "Fixture Panchayat NN". When the real list is seeded, replace them here.
+* **Real** (ECI Form 20, `db/seed/form20/`, read by `ingest.form20_tables`):
+  every vote at all 367 polling stations for VS-2024 and VS-2019, each
+  candidate by name, postal ballots, rejected and tendered votes, the printed
+  page of each row, and the 2019 -> 2024 station mapping (PS numbering is
+  stable; the evidence is in `ingest/load_form20_tables.py`).
+* **Synthetic, and labelled so:** each booth's electorate (the published AC
+  total of 304,898, apportioned), its map position, its ward or panchayat,
+  its building name, roll additions, floating vote and volatility. No PS list
+  or roll is loaded, so none of these is known for a real station. The
+  fixture banner says so on every page.
+
+The 36 wards are the real ones from `db/seed/areas_wards.csv`; the rural areas
+are named "Fixture Panchayat NN" because the real panchayat list is not seeded
+(finding N9), and assigning a real station to a ward is itself synthetic.
 """
 
 from __future__ import annotations
@@ -35,6 +35,7 @@ import csv
 import pathlib
 import random
 from dataclasses import asdict, dataclass
+from functools import cache
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SEED_DIR = ROOT / "db" / "seed"
@@ -42,47 +43,115 @@ SEED_DIR = ROOT / "db" / "seed"
 AC_NUMBER = 32
 
 # ---------------------------------------------------------------------------
-# The published constituency totals. The only figures here that are real.
-#
-# N8 is resolved by there being one of each. Where the two old fixtures
-# disagreed, `valid_votes` takes the frontend's 207,598: it was labelled as
-# published, whereas 207,459 was a value I derived backwards from the margin
-# percentage to make it come out at exactly 1.85. Neither is verified against a
-# document, and both round the margin to the published 1.85% - so this is a
-# choice of which unverified number to use consistently, not a determination of
-# which is correct. It must be checked against Form 20 when one exists.
+# The Form 20 tables
 # ---------------------------------------------------------------------------
 
-ELECTORS = 304_898
-VALID_VOTES = 207_598
-
-# Rejected votes: Form 20 omits the column when it is zero, and no document has
-# been read, so zero is the honest placeholder and votes_polled == valid_votes.
-REJECTED = 0
-
-PARTY_TOTALS: dict[str, int] = {
-    "jmm": 94_042,
-    "bjp": 90_204,
-    "jlkm": 10_787,
-    "nota": 2_004,
+FORM20_DIR = SEED_DIR / "form20"
+FORM20_FILES = {
+    "VS-2024": FORM20_DIR / "giridih_vs2024_form20.xlsx",
+    "VS-2019": FORM20_DIR / "giridih_vs2019_form20.xlsx",
 }
-# Everything not one of the four named lines, so the columns sum to valid_votes
-# exactly rather than approximately.
-PARTY_TOTALS["others"] = VALID_VOTES - sum(PARTY_TOTALS.values())
+PARTY_FILE = FORM20_DIR / "candidate_parties.csv"
+UNRECORDED = "UNK"
 
-WINNER = "JMM"
-RUNNER_UP = "BJP"
-MARGIN_VOTES = PARTY_TOTALS["jmm"] - PARTY_TOTALS["bjp"]
+# The pivot columns the booth table and the scenario engine read. Each maps to
+# the candidate whose party is recorded; everyone else is `others`.
+PIVOT = ("jmm", "bjp", "jlkm")
+
+
+@cache
+def table(label: str):
+    """The parsed Form 20 for one election, refused if it does not reconcile."""
+    from ingest import form20_tables
+
+    parsed = form20_tables.read(FORM20_FILES[label])
+    problems = form20_tables.problems(parsed)
+    if problems:
+        raise RuntimeError(f"{label} Form 20 does not reconcile: {problems[:3]}")
+    return parsed
+
+
+@cache
+def parties(label: str) -> dict[str, str]:
+    """Candidate header -> party code, from the affiliation list; UNK otherwise."""
+    from ingest import form20_tables
+
+    recorded = {}
+    with PARTY_FILE.open(encoding="utf-8", newline="") as handle:
+        for row in csv.DictReader(handle):
+            if row["election"] == label:
+                recorded[form20_tables.name_key(row["candidate"])] = row["party_abbr"]
+    return {name: recorded.get(form20_tables.name_key(name), UNRECORDED)
+            for name in table(label).candidates}
+
+
+def candidates(label: str) -> list[dict]:
+    """Every candidate as declared: EVM, postal and total votes, ranked."""
+    from ingest import form20_tables
+
+    t = table(label)
+    party = parties(label)
+    rows = [
+        {
+            "candidate": form20_tables.display_name(name),
+            "party": party[name],
+            "evm_votes": t.evm.votes[i],
+            "postal_votes": t.postal.votes[i],
+            "votes": t.polled.votes[i],
+        }
+        for i, name in enumerate(t.candidates)
+    ]
+    rows.sort(key=lambda r: (-r["votes"], r["candidate"]))
+    return rows
+
+
+def _pivot(label: str, votes: list[int]) -> dict[str, int]:
+    """One row of candidate votes folded into the pivot columns."""
+    party = parties(label)
+    out = {key: 0 for key in (*PIVOT, "others")}
+    for name, value in zip(table(label).candidates, votes, strict=True):
+        key = party[name].lower()
+        out[key if key in PIVOT else "others"] += value
+    return out
+
+
+def _declared(label: str) -> dict[str, int]:
+    t = table(label)
+    out = _pivot(label, t.polled.votes)
+    out["nota"] = t.polled.nota
+    return out
+
+
+ELECTORS = 304_898           # published (secondary) - no roll is loaded
+ELECTORS_2019 = 264_814
+
+PARTY_TOTALS: dict[str, int] = _declared("VS-2024")
+VALID_VOTES = sum(PARTY_TOTALS.values())             # NOTA included, METRICS.md
+REJECTED = table("VS-2024").polled.rejected          # all postal; 0 at every booth
+POSTAL_VALID = table("VS-2024").postal.valid + table("VS-2024").postal.nota
+EVM_VALID = table("VS-2024").evm.valid + table("VS-2024").evm.nota
+
+_ranked_2024 = candidates("VS-2024")
+WINNER = _ranked_2024[0]["party"]
+RUNNER_UP = _ranked_2024[1]["party"]
+WINNER_CANDIDATE = _ranked_2024[0]["candidate"]
+RUNNER_CANDIDATE = _ranked_2024[1]["candidate"]
+MARGIN_VOTES = _ranked_2024[0]["votes"] - _ranked_2024[1]["votes"]
 
 # The contest pair for Giridih, from ac_contest. Used for the signed margin.
 CONTEST_PARTY_A = "JMM"
 CONTEST_PARTY_B = "BJP"
 
+# The 2019 crosswalk the loader writes: PS n -> the same booth, 'exact', 0.95,
+# unreviewed (ingest/load_form20_tables.py records the evidence).
+CROSSWALK_CONFIDENCE = 0.95
+
+
 # ---------------------------------------------------------------------------
 # Booth shape
 # ---------------------------------------------------------------------------
 
-BOOTH_COUNT = 305
+BOOTH_COUNT = len(table("VS-2024").booths)     # 367 polling stations
 
 # A polling station in Jharkhand is capped near 1,500 electors and rarely sits
 # below 800, which is the band the brief asks for. The eight-booth fixture had
@@ -124,6 +193,7 @@ class Booth:
     others: int
     nota: int
     rejected: int
+    tendered: int
     source_page: int
     crosswalk_confidence: float | None
     crosswalk_reviewed: bool
@@ -369,31 +439,15 @@ def booths() -> list[Booth]:
     for i in range(BOOTH_COUNT - urban_count):
         assignments.append(rural[i % len(rural)])
 
-    # Each booth gets a lean, and each party is then allocated across booths in
-    # proportion to how much that booth favours it. Allocating per party means
-    # every party column sums to its published total by construction.
-    leans = [rng.uniform(-1.0, 1.0) for _ in range(BOOTH_COUNT)]
-    sizes = [rng.uniform(0.75, 1.3) for _ in range(BOOTH_COUNT)]
-
-    def weights(pull: float) -> list[float]:
-        return [
-            max(0.05, size * (1.0 + pull * lean))
-            for size, lean in zip(sizes, leans, strict=True)
-        ]
-
-    columns = {
-        "jmm": _allocate(PARTY_TOTALS["jmm"], weights(+0.55)),
-        "bjp": _allocate(PARTY_TOTALS["bjp"], weights(-0.55)),
-        "jlkm": _allocate(PARTY_TOTALS["jlkm"], weights(+0.20)),
-        "others": _allocate(PARTY_TOTALS["others"], weights(-0.10)),
-        "nota": _allocate(PARTY_TOTALS["nota"], weights(0.0)),
-    }
-
-    valid = [
-        columns["jmm"][i] + columns["bjp"][i] + columns["jlkm"][i]
-        + columns["others"][i] + columns["nota"][i]
-        for i in range(BOOTH_COUNT)
-    ]
+    # The votes are the Form 20's, station by station, in PS order.
+    stations = sorted(table("VS-2024").booths, key=lambda b: b.ps_number)
+    columns = {key: [] for key in (*PIVOT, "others", "nota")}
+    for st in stations:
+        row = _pivot("VS-2024", st.votes)
+        for key in (*PIVOT, "others"):
+            columns[key].append(row[key])
+        columns["nota"].append(st.nota)
+    valid = [st.valid_incl_nota for st in stations]
     electors = _clamped_electors(rng, valid)
 
     out: list[Booth] = []
@@ -401,17 +455,16 @@ def booths() -> list[Booth]:
         area = assignments[i]
         uid = f"{AC_NUMBER}-B{i + 1:04d}"
 
-        # A handful of deliberate data gaps, so every "not loaded" path on every
-        # screen has something to render. Chosen by index so they are stable.
+        # Deliberate gaps in the synthetic layers only, so every "not loaded"
+        # path has a booth to render. The results and the crosswalk are real
+        # and have no gaps.
         ungeocoded = i % 47 == 3
-        weak_crosswalk = i % 31 == 5
-        split_booth = i % 61 == 7
         no_roll_link = i % 53 == 11
         point = None if ungeocoded else _place(rng, uid, shapes[area.area_en])
 
         out.append(Booth(
             booth_uid=uid,
-            ps_numbers=str(i + 1),
+            ps_numbers=str(stations[i].ps_number),
             area_en=area.area_en,
             area_hi=area.area_hi,
             block_en=area.block_en,
@@ -427,11 +480,13 @@ def booths() -> list[Booth]:
             jlkm=columns["jlkm"][i],
             others=columns["others"][i],
             nota=columns["nota"][i],
-            rejected=0,
-            source_page=3 + i // 40,
-            crosswalk_confidence=0.71 if weak_crosswalk else 1.0,
-            crosswalk_reviewed=not weak_crosswalk,
-            lineage_kind="split" if split_booth else None,
+            rejected=stations[i].rejected,
+            tendered=stations[i].tendered,
+            source_page=stations[i].page,
+            # The 2024 row is the anchor; its crosswalk is the loader's 1.0.
+            crosswalk_confidence=1.0,
+            crosswalk_reviewed=True,
+            lineage_kind=None,
             additions=0 if no_roll_link else round(electors[i] * rng.uniform(0.02, 0.09)),
             floating_pct=None if i % 7 == 0 else round(rng.uniform(4.0, 18.0), 2),
             margin_stddev=None if i % 11 == 0 else round(rng.uniform(1.5, 12.0), 2),
@@ -445,12 +500,17 @@ def booths() -> list[Booth]:
 
 
 def ac_totals() -> dict[str, int | float | str]:
-    """The AC-level figures, with the percentages the API would compute."""
+    """The declared AC-level figures (EVM + postal), as the API computes them."""
+    t = table("VS-2024")
     return {
         "electors": ELECTORS,
+        "electors_source": "published",
         "valid_votes": VALID_VOTES,
         "votes_polled": VALID_VOTES + REJECTED,
         "rejected": REJECTED,
+        "evm_votes": EVM_VALID,
+        "postal_votes": POSTAL_VALID,
+        "tendered": t.polled.tendered,
         "nota": PARTY_TOTALS["nota"],
         "jmm": PARTY_TOTALS["jmm"],
         "bjp": PARTY_TOTALS["bjp"],
@@ -458,13 +518,42 @@ def ac_totals() -> dict[str, int | float | str]:
         "others": PARTY_TOTALS["others"],
         "winner_party": WINNER,
         "runner_party": RUNNER_UP,
+        "winner_candidate": WINNER_CANDIDATE,
+        "runner_candidate": RUNNER_CANDIDATE,
+        "contestants": len(t.candidates),
         "margin_votes": MARGIN_VOTES,
         "margin_pct": round(100.0 * MARGIN_VOTES / VALID_VOTES, 2),
         "turnout_pct": round(100.0 * (VALID_VOTES + REJECTED) / ELECTORS, 2),
         "jmm_share_pct": round(100.0 * PARTY_TOTALS["jmm"] / VALID_VOTES, 2),
         "bjp_share_pct": round(100.0 * PARTY_TOTALS["bjp"] / VALID_VOTES, 2),
         "nota_share_pct": round(100.0 * PARTY_TOTALS["nota"] / VALID_VOTES, 2),
+        "source_doc": FORM20_FILES["VS-2024"].name,
+        "sha256": t.sha256,
+        "pages": t.pages,
     }
+
+
+def evm_totals(label: str = "VS-2024") -> dict[str, int]:
+    """Booth-level column totals: the 'Total EVM Votes' row, pivoted."""
+    t = table(label)
+    out = _pivot(label, t.evm.votes)
+    out["nota"] = t.evm.nota
+    return out
+
+
+def booth_votes(label: str) -> dict[str, list[int]]:
+    """Per booth_uid: votes per candidate in Form 20 column order, then NOTA."""
+    return {f"{AC_NUMBER}-B{b.ps_number:04d}": [*b.votes, b.nota]
+            for b in table(label).booths}
+
+
+def candidate_columns(label: str) -> list[dict]:
+    """The Form 20 column order, for reading booth_votes()."""
+    from ingest import form20_tables
+
+    party = parties(label)
+    return [{"candidate": form20_tables.display_name(n), "party": party[n]}
+            for n in table(label).candidates]
 
 
 def as_dicts() -> list[dict]:
@@ -484,17 +573,20 @@ def check() -> dict[str, object]:
         for key in ("jmm", "bjp", "jlkm", "others", "nota", "electors")
     }
     problems = []
+    evm = evm_totals()
     for key, expected in (
-        ("jmm", PARTY_TOTALS["jmm"]), ("bjp", PARTY_TOTALS["bjp"]),
-        ("jlkm", PARTY_TOTALS["jlkm"]), ("others", PARTY_TOTALS["others"]),
-        ("nota", PARTY_TOTALS["nota"]), ("electors", ELECTORS),
+        ("jmm", evm["jmm"]), ("bjp", evm["bjp"]),
+        ("jlkm", evm["jlkm"]), ("others", evm["others"]),
+        ("nota", evm["nota"]), ("electors", ELECTORS),
     ):
         if sums[key] != expected:
             problems.append(f"{key}: {sums[key]} != {expected}")
 
     valid_sum = sum(b.valid_votes for b in rows)
-    if valid_sum != VALID_VOTES:
-        problems.append(f"valid_votes: {valid_sum} != {VALID_VOTES}")
+    if valid_sum != EVM_VALID:
+        problems.append(f"valid_votes: {valid_sum} != EVM {EVM_VALID}")
+    if EVM_VALID + POSTAL_VALID != VALID_VOTES:
+        problems.append("EVM + postal != declared valid votes")
 
     out_of_band = [
         b.booth_uid for b in rows
@@ -514,8 +606,7 @@ def check() -> dict[str, object]:
         "electors_max": max(b.electors for b in rows),
         "electors_mean": round(sums["electors"] / len(rows), 1),
         "ungeocoded": sum(1 for b in rows if b.lat is None),
-        "weak_crosswalk": sum(1 for b in rows if not b.crosswalk_reviewed),
-        "split": sum(1 for b in rows if b.lineage_kind),
+        "with_2019": len(booths_2019()),
         "totals": totals,
         "problems": problems,
     }
@@ -525,75 +616,54 @@ def check() -> dict[str, object]:
 # The prior assembly election, for swing
 # ---------------------------------------------------------------------------
 #
-# Unverified, like everything per-booth here. The AC-level numbers are the ones
-# the previous fixture carried for VS-2019 (JMM 80,871 over BJP 64,987, a margin
-# of 15,884, on 264,814 electors); JVM, NOTA and others are invented to make the
-# column sum, because the old fixture recorded no valid-vote total for that year
-# at all. JVM is present because it is the party D9 is about: it merged into BJP
-# in 2020, so a 2019-to-2024 swing table that omitted it showed BJP's gain with
-# no corresponding loss anywhere.
+# Real: the VS-2019 Form 20, station by station, mapped to the 2024 booth with
+# the same PS number - the mapping the loader writes. JVM fielded no candidate
+# in Giridih in 2019 per the loaded sources, so 2019 has no JVM column; every
+# candidate without a recorded party is in `others`.
 
-ELECTORS_2019 = 264_814
-VALID_VOTES_2019 = 168_000
-PARTY_TOTALS_2019: dict[str, int] = {
-    "jmm": 80_871,
-    "bjp": 64_987,
-    "jvm": 14_000,
-    "nota": 2_100,
-}
-PARTY_TOTALS_2019["others"] = VALID_VOTES_2019 - sum(PARTY_TOTALS_2019.values())
+PARTY_TOTALS_2019: dict[str, int] = _declared("VS-2019")
+VALID_VOTES_2019 = sum(PARTY_TOTALS_2019.values())
 
 
 def booths_2019() -> dict[str, dict[str, int]]:
-    """Prior-election votes per booth, keyed by the 2024 booth_uid.
-
-    Not every booth gets a row. Three groups are left out on purpose, because
-    each drives a different NULL rule that the screens must render honestly:
-    a booth with no prior row at all has no swing (D2), a split booth cannot be
-    compared station to station, and a weakly crosswalked booth is not admissible
-    until reviewed.
-    """
-    rng = random.Random(SEED + 1)
-    rows = booths()
-    eligible = [b for b in rows if b.lineage_kind is None and int(b.ps_numbers) % 9 != 4]
-
-    sizes = [rng.uniform(0.75, 1.3) for _ in eligible]
-    leans = [rng.uniform(-1.0, 1.0) for _ in eligible]
-
-    def weights(pull: float) -> list[float]:
-        return [
-            max(0.05, size * (1.0 + pull * lean))
-            for size, lean in zip(sizes, leans, strict=True)
-        ]
-
-    columns = {
-        "jmm": _allocate(PARTY_TOTALS_2019["jmm"], weights(+0.50)),
-        "bjp": _allocate(PARTY_TOTALS_2019["bjp"], weights(-0.50)),
-        "jvm": _allocate(PARTY_TOTALS_2019["jvm"], weights(+0.15)),
-        "nota": _allocate(PARTY_TOTALS_2019["nota"], weights(0.0)),
-    }
-    return {
-        booth.booth_uid: {
-            "jmm": columns["jmm"][i],
-            "bjp": columns["bjp"][i],
-            "jvm": columns["jvm"][i],
-            "nota": columns["nota"][i],
+    """Prior-election EVM votes per booth, keyed by the 2024 booth_uid."""
+    out = {}
+    for st in table("VS-2019").booths:
+        row = _pivot("VS-2019", st.votes)
+        out[f"{AC_NUMBER}-B{st.ps_number:04d}"] = {
+            "jmm": row["jmm"], "bjp": row["bjp"],
+            "others": row["jlkm"] + row["others"], "nota": st.nota,
+            "source_page": st.page,
         }
-        for i, booth in enumerate(eligible)
-    }
+    return out
 
 
-def ac_totals_2019() -> dict[str, int | float]:
+def ac_totals_2019() -> dict[str, int | float | str]:
+    t = table("VS-2019")
+    ranked = candidates("VS-2019")
+    rejected = t.polled.rejected
     return {
         "electors": ELECTORS_2019,
+        "electors_source": "published",
         "valid_votes": VALID_VOTES_2019,
+        "votes_polled": VALID_VOTES_2019 + rejected,
+        "rejected": rejected,
+        "evm_votes": t.evm.valid + t.evm.nota,
+        "postal_votes": t.postal.valid + t.postal.nota,
         "jmm": PARTY_TOTALS_2019["jmm"],
         "bjp": PARTY_TOTALS_2019["bjp"],
-        "jvm": PARTY_TOTALS_2019["jvm"],
         "nota": PARTY_TOTALS_2019["nota"],
-        "others": PARTY_TOTALS_2019["others"],
-        "margin_votes": PARTY_TOTALS_2019["jmm"] - PARTY_TOTALS_2019["bjp"],
-        "turnout_pct": round(100.0 * VALID_VOTES_2019 / ELECTORS_2019, 2),
+        "others": PARTY_TOTALS_2019["others"] + PARTY_TOTALS_2019["jlkm"],
+        "winner_candidate": ranked[0]["candidate"],
+        "runner_candidate": ranked[1]["candidate"],
+        "contestants": len(t.candidates),
+        "margin_votes": ranked[0]["votes"] - ranked[1]["votes"],
+        "margin_pct": round(100.0 * (ranked[0]["votes"] - ranked[1]["votes"])
+                            / VALID_VOTES_2019, 2),
+        "turnout_pct": round(100.0 * (VALID_VOTES_2019 + rejected) / ELECTORS_2019, 2),
+        "source_doc": FORM20_FILES["VS-2019"].name,
+        "sha256": t.sha256,
+        "pages": t.pages,
     }
 
 
@@ -628,8 +698,10 @@ def derived(booth: Booth, prev: dict[str, int] | None) -> dict[str, object]:
 
     link = (
         metrics.CrosswalkLink(
-            confidence=booth.crosswalk_confidence or 0.0,
-            reviewed=booth.crosswalk_reviewed,
+            # Swing is measured across the 2019 link, so its confidence is
+            # the one that governs: 0.95, unreviewed (still admissible).
+            confidence=CROSSWALK_CONFIDENCE,
+            reviewed=False,
         )
         if booth.crosswalk_confidence is not None
         else None
@@ -637,7 +709,7 @@ def derived(booth: Booth, prev: dict[str, int] | None) -> dict[str, object]:
 
     share_now = metrics.share_pct(booth.jmm, valid)
     prev_valid = (
-        prev["jmm"] + prev["bjp"] + prev["jvm"] + prev["nota"] if prev else None
+        prev["jmm"] + prev["bjp"] + prev["others"] + prev["nota"] if prev else None
     )
     share_prev = metrics.share_pct(prev["jmm"], prev_valid) if prev else None
 

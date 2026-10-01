@@ -204,3 +204,19 @@ test.describe('no rendered page shows a raw key or a placeholder', () => {
     }
   }
 })
+
+test.describe('the real Form 20 in fixture mode', () => {
+  test('overview names the declared result and the booths led', async ({ page }) => {
+    await gotoReady(page, '/')
+    const headline = page.getByTestId('result-headline')
+    await expect(headline).toContainText('Sudivya Kumar (JMM) won with 94,042 votes')
+    await expect(headline).toContainText('Nirbhay Kumar Shahabadi led 193 polling stations')
+  })
+
+  test('results lists all fourteen 2024 candidates and NOTA', async ({ page }) => {
+    await gotoReady(page, '/results/VS-2024')
+    const table = page.getByTestId('candidate-table')
+    await expect(table.getByRole('row')).toHaveCount(17)
+    await expect(table).toContainText('2,07,682')
+  })
+})

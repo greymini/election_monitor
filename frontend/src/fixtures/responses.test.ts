@@ -13,8 +13,13 @@ describe('fixtureFor', () => {
   })
 
   it('does not relabel 2024 figures as another election', () => {
-    const r = fixtureFor('/acs/32/results/VS-2019/booths') as { rows: unknown[] }
-    expect(r.rows).toEqual([])
+    // VS-2019 rows are the real 2019 Form 20, labelled 2019 and sourced to
+    // the 2019 file - never the 2024 rows under another label.
+    const r = fixtureFor('/acs/32/results/VS-2019/booths') as { rows: Obj[] }
+    expect(r.rows).toHaveLength(367)
+    expect(r.rows.every((row) => row.election_label === 'VS-2019')).toBe(true)
+    expect(r.rows.every((row) => row.source_doc === 'giridih_vs2019_form20.xlsx')).toBe(true)
+    expect(r.rows.reduce((s, row) => s + Number(row.jmm), 0)).toBe(80871 - 165)     // EVM: declared minus 165 postal
     // The map shows VS-2019's own figures (resultFor, from rahul-working) or
     // blanks - never 2024's - and baseline-only metrics stay blank.
     const map2019 = (fixtureFor('/acs/32/booths?election_label=VS-2019') as

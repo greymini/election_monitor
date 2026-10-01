@@ -91,7 +91,8 @@ VOTES_POLLED = [
 # turnout_pct
 # ---------------------------------------------------------------------------
 
-# 207598 / 304898 = 0.6808..., so 68.09 to two places.
+# Votes polled 207,821 (Form 20, valid incl. NOTA + 139 rejected) / 304,898
+# published electors = 0.68161..., so 68.16 to two places.
 TURNOUT_PCT = [
     Case("round arithmetic", (1_000, 2_000), 50.0,
          lambda: metrics.turnout_pct(1_000, 2_000)),
@@ -159,7 +160,8 @@ MARGIN_VOTES = [
              Ranking(None, None, "BJP", 90_204, 3))),
 ]
 
-# 3838 / 207598 = 0.018488... -> 1.85, which is the published figure.
+# 3838 / 207682 (Form 20 valid votes incl. NOTA, EVM + postal) = 0.018480...
+# -> 1.85, the published figure.
 MARGIN_PCT = [
     Case("Giridih 2024 reconciles to the published 1.85 percent",
          (GIRIDIH_2024["jmm"], GIRIDIH_2024["bjp"], 3, GIRIDIH_2024["valid_votes"]),
@@ -177,8 +179,8 @@ MARGIN_PCT = [
 ]
 
 # D1 in one line. The old views divided by a NOTA-excluding total while showing
-# the NOTA-including one in the same row: 207598 - 2004 = 205594, and
-# 3838 / 205594 = 0.018668 -> 1.87 against the published 1.85. The number was
+# the NOTA-including one in the same row: 207682 - 2004 = 205678, and
+# 3838 / 205678 = 0.018660 -> 1.87 against the published 1.85. The number was
 # wrong by two hundredths of a point, which is small enough to look like
 # rounding and large enough that no row reconciled against itself.
 MARGIN_PCT_WITH_D1_DENOMINATOR = round(

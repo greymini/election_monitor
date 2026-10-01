@@ -203,9 +203,9 @@ export default function Overview({ ac, isAdmin = false, seesCaste = false }: {
                     pct: baselineRow.margin_pct == null
                       ? '—'
                       : pct(baselineRow.margin_pct, 2),
-                    runner: baselineRow.runner_party
-                      ? candidateLabel(baselineRow.runner_candidate, baselineRow.runner_party)
-                      : t('common.noRunnerUp'),
+                    // The code, not the name: the tile subline does not wrap,
+                    // and the names are in the declared-result block below.
+                    runner: partyCode(baselineRow.runner_party) ?? t('common.noRunnerUp'),
                   })}
                 </span>
               ) : (

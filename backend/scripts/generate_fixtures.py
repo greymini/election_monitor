@@ -41,11 +41,12 @@ HEADER = """/* GENERATED FROM fixtures/giridih.py - DO NOT EDIT BY HAND
  * wrong enough to fail a test because both round the margin to the published
  * 1.85%. That was finding N8.
  *
- * Only the AC totals are real. Every per-booth number is invented,
- * deterministically, to add up to them - no Form 20 has been parsed, so a
- * booth-level figure here is not evidence of anything. The rural area names are
- * synthetic and say so: db/seed/areas_panchayats.csv is header-only for all six
- * ACs, so the real panchayat names are not known to this system (N9).
+ * The votes are real: every polling station of the ECI Form 20 for VS-2024
+ * and VS-2019 (backend/db/seed/form20/), every candidate by name, postal
+ * ballots and the printed page of each row. Synthetic, and labelled so: each
+ * booth's electorate, location, ward or panchayat, building, roll additions,
+ * floating vote and volatility - no PS list or roll is loaded. The rural area
+ * names are synthetic and say so (N9).
  */
 
 """
@@ -85,6 +86,7 @@ def render() -> str:
         ("electors", "number"),
         ("jmm", "number"), ("bjp", "number"), ("jlkm", "number"),
         ("others", "number"), ("nota", "number"), ("rejected", "number"),
+        ("tendered", "number"),
         ("source_page", "number"),
         ("crosswalk_confidence", "number | null"),
         ("crosswalk_reviewed", "boolean"),
@@ -117,11 +119,35 @@ def render() -> str:
     parts.append("}\n\n")
 
     parts.append(
-        "/** The published Giridih 2024 constituency totals. The only real\n"
-        " *  numbers in this file; still unverified against a document. */\n"
+        "/** The declared Giridih 2024 result, from the Form 20 'Total Votes\n"
+        " *  Polled' row: EVM plus postal ballots. Electors are published. */\n"
         f"export const AC_TOTALS = {ts(totals)} as const\n\n"
     )
     parts.append(f"export const AC_TOTALS_2019 = {ts(totals_2019)} as const\n\n")
+    parts.append(
+        "/** Every candidate as declared, ranked: EVM, postal and total votes.\n"
+        " *  `party` is UNK where the loaded sources record none. */\n"
+        "export const CANDIDATES: Record<string, Array<{ candidate: string; party: string; "
+        "evm_votes: number; postal_votes: number; votes: number }>> = "
+        f"{ts({label: giridih.candidates(label) for label in giridih.FORM20_FILES})}\n\n"
+    )
+    parts.append(
+        "/** Form 20 column order per election, for reading BOOTH_VOTES. */\n"
+        "export const CANDIDATE_COLUMNS: Record<string, Array<{ candidate: string; "
+        "party: string }>> = "
+        f"{ts({label: giridih.candidate_columns(label) for label in giridih.FORM20_FILES})}\n\n"
+    )
+    parts.append(
+        "/** Per election, per booth_uid: votes per candidate in column order,\n"
+        " *  then NOTA. EVM votes, exactly as printed. */\n"
+        "export const BOOTH_VOTES: Record<string, Record<string, number[]>> = {\n"
+    )
+    for label in giridih.FORM20_FILES:
+        parts.append(f"  {ts(label)}: {{\n")
+        for uid, votes in giridih.booth_votes(label).items():
+            parts.append(f"    {ts(uid)}: {ts(votes)},\n")
+        parts.append("  },\n")
+    parts.append("}\n\n")
 
     parts.append(
         "/** Blocks and areas. `real: false` marks the synthetic rural areas. */\n"
@@ -135,11 +161,10 @@ def render() -> str:
     parts.append("]\n\n")
 
     parts.append(
-        "/** Prior-election votes, keyed by the 2024 booth_uid. Deliberately\n"
-        " *  absent for split booths and a scatter of others, so every reason a\n"
-        " *  swing is withheld has a booth that demonstrates it. */\n"
+        "/** VS-2019 EVM votes per booth, keyed by the 2024 booth_uid (same PS\n"
+        " *  number; the loader's crosswalk). Real, from the 2019 Form 20. */\n"
         "export const GENERATED_BOOTHS_2019: Record<string, "
-        "{ jmm: number; bjp: number; jvm: number; nota: number }> =\n"
+        "{ jmm: number; bjp: number; others: number; nota: number; source_page: number }> =\n"
         f"  {ts(prev)}\n"
     )
     return "".join(parts)
@@ -179,8 +204,8 @@ def main(argv: list[str] | None = None) -> int:
         f"wrote {TARGET.name}: {report['booths']} booths across "
         f"{report['areas']} areas, electors {report['electors_min']}-"
         f"{report['electors_max']} (mean {report['electors_mean']}), "
-        f"{report['ungeocoded']} ungeocoded, {report['weak_crosswalk']} weakly "
-        f"crosswalked, {report['split']} split"
+        f"{report['ungeocoded']} without a synthetic location, "
+        f"{report['with_2019']} with a 2019 row"
     )
     return 0
 

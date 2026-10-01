@@ -167,15 +167,29 @@ def test_the_real_wards_come_from_the_seed_and_the_rest_are_marked_synthetic():
 
 
 @pytest.mark.parametrize("party", ["jmm", "bjp", "jlkm", "nota", "others"])
-def test_every_party_column_sums_to_its_published_total(party):
+def test_every_party_column_sums_to_the_form20_evm_total(party):
+    """Booth rows are EVM votes; the postal ballots are AC-level only."""
     got = sum(getattr(b, party) for b in giridih.booths())
-    assert got == giridih.PARTY_TOTALS[party]
+    assert got == giridih.evm_totals()[party]
+
+
+def test_evm_plus_postal_is_the_declared_result():
+    totals = giridih.ac_totals()
+    assert totals["evm_votes"] + totals["postal_votes"] == totals["valid_votes"] == 207_682
+    assert totals["votes_polled"] == 207_821 and totals["rejected"] == 139
 
 
 def test_electors_and_valid_votes_sum_to_the_published_totals():
     rows = giridih.booths()
     assert sum(b.electors for b in rows) == giridih.ELECTORS
-    assert sum(b.valid_votes for b in rows) == giridih.VALID_VOTES
+    assert sum(b.valid_votes for b in rows) == giridih.EVM_VALID == 205_777
+
+
+def test_the_booths_are_the_367_real_polling_stations():
+    rows = giridih.booths()
+    assert [int(b.ps_numbers) for b in rows] == list(range(1, 368))
+    assert rows[0].booth_uid == "32-B0001"
+    assert {b.source_page for b in rows} <= set(range(1, 13))       # 12 printed pages
 
 
 def test_the_headline_figures_match_the_published_result():
@@ -188,10 +202,16 @@ def test_the_headline_figures_match_the_published_result():
     assert totals["margin_pct"] == 1.85
 
 
-@pytest.mark.parametrize("party", ["jmm", "bjp", "jvm", "nota"])
+@pytest.mark.parametrize("party", ["jmm", "bjp", "nota"])
 def test_the_prior_election_columns_also_reconcile(party):
     got = sum(row[party] for row in giridih.booths_2019().values())
-    assert got == giridih.PARTY_TOTALS_2019[party]
+    assert got == giridih.evm_totals("VS-2019")[party]
+
+
+def test_the_2019_result_is_the_declared_one():
+    t = giridih.ac_totals_2019()
+    assert (t["margin_votes"], t["valid_votes"], t["contestants"]) == (15_884, 167_822, 12)
+    assert t["winner_candidate"] == "Sudivya Kumar"
 
 
 # ---------------------------------------------------------------------------
@@ -271,19 +291,23 @@ def test_the_fixture_exercises_every_not_loaded_path():
     work is done. Each of these drives a different message on a real screen."""
     rows = giridih.booths()
     assert any(b.lat is None for b in rows), "no ungeocoded booth"
-    assert any(not b.crosswalk_reviewed for b in rows), "no weak crosswalk"
-    assert any(b.lineage_kind for b in rows), "no split booth"
     assert any(b.floating_pct is None for b in rows), "no NULL floating vote"
     assert any(b.margin_stddev is None for b in rows), "no NULL volatility"
 
-    prev = giridih.booths_2019()
-    assert any(b.booth_uid not in prev for b in rows), (
-        "every booth has a prior election, so no booth demonstrates D2's NULL"
-    )
-
     derived_rows = giridih.booths_with_metrics()
-    assert any(r["jmm_swing_pct"] is None for r in derived_rows)
     assert any(r["new_voter_pct"] is None for r in derived_rows)
+
+
+def test_the_real_layers_have_no_invented_gaps():
+    """Gaps are allowed only in synthetic layers. The results and the 2019
+    mapping are the Form 20's, which covers every station in both years, so
+    a dropped prior row or a fake weak link would misstate a real record."""
+    rows = giridih.booths()
+    prev = giridih.booths_2019()
+    assert all(b.booth_uid in prev for b in rows)
+    assert not any(b.lineage_kind for b in rows)
+    derived_rows = giridih.booths_with_metrics()
+    assert all(r["jmm_swing_pct"] is not None for r in derived_rows)
 
 
 def test_the_generated_file_is_valid_json_per_row():

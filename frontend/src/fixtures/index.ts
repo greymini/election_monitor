@@ -43,9 +43,9 @@ import {
 import type { GeneratedBooth } from './generated'
 
 export const FIXTURE_BANNER =
-  'Fixture data. Booth-level figures are synthetic, built to reconcile to the ' +
-  'published AC totals so the pages can be reviewed before a Form 20 is loaded. ' +
-  'No figure here is evidence of anything.'
+  'Fixture data. Votes are the real ECI Form 20 (VS-2024, VS-2019) for all 367 ' +
+  'polling stations; each booth\'s electorate, location, ward or panchayat, roll ' +
+  'and community figures are synthetic, because no PS list or roll is loaded.'
 
 export interface FixtureSource {
   /** Where a loaded number came from. */
@@ -170,7 +170,7 @@ export const CONFIG = {
  * screen was therefore implausible by a factor of forty, and the map's
  * electorate-scaled marker sizes meant nothing at all.
  *
- * Now 305 booths of 800-1,500 electors across the real 36 municipal wards and
+ * Now the 367 real polling stations, with synthetic electorates of 800-1,500 across the real 36 municipal wards and
  * 24 synthetic rural areas, reconciling exactly to the published constituency
  * totals. Generated from `fixtures/giridih.py`, which `tests/metric_cases.py`
  * also imports - so the frontend fixture and the metric tests cannot disagree
@@ -182,8 +182,9 @@ export const CONFIG = {
 // interface hid them, so every consumer recomputed what was already there.
 export const BOOTHS: GeneratedBooth[] = GENERATED_BOOTHS
 
-export const BOOTHS_2019: Record<string, { jmm: number; bjp: number; jvm: number; nota: number }> =
-  GENERATED_BOOTHS_2019
+export const BOOTHS_2019: Record<string, {
+  jmm: number; bjp: number; others: number; nota: number; source_page: number
+}> = GENERATED_BOOTHS_2019
 
 /** Areas and blocks, for the /areas endpoint's filter lists. */
 export const AREAS_FIXTURE = AREAS

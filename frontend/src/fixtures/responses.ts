@@ -8,6 +8,8 @@
  */
 
 import {
+  AC_TOTALS,
+  AC_TOTALS_2019,
   ACS,
   AREAS_FIXTURE,
   BOOTHS,
@@ -19,8 +21,103 @@ import {
 // synthetic AC-32 areas. Typed loosely on purpose - inferring literal types
 // for 99 kB of coordinates buys nothing.
 import boundaryFile from './boundaries.json'
+import { BOOTH_VOTES, CANDIDATES, CANDIDATE_COLUMNS } from './generated'
 
-const SOURCE_DOC = 'form20-vs2024-ac32.pdf'
+const SOURCE_DOC = AC_TOTALS.source_doc
+const SOURCE_DOC_2019 = AC_TOTALS_2019.source_doc
+
+/**
+ * One booth's candidates by name, ranked, from the Form 20 row. The ranking is
+ * the views' (votes, then contestant key), so names agree with winner_party.
+ */
+function boothCandidates(election: string, uid: string) {
+  const votes = BOOTH_VOTES[election]?.[uid]
+  if (!votes) return []
+  const columns = CANDIDATE_COLUMNS[election]
+  const nota = votes[votes.length - 1]
+  const valid = votes.reduce((a, b) => a + b, 0)
+  const key = (c: { candidate: string; party: string }) =>
+    c.party === 'IND' || c.party === 'UNK' ? `${c.party}:${c.candidate}` : c.party
+  const rows = columns.map((c, i) => ({
+    candidate: c.candidate, party: c.party, contestant: key(c), votes: votes[i],
+    share_pct: valid ? Math.round((10000 * votes[i]) / valid) / 100 : null,
+  }))
+  rows.sort((a, b) => b.votes - a.votes || a.contestant.localeCompare(b.contestant))
+  return [...rows, {
+    candidate: 'NOTA', party: 'NOTA', contestant: 'NOTA', votes: nota,
+    share_pct: valid ? Math.round((10000 * nota) / valid) / 100 : null,
+  }]
+}
+
+function boothNames(election: string, uid: string) {
+  const ranked = boothCandidates(election, uid).filter((c) => c.party !== 'NOTA' && c.votes > 0)
+  return {
+    winner_candidate: ranked[0]?.candidate ?? null,
+    runner_candidate: ranked[1]?.candidate ?? null,
+    contestants: ranked.length,
+  }
+}
+
+/** Polling stations led per candidate, as /summary returns them. */
+function boothsLed(election: string) {
+  const counts = new Map<string, { party: string; candidate: string; booths: number }>()
+  for (const uid of Object.keys(BOOTH_VOTES[election] ?? {})) {
+    const top = boothCandidates(election, uid).find((c) => c.party !== 'NOTA')
+    if (!top) continue
+    const entry = counts.get(top.candidate)
+      ?? { party: top.contestant, candidate: top.candidate, booths: 0 }
+    entry.booths += 1
+    counts.set(top.candidate, entry)
+  }
+  return [...counts.values()].sort((a, b) => b.booths - a.booths)
+}
+
+const DEPOSIT_RULE = 'Deposit forfeited: not elected and not more than one sixth of the '
+  + 'valid votes polled by all candidates (RP Act 1951, s.158). NOTA votes are excluded '
+  + 'from that total.'
+
+/** GET /elections/{label}/candidates, from the generated declared result. */
+function electionCandidates(acNumber: number, election: string) {
+  const declared = acNumber === 32 ? CANDIDATES[election] : undefined
+  if (!declared) return undefined
+  const totals = election === 'VS-2024' ? AC_TOTALS : AC_TOTALS_2019
+  const byCandidates = declared.reduce((s, c) => s + c.votes, 0)
+  const led = new Map(boothsLed(election).map((r) => [r.candidate, r.booths]))
+  return {
+    election: { label: election, type: 'VS', year: Number(election.slice(3)) },
+    basis: 'form20',
+    valid_votes: totals.valid_votes,
+    votes_polled_by_candidates: byCandidates,
+    candidates: declared.map((c, i) => ({
+      candidate_id: i + 1, candidate: c.candidate, candidate_hi: null,
+      party: c.party, party_name: null, party_name_hi: null,
+      party_recorded: c.party !== 'UNK', is_winner: i === 0, rank: i + 1,
+      evm_votes: c.evm_votes, postal_votes: c.postal_votes, votes: c.votes,
+      share_pct: Math.round((10000 * c.votes) / totals.valid_votes) / 100,
+      booths_led: led.get(c.candidate) ?? 0,
+      deposit_forfeited: i !== 0 && 6 * c.votes <= byCandidates,
+      behind_winner: declared[0].votes - c.votes,
+      source: `ECI Form 20 (${totals.source_doc})`,
+    })),
+    nota: {
+      votes: totals.nota, evm_votes: null, postal_votes: null,
+      share_pct: Math.round((10000 * totals.nota) / totals.valid_votes) / 100,
+      source: `ECI Form 20 (${totals.source_doc})`,
+    },
+    sources: [{
+      source_doc: totals.source_doc, booth_rows: Object.keys(BOOTH_VOTES[election]).length,
+      first_page: 1, last_page: totals.pages, sha256: totals.sha256, kind: 'form20',
+      storage_key: null, parse_status: 'loaded', synthetic: false,
+    }],
+    deposit_rule: DEPOSIT_RULE,
+    notes: [
+      "Votes are the Form 20 'Total Votes Polled' row: EVM votes counted at polling "
+        + 'stations plus postal ballots, which Form 20 reports only for the whole '
+        + 'constituency. Booths led uses EVM votes.',
+    ],
+    fixture: FIXTURE_BANNER,
+  }
+}
 
 /**
  * Every derived figure comes from the generated fixture, not from arithmetic
@@ -74,8 +171,10 @@ function boothRow(b: (typeof BOOTHS)[number]) {
     valid_votes: v,
     votes_polled: b.votes_polled,
     rejected: b.rejected,
+    tendered: b.tendered,
     nota: b.nota,
     jmm: b.jmm, bjp: b.bjp, jlkm: b.jlkm, others: b.others,
+    ...boothNames('VS-2024', b.booth_uid),
     ajsu: null, inc: null, rjd: null, jvm: null,
     winner_party: b.winner_party,
     runner_party: b.runner_party,
@@ -214,8 +313,7 @@ const BASELINE_ONLY = ['new_voter_pct', 'priority_score', 'floating_pct', 'margi
  * /booths now joins from mv_result_booth_wide: margin, signed margin and
  * winner for that election; baseline-only metrics NULL rather than borrowed.
  *
- * VS-2019 uses the same valid-vote convention as the booth card (JMM + BJP +
- * JVM + NOTA, since the 2019 fixture carries no per-booth "others"). Turnout is
+ * VS-2019 is the real 2019 Form 20 row for the same PS number. Turnout is
  * NULL because no 2019 roll snapshot exists in the fixture. LS-2024 has no
  * booth rows in the fixture, so every booth is uncoloured for it.
  */
@@ -229,19 +327,48 @@ function resultFor(row: (typeof ROWS)[number], election: string) {
       winner_party: null, runner_party: null,
     }
   }
-  const valid = prev.jmm + prev.bjp + prev.jvm + prev.nota
-  const ranked = (
-    [['JMM', prev.jmm], ['BJP', prev.bjp], ['JVM', prev.jvm]] as const
-  ).slice().sort((x, y) => y[1] - x[1])
+  const ranked = boothCandidates(election, row.booth_uid).filter((c) => c.party !== 'NOTA')
+  const valid = prev.jmm + prev.bjp + prev.others + prev.nota
   const [winner, runner] = ranked
-  const margin = valid > 0 ? Math.round((10000 * (winner[1] - runner[1])) / valid) / 100 : null
-  // Signed by the contest pair, JMM positive: a JVM win is neither arm.
+  const margin = valid > 0 ? Math.round((10000 * (winner.votes - runner.votes)) / valid) / 100 : null
+  // Signed by the contest pair, JMM positive: any other winner is neither arm.
   const signed = margin === null ? null
-    : winner[0] === 'JMM' ? margin : winner[0] === 'BJP' ? -margin : null
+    : winner.party === 'JMM' ? margin : winner.party === 'BJP' ? -margin : null
   return {
     ...row, ...blank, election_label: election, electors: null,
+    valid_votes: valid, votes_polled: valid, jmm: prev.jmm, bjp: prev.bjp, jlkm: 0,
+    others: prev.others, nota: prev.nota, rejected: 0, tendered: 0,
+    margin_votes: winner.votes - runner.votes,
     margin_pct: margin, signed_margin_pct: signed, turnout_pct: null,
-    winner_party: winner[0], runner_party: runner[0],
+    winner_party: winner.contestant, runner_party: runner.contestant,
+    ...boothNames(election, row.booth_uid),
+    source_doc: SOURCE_DOC_2019, source_page: prev.source_page,
+  }
+}
+
+function electionRow(label: string, year: number, baseline: boolean,
+                     t: typeof AC_TOTALS | typeof AC_TOTALS_2019, booths: number) {
+  const declared = CANDIDATES[label]
+  return {
+    label, type: 'VS', year, is_baseline: baseline, booths,
+    votes: t.votes_polled, electors: t.electors, electors_source: t.electors_source,
+    total_valid: t.valid_votes, nota: t.nota, rejected: t.rejected,
+    evm_votes: t.evm_votes, postal_votes: t.postal_votes, votes_polled_published: null,
+    winner_party: declared[0].party, winner_candidate: declared[0].candidate,
+    winner_votes: declared[0].votes, winner_evm_votes: declared[0].evm_votes,
+    runner_party: declared[1].party, runner_candidate: declared[1].candidate,
+    runner_votes: declared[1].votes, runner_evm_votes: declared[1].evm_votes,
+    contestants: t.contestants, margin_votes: t.margin_votes, margin_pct: t.margin_pct,
+    turnout_pct: t.turnout_pct, has_results: true,
+    source_doc: t.source_doc, source_page: null,
+    sources: [{
+      source_doc: t.source_doc, booth_rows: booths, first_page: 1, last_page: t.pages,
+      sha256: t.sha256, kind: 'form20', storage_key: null, parse_status: 'loaded',
+      synthetic: false,
+    }],
+    synthetic: false,
+    booths_led: boothsLed(label),
+    published: null,
   }
 }
 
@@ -267,68 +394,42 @@ function summaryFor(acNumber: number) {
         ? 'The ECI must hold the poll within six months of the vacancy.'
         : 'No by-election is pending in this constituency.',
     },
+    // The declared results, from the generated Form 20 totals (EVM + postal).
+    // VS-2014 has no Form 20 loaded and carries its published result.
     elections: loaded
       ? [
+        electionRow('VS-2024', 2024, true, AC_TOTALS, rows.length),
+        electionRow('VS-2019', 2019, false, AC_TOTALS_2019, Object.keys(BOOTHS_2019).length),
         {
-          label: 'VS-2024', type: 'VS', year: 2024, is_baseline: true,
-          booths: rows.length,
-          votes: rows.reduce((s, r) => s + r.valid_votes, 0),
-          // Published, not summed: one booth has no linked roll, so a booth
-          // sum would be short by its electorate and silently wrong.
-          electors: 304898,
-          total_valid: 207598, nota: 2004,
-          winner_party: 'JMM', winner_votes: 94042,
-          runner_party: 'BJP', runner_votes: 90204,
-          margin_votes: 3838,
-          // 3838 / 207598 = 1.8488% -> 1.85, the published figure. Present so
-          // the margin card can state the percentage; without it the sentence
-          // renders an em dash where the number should be.
-          margin_pct: 1.85,
-          // 207598 / 304898 = 68.087% -> 68.09.
-          turnout_pct: 68.09,
-          has_results: true,
-          source_doc: SOURCE_DOC,
-          source_page: 1,
+          label: 'LS-2024', type: 'LS', year: 2024, is_baseline: false, booths: 0,
+          votes: null, electors: null, total_valid: null, nota: null,
+          winner_party: null, winner_votes: null, runner_party: null, runner_votes: null,
+          margin_votes: null, margin_pct: null, turnout_pct: null, has_results: false,
+          source_doc: null, sources: [], booths_led: [], synthetic: null, published: null,
         },
         {
-          label: 'VS-2019', type: 'VS', year: 2019, is_baseline: false,
-          booths: 7, votes: 168000, electors: 264814,
-          total_valid: null, nota: null,
-          winner_party: 'JMM', winner_votes: 80871,
-          runner_party: 'BJP', runner_votes: 64987,
-          margin_votes: 15884,
-          // NULL, not a number: total_valid is null for this year, and
-          // metric_margin_pct divides by it. This row is here to exercise that
-          // rule in fixture mode rather than only in the SQL tests.
-          margin_pct: null,
-          // 168000 / 264814 = 63.44%.
-          turnout_pct: 63.44,
-          has_results: true,
-          source_doc: 'form20-vs2019-ac32.pdf',
-          // The page was not recorded for this document, which is the case
-          // SourceLink now renders as a dash with a tooltip rather than "p?".
-          source_page: null,
-        },
-        {
-          label: 'LS-2024', type: 'LS', year: 2024, is_baseline: false,
-          booths: 2, votes: 52000, electors: null,
-          total_valid: null, nota: null,
-          winner_party: 'AJSU', winner_votes: null,
-          runner_party: 'JMM', runner_votes: null,
-          margin_votes: null, margin_pct: null, turnout_pct: null,
-          has_results: true,
-          source_doc: 'form20-ls2024-pc11.pdf',
-          source_page: null,
+          label: 'VS-2014', type: 'VS', year: 2014, is_baseline: false, booths: 0,
+          votes: null, electors: null, total_valid: null, nota: null,
+          winner_party: null, winner_votes: null, runner_party: null, runner_votes: null,
+          margin_votes: null, margin_pct: null, turnout_pct: null, has_results: false,
+          source_doc: null, sources: [], booths_led: [], synthetic: null,
+          published: {
+            winner_candidate: 'Nirbhay Kumar Shahabadi', winner_party: 'BJP',
+            winner_votes: 57450, runner_candidate: 'Sudivya Kumar', runner_party: 'JMM',
+            runner_votes: 47517, margin_votes: 9933,
+            source: 'HLD 1.1 (secondary - re-verify vs Form 20)',
+          },
         },
       ]
       : [],
+    synthetic: false,
     baseline: loaded
-      ? { label: 'VS-2024', jmm: 94042, bjp: 90204, jlkm: 10787, nota: 2004,
-        electors: 304898, votes: 207598 }
+      ? { label: 'VS-2024', jmm: AC_TOTALS.jmm, bjp: AC_TOTALS.bjp, jlkm: AC_TOTALS.jlkm,
+        nota: AC_TOTALS.nota, electors: AC_TOTALS.electors, votes: AC_TOTALS.votes_polled }
       : null,
     // The data-health strip. Every dataset reports loaded / partial / missing,
     // so a page can name the command that fills the gap.
-    // Counted from `rows`, the same 305-booth source every other figure on
+    // Counted from `rows`, the same 367-booth source every other figure on
     // every page comes from.
     //
     // These were literals - `booths: 8`, `booths_geocoded: 7`,
@@ -344,7 +445,7 @@ function summaryFor(acNumber: number) {
       // One PS row per booth: the fixture has no re-numbering, so the PS list
       // and the booth list are the same length by construction.
       ps_list_rows: rows.length,
-      elections_with_results: acNumber === 32 ? 3 : 0,
+      elections_with_results: acNumber === 32 ? 2 : 0,
       open_reviews: rows.filter((r) => !r.crosswalk_reviewed).length,
       weak_crosswalks: rows.filter(
         (r) => !r.crosswalk_reviewed && (r.crosswalk_confidence ?? 0) < 0.85,
@@ -357,6 +458,9 @@ function summaryFor(acNumber: number) {
       census_rows: 0,
       local_result_rows: acNumber === 32 ? 4 : 0,
       source_docs: acNumber === 32 ? 3 : 0,
+      form20_real_docs: acNumber === 32 ? 2 : 0,
+      form20_booth_rows: acNumber === 32
+        ? rows.length + Object.keys(BOOTHS_2019).length : 0,
     },
     scope: { block_id: null, sees_caste: true },
     fixture: FIXTURE_BANNER,
@@ -554,24 +658,31 @@ function getFixture(clean: string, params: URLSearchParams): unknown | undefined
             votes_polled: row.votes_polled, turnout_pct: row.turnout_pct,
             jmm: row.jmm, bjp: row.bjp, jlkm: row.jlkm, others: row.others,
             nota: row.nota, winner_party: row.winner_party,
-            runner_party: row.runner_party, margin_votes: row.margin_votes,
+            winner_candidate: row.winner_candidate, runner_party: row.runner_party,
+            contestants: row.contestants, rejected: row.rejected, tendered: row.tendered,
+            margin_votes: row.margin_votes,
             margin_pct: row.margin_pct, signed_margin_pct: row.signed_margin_pct,
             source_doc: row.source_doc, source_page: row.source_page,
             ps_numbers: row.ps_numbers,
+            candidates: boothCandidates('VS-2024', row.booth_uid),
           },
           ...(prev
-            ? [{
-              election_label: 'VS-2019', election_type: 'VS', election_year: 2019,
-              electors: null, valid_votes: prev.jmm + prev.bjp + prev.jvm + prev.nota,
-              votes_polled: null, turnout_pct: null,
-              jmm: prev.jmm, bjp: prev.bjp, jlkm: null, others: prev.jvm,
-              nota: prev.nota, winner_party: prev.jmm > prev.bjp ? 'JMM' : 'BJP',
-              runner_party: prev.jmm > prev.bjp ? 'BJP' : 'JMM',
-              margin_votes: Math.abs(prev.jmm - prev.bjp),
-              margin_pct: null, signed_margin_pct: null,
-              source_doc: 'form20-vs2019-ac32.pdf', source_page: 2,
-              ps_numbers: row.ps_numbers,
-            }]
+            ? [(() => {
+              const r = resultFor(row, 'VS-2019')
+              return {
+                election_label: 'VS-2019', election_type: 'VS', election_year: 2019,
+                electors: null, valid_votes: r.valid_votes, votes_polled: r.votes_polled,
+                turnout_pct: null, jmm: r.jmm, bjp: r.bjp, jlkm: null, others: r.others,
+                nota: r.nota, winner_party: r.winner_party,
+                winner_candidate: r.winner_candidate, runner_party: r.runner_party,
+                contestants: r.contestants, rejected: 0, tendered: 0,
+                margin_votes: r.margin_votes, margin_pct: r.margin_pct,
+                signed_margin_pct: r.signed_margin_pct,
+                source_doc: SOURCE_DOC_2019, source_page: prev.source_page,
+                ps_numbers: row.ps_numbers,
+                candidates: boothCandidates('VS-2019', row.booth_uid),
+              }
+            })()]
             : []),
         ],
         roll: row.electors
@@ -596,8 +707,8 @@ function getFixture(clean: string, params: URLSearchParams): unknown | undefined
         },
         crosswalk: [{
           election_label: 'VS-2019', ps_number: Number(row.ps_numbers.split(',')[0]),
-          confidence: row.crosswalk_confidence, reviewed: row.crosswalk_reviewed,
-          match_method: row.lineage_kind ?? 'fuzzy',
+          // The loader's 2019 link: same PS number, 0.95, unreviewed.
+          confidence: 0.95, reviewed: false, match_method: 'exact',
         }],
         caste_estimate: casteRows(acNumber)
           .filter((c) => c.booth_uid === row.booth_uid)
@@ -615,6 +726,8 @@ function getFixture(clean: string, params: URLSearchParams): unknown | undefined
         fixture: FIXTURE_BANNER,
       }
     }
+    case rest.startsWith('/elections/') && rest.endsWith('/candidates'):
+      return electionCandidates(acNumber, decodeURIComponent(rest.split('/')[2]))
     case rest.startsWith('/results/') && rest.endsWith('/booths'):
       return {
         election_label: decodeURIComponent(rest.split('/')[2]),
@@ -959,7 +1072,11 @@ function applyQuery(clean: string, query: URLSearchParams, answer: unknown): unk
   if (rest.startsWith('/results/') && rest.endsWith('/booths')) {
     const label = decodeURIComponent(rest.split('/')[2])
     const rows = label === 'VS-2024'
-      ? (data.rows as Obj[]).filter(inScope) : []
+      ? (data.rows as Obj[]).filter(inScope)
+      : label === 'VS-2019'
+        ? (data.rows as Obj[]).filter(inScope)
+          .map((r) => resultFor(r as (typeof ROWS)[number], 'VS-2019'))
+        : []
     return { ...data, rows, count: rows.length }
   }
   if (rest === '/caste') {
