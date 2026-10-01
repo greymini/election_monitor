@@ -100,17 +100,19 @@ def test_guard_matches_the_database_grant_list():
     """If the guard and the GRANT drift apart they disagree about what is
     readable, and one of them is wrong."""
     import re
-    from pathlib import Path
 
-    sql_file = Path(__file__).resolve().parents[1] / "db" / "migrations" / "0012_roles_grants.sql"
-    body = sql_file.read_text(encoding="utf-8")
-    block = re.search(r"GRANT SELECT ON(.*?)TO giridih_ro;", body, re.S)
-    assert block, "GRANT block not found in 0012_roles_grants.sql"
-    granted = {
-        line.strip().rstrip(",")
-        for line in block.group(1).splitlines()
-        if line.strip() and not line.strip().startswith("--")
-    }
+    from tests.paths import MIGRATIONS
+
+    granted: set[str] = set()
+    for name in ("0012_roles_grants.sql", "0021_readonly_grants.sql"):
+        body = (MIGRATIONS / name).read_text(encoding="utf-8")
+        block = re.search(r"GRANT SELECT ON(.*?)TO giridih_ro;", body, re.S)
+        assert block, f"GRANT block not found in {name}"
+        granted |= {
+            line.strip().rstrip(",")
+            for line in block.group(1).splitlines()
+            if line.strip() and not line.strip().startswith("--")
+        }
     assert granted == ALLOWED_TABLES, (
         f"only in GRANT: {sorted(granted - ALLOWED_TABLES)}; "
         f"only in guard: {sorted(ALLOWED_TABLES - granted)}"

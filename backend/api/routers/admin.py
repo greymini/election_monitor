@@ -25,12 +25,13 @@ def review_queue(user: AdminUser, ac: CurrentAC, kind: str | None = None,
     params.append(limit)
     rows = query(
         f"SELECT id, kind, ref, payload, status, note, created_at "
-        f"FROM review_queue WHERE ac_id = %s AND {' AND '.join(clauses)} "
+        # ac_id IS NULL: items not about one constituency (0019), shown on every AC.
+        f"FROM review_queue WHERE (ac_id = %s OR ac_id IS NULL) AND {' AND '.join(clauses)} "
         f"ORDER BY id DESC LIMIT %s",
         params,
     )
     counts = query("SELECT kind, COUNT(*) AS open FROM review_queue "
-                   "WHERE status = 'open' AND ac_id = %s "
+                   "WHERE status = 'open' AND (ac_id = %s OR ac_id IS NULL) "
                    "GROUP BY kind ORDER BY open DESC", (ac.ac_id,))
     return {"rows": rows, "count": len(rows), "open_by_kind": counts}
 
@@ -45,7 +46,7 @@ def resolve_item(item_id: int, body: ResolveItem, user: AdminUser, ac: CurrentAC
     n = execute(
         "UPDATE review_queue SET status = %s, note = COALESCE(%s, note), "
         "resolved_at = now(), resolved_by = %s "
-        "WHERE id = %s AND status = 'open' AND ac_id = %s",
+        "WHERE id = %s AND status = 'open' AND (ac_id = %s OR ac_id IS NULL)",
         (body.status, body.note, user.user_id, item_id, ac.ac_id),
     )
     if not n:

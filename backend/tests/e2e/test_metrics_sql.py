@@ -49,6 +49,12 @@ BOOTHS_PREV = {
 # with them on booth_crosswalk_pkey. Ported from the OneDrive copy (df1979e).
 TEST_CANDIDATE_SUFFIX = " candidate"
 
+# The constituency this module builds its hand fixture in. Not 32: the shared
+# `loaded_dataset` (tests/e2e/conftest.py) lives there, and clearing AC 32 here
+# wiped it for every module that runs after this one. Gandey (31) has the same
+# JMM-BJP contest pair in db/seed/ac_contest.csv and no data of its own.
+TEST_AC = 31
+
 
 def _clear(cursor, ac_id: int) -> None:
     """Remove AC rows that the views read, leaving the seed untouched.
@@ -94,7 +100,7 @@ def loaded(conn):
     fourteen times would only be slower.
     """
     with conn.cursor() as cursor:
-        cursor.execute("SELECT ac_id FROM ac WHERE ac_number = 32")
+        cursor.execute("SELECT ac_id FROM ac WHERE ac_number = %s", (TEST_AC,))
         ac_id = cursor.fetchone()["ac_id"]
         _clear(cursor, ac_id)
 
@@ -126,7 +132,7 @@ def loaded(conn):
 
         booth_uids = {}
         for index, name in enumerate(sorted(BOOTHS), start=1):
-            cursor.execute("SELECT next_booth_uid(32) AS uid")
+            cursor.execute("SELECT next_booth_uid(%s) AS uid", (TEST_AC,))
             uid = cursor.fetchone()["uid"]
             booth_uids[name] = uid
             cursor.execute(
@@ -219,7 +225,7 @@ def test_nota_never_wins_in_sql_either(cursor, loaded):
     """A booth where NOTA outpolls every candidate still has a real winner."""
     ac_id = loaded["ac_id"]
     election_id = loaded["elections"]["VS-2024"]
-    cursor.execute("SELECT next_booth_uid(32) AS uid")
+    cursor.execute("SELECT next_booth_uid(%s) AS uid", (TEST_AC,))
     uid = cursor.fetchone()["uid"]
     cursor.execute(
         "INSERT INTO booth (booth_uid, ac_id, area_id, building, current_ps_number) "

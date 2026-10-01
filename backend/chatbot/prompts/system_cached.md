@@ -49,8 +49,8 @@ say that in as many words when you report one.
 
 Every factual claim carries its source, inline:
 
-- A result: `[VS-2024, B0042, Form20 p.7]`
-- A roll figure: `[roll 2026-SSR, B0042]`
+- A result: `[VS-2024, 32-B0042, Form20 p.7]`
+- A roll figure: `[roll 2026-SSR, 32-B0042]`
 - A caste estimate: `[blend, confidence 0.62]`
 - A news claim: `[Prabhat Khabar, 2026-09-12, <url>]`
 

@@ -112,7 +112,10 @@ def check_new_supplement() -> dict:
     }
     already_flagged = {
         r["ref"] for r in query(
-            "SELECT ref FROM review_queue WHERE kind = 'roll_section' AND status = 'open'"
+            # Any status: once an admin has resolved or rejected an item it is
+            # handled. Checking only 'open' re-inserted it the next day, which
+            # the (kind, ref) unique index then refused - every day.
+            "SELECT ref FROM review_queue WHERE kind = 'roll_section'"
         )
     }
     new = [
@@ -123,7 +126,7 @@ def check_new_supplement() -> dict:
     for doc in new:
         execute(
             "INSERT INTO review_queue (kind, ref, payload, note) "
-            "VALUES ('roll_section', %s, %s, %s)",
+            "VALUES ('roll_section', %s, %s, %s) ON CONFLICT (kind, ref) DO NOTHING",
             (doc["url"],
              json.dumps({"filename": doc.get("filename"), "label": doc.get("label")},
                         ensure_ascii=False),

@@ -1,7 +1,9 @@
 -- Reference queries for the metric definitions in HLD 10.
 --
--- The materialized views themselves live in db/migrations/0009-0011 so they are
--- versioned with the schema rather than applied ad hoc. This file is the
+-- The materialized views themselves live in db/migrations/0015 (and 0020) so
+-- they are versioned with the schema rather than applied ad hoc. Every query
+-- here is executed by tests/e2e/test_reference_queries.py, so a renamed column
+-- fails a test instead of rotting here. This file is the
 -- analyst's crib sheet: the same questions, written as plain SELECTs, useful
 -- for spot-checking a view after a load and as worked examples for the
 -- chatbot's schema documentation.
@@ -41,17 +43,20 @@ WHERE l.party = 'AJSU' AND v.party = 'JMM'
 GROUP BY a.name_en
 ORDER BY booths DESC;
 
--- 4. New voters added per panchayat since the baseline roll.
+-- 4. New voters added per panchayat in the window before the baseline election.
+--    mv_new_voter_share is per (election, booth); the area comes from booth.
 SELECT a.name_en AS panchayat, a.name_hi,
        SUM(n.additions) AS additions,
        SUM(n.deletions) AS deletions,
-       SUM(n.electors_now) AS electors,
-       ROUND(100.0 * SUM(n.additions) / NULLIF(SUM(n.electors_now), 0), 2) AS new_voter_pct
+       SUM(n.electors) AS electors,
+       ROUND(100.0 * SUM(n.additions) / NULLIF(SUM(n.electors), 0), 2) AS new_voter_pct
 FROM mv_new_voter_share n
-JOIN area a ON a.area_id = n.area_id
+JOIN election e ON e.election_id = n.election_id AND e.is_baseline
+JOIN booth b ON b.booth_uid = n.booth_uid
+JOIN area a ON a.area_id = b.area_id
 WHERE a.kind = 'panchayat'
 GROUP BY a.name_en, a.name_hi
-ORDER BY new_voter_pct DESC;
+ORDER BY new_voter_pct DESC NULLS LAST;
 
 -- 5. Priority booths: tight margin, many new voters, volatile, floating vote.
 SELECT p.booth_uid, a.name_en AS area, p.margin_pct, p.new_voter_pct,
@@ -65,8 +70,8 @@ LIMIT 30;
 -- Read as ECOLOGICAL CORRELATION. It says nothing about how any individual or
 -- any community voted (HLD 5, 10).
 SELECT c.name_en AS community,
-       ROUND(CORR(ce.est_pct, w.jmm::NUMERIC / NULLIF(w.votes_polled, 0) * 100)::NUMERIC, 3) AS corr_jmm,
-       ROUND(CORR(ce.est_pct, w.bjp::NUMERIC / NULLIF(w.votes_polled, 0) * 100)::NUMERIC, 3) AS corr_bjp,
+       ROUND(CORR(ce.est_pct, w.jmm::NUMERIC / NULLIF(w.valid_votes, 0) * 100)::NUMERIC, 3) AS corr_jmm,
+       ROUND(CORR(ce.est_pct, w.bjp::NUMERIC / NULLIF(w.valid_votes, 0) * 100)::NUMERIC, 3) AS corr_bjp,
        COUNT(*) AS booths
 FROM caste_estimate ce
 JOIN community c ON c.community_id = ce.community_id
@@ -75,4 +80,4 @@ JOIN election e ON e.election_id = w.election_id AND e.is_baseline
 WHERE ce.source = 'blend' AND ce.confidence >= 0.4
 GROUP BY c.name_en
 HAVING COUNT(*) >= 30
-ORDER BY ABS(COALESCE(CORR(ce.est_pct, w.jmm::NUMERIC / NULLIF(w.votes_polled, 0) * 100), 0)) DESC;
+ORDER BY ABS(COALESCE(CORR(ce.est_pct, w.jmm::NUMERIC / NULLIF(w.valid_votes, 0) * 100), 0)) DESC;

@@ -3,6 +3,11 @@
 Read-only. Only the tables listed here are readable; anything else is refused by
 the guard. Always add a `LIMIT` (one is imposed at 500 regardless).
 
+**Every query is about one constituency.** Filter with `ac_id` (look it up in
+`ac (ac_id, ac_number, name_en, name_hi, verified)`; Giridih is `ac_number = 32`).
+Election labels such as `'VS-2024'` repeat in every AC, so never filter on a
+label alone.
+
 ## Start here — the wide result view
 
 `mv_result_booth_wide` — one row per election × booth. This answers most result
@@ -10,14 +15,14 @@ questions on its own.
 
 | column | meaning |
 |---|---|
-| `election_id`, `election_label`, `election_type`, `election_year` | `'VS-2024'`, `'LS-2024 (AC seg)'`; type is `VS`/`LS`/`PANCHAYAT`/`WARD` |
-| `booth_uid` | stable booth id, e.g. `B0042`. **Join on this, never on ps_number** |
+| `ac_id`, `election_id`, `election_label`, `election_type`, `election_year` | `'VS-2024'`, `'LS-2024'`; type is `VS`/`LS` |
+| `booth_uid` | stable booth id carrying its AC, e.g. `32-B0042`. **Join on this, never on ps_number** |
 | `area_id`, `block_id` | panchayat or ward, and block |
 | `ps_numbers` | the polling-station number(s) that fed this row in that year |
-| `electors`, `total_valid`, `votes_counted` | roll size and votes |
+| `electors`, `valid_votes`, `votes_polled`, `rejected` | roll size; valid votes (NOTA included); valid + rejected |
 | `jmm bjp ajsu jlkm inc rjd jvm others nota` | votes per party |
 | `winner_party`, `winner_votes`, `runner_party`, `runner_votes` | |
-| `margin_votes`, `margin_pct`, `turnout_pct` | |
+| `margin_votes`, `margin_pct`, `signed_margin_pct`, `turnout_pct` | signed margin is + for the AC's contest party A |
 | `source_doc`, `source_page` | cite these |
 
 ## Geography
@@ -51,14 +56,16 @@ questions on its own.
 - `mv_floating_vote (year, booth_uid, floating_pct)` — Pedersen index between
   the LS and VS polls of that year. High = genuinely movable vote.
 - `mv_volatility (booth_uid, margin_stddev, margin_avg, distinct_winners)`.
-- `mv_new_voter_share (booth_uid, area_id, electors_now, additions, deletions,
-  net_change, add_18_19, add_female, del_death, del_shifted, new_voter_pct,
-  deleted_pct)`.
+- `mv_new_voter_share (ac_id, election_id, booth_uid, additions, deletions,
+  modifications, electors, electors_start, new_voter_pct, net_roll_change_pct)` —
+  roll additions in the window before each election. Detail per revision is in
+  `roll_change (add_18_19, add_female, del_death, del_shifted, ...)`.
 - `mv_booth_priority (booth_uid, area_id, margin_pct, new_voter_pct,
-  margin_stddev, floating_pct, priority_score, priority_quartile)` —
-  `priority_score` is 0-100, higher = more worth working.
+  margin_stddev, floating_pct, priority_score, priority_quartile, inputs_used)` —
+  `priority_score` is 0-1, higher = more worth working; `inputs_used` says which
+  of the four inputs it was computed from.
 - `mv_area_rollup (election_id, area_id, area_name_en, area_name_hi, area_kind,
-  block_id, booths, electors, votes_counted, jmm … nota, turnout_pct, jmm_pct,
+  block_id, booths, electors, valid_votes, votes_polled, jmm … nota, turnout_pct, jmm_pct,
   bjp_pct, jmm_minus_bjp)`.
 
 ## Rolls (counts only — no voter records exist)
@@ -96,12 +103,15 @@ FROM mv_result_booth_wide
 WHERE election_label = 'VS-2024'
 ORDER BY lead DESC LIMIT 20;
 
--- New voters per panchayat since the baseline roll
+-- New voters per panchayat before the baseline election, Giridih (AC 32)
 SELECT a.name_hi, SUM(n.additions) AS additions,
-       ROUND(100.0 * SUM(n.additions) / NULLIF(SUM(n.electors_now), 0), 2) AS pct
-FROM mv_new_voter_share n JOIN area a ON a.area_id = n.area_id
-WHERE a.kind = 'panchayat'
-GROUP BY a.name_hi ORDER BY pct DESC LIMIT 40;
+       ROUND(100.0 * SUM(n.additions) / NULLIF(SUM(n.electors), 0), 2) AS pct
+FROM mv_new_voter_share n
+JOIN election e ON e.election_id = n.election_id AND e.is_baseline
+JOIN booth b ON b.booth_uid = n.booth_uid
+JOIN area a ON a.area_id = b.area_id
+WHERE a.kind = 'panchayat' AND n.ac_id = (SELECT ac_id FROM ac WHERE ac_number = 32)
+GROUP BY a.name_hi ORDER BY pct DESC NULLS LAST LIMIT 40;
 
 -- Booths that backed AJSU in LS-2024 but JMM in VS-2024
 SELECT booth_uid, ls_share_pct, vs_share_pct

@@ -190,19 +190,19 @@ def effective_transfer(inp: ScenarioInput, parties: list[str]) -> dict[str, dict
         row = supplied.get(party)
         matrix[party] = _normalised_row(dict(row), party) if row else {party: 1.0}
 
-    jmm, bjp = inp.contest
-    if inp.sympathy_swing and bjp in matrix:
-        swing = max(-1.0, min(1.0, inp.sympathy_swing))
-        row = dict(matrix[bjp])
-        if swing > 0:
-            moved = row.get(bjp, 0.0) * swing
-            row[bjp] = row.get(bjp, 0.0) - moved
-            row[jmm] = row.get(jmm, 0.0) + moved
-        else:
-            moved = row.get(jmm, 0.0) * abs(swing)
-            row[jmm] = row.get(jmm, 0.0) - moved
-            row[bjp] = row.get(bjp, 0.0) + moved
-        matrix[bjp] = row
+    # Rows are "from" parties. A positive swing moves part of party B's own vote
+    # to party A; a negative one moves part of party A's own vote to party B.
+    # The negative branch used to edit party B's row and read party A's share
+    # from it - normally 0 - so a negative swing moved nothing at all.
+    party_a, party_b = inp.contest
+    swing = max(-1.0, min(1.0, inp.sympathy_swing or 0.0))
+    source, destination = (party_b, party_a) if swing > 0 else (party_a, party_b)
+    if swing and source in matrix:
+        row = dict(matrix[source])
+        moved = row.get(source, 0.0) * abs(swing)
+        row[source] = row.get(source, 0.0) - moved
+        row[destination] = row.get(destination, 0.0) + moved
+        matrix[source] = row
     return matrix
 
 
@@ -339,8 +339,12 @@ def load_baseline(ac_id: int, area_id: int | None = None,
                w.others, w.nota, COALESCE(n.additions, 0) AS additions
         FROM mv_result_booth_wide w
         JOIN election e ON e.election_id = w.election_id AND e.is_baseline
+        -- Same election as the baseline row: mv_new_voter_share has one row per
+        -- (election, booth), so joining on booth alone duplicated every booth
+        -- once a second election had a roll linked, multiplying the totals.
         LEFT JOIN mv_new_voter_share n ON n.booth_uid = w.booth_uid
                                       AND n.ac_id = w.ac_id
+                                      AND n.election_id = w.election_id
         WHERE true {clause}
         """,
         params,

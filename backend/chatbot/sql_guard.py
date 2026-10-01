@@ -26,7 +26,8 @@ from sqlglot import exp
 MAX_ROWS = 500
 STATEMENT_TIMEOUT_MS = 5000
 
-# Must stay in step with the GRANT list in 0012_roles_grants.sql.
+# Must stay in step with the GRANT lists in 0012_roles_grants.sql and
+# 0021_readonly_grants.sql (tests/test_sql_guard.py checks the union).
 ALLOWED_TABLES = {
     "block", "area", "booth", "booth_crosswalk",
     "election", "party", "candidate",
@@ -36,6 +37,8 @@ ALLOWED_TABLES = {
     "mv_result_booth_party", "mv_booth_party_share", "mv_result_booth_wide",
     "mv_swing", "mv_transfer_ls_vs", "mv_volatility",
     "mv_new_voter_share", "mv_floating_vote", "mv_booth_priority", "mv_area_rollup",
+    # Multi-AC spine (0014): every query must be able to scope to one AC.
+    "ac", "election_event", "ac_contest", "mv_ac_summary", "mv_result_booth_candidate",
 }
 
 FUNCTION_ALLOWLIST = {

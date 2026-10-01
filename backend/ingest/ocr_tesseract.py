@@ -86,8 +86,14 @@ def _ocr_via_cli(png_path: Path, langs: str, psm: int) -> tuple[str, float]:
     return normalize_block(out.stdout.decode("utf-8", errors="replace")), 0.0
 
 
-def ocr_pages(pdf_path: Path, page_numbers: list[int]):
-    """OCR the given 1-based pages. Returns PageText objects."""
+def ocr_pages(pdf_path: Path, page_numbers: list[int], personal: bool = False):
+    """OCR the given 1-based pages. Returns PageText objects.
+
+    `personal=True` marks text that is personal data - an electoral roll. A
+    low-confidence page is still queued for review, but without the excerpt:
+    a reviewer opens the PDF page itself, and no name or EPIC number is copied
+    into review_queue, where the admin API would serve it (LLD 12).
+    """
     from ingest.extract_pdf import PageText
 
     settings = get_settings()
@@ -103,21 +109,26 @@ def ocr_pages(pdf_path: Path, page_numbers: list[int]):
             results.append(PageText(page_no=page_no, text=text, source="ocr",
                                     ocr_confidence=conf, char_count=len(text)))
             if conf and conf < settings.ocr_min_confidence:
-                _queue_review(pdf_path, page_no, conf, text)
+                _queue_review(pdf_path, page_no, conf, None if personal else text)
             png.unlink(missing_ok=True)
     return results
 
 
-def _queue_review(pdf_path: Path, page_no: int, conf: float, text: str) -> None:
-    """Low-confidence page -> manual review. Never silently loaded."""
+def _queue_review(pdf_path: Path, page_no: int, conf: float, text: str | None) -> None:
+    """Low-confidence page -> manual review. Never silently loaded.
+
+    `text` is None for personal documents, and then no excerpt is stored.
+    """
+    payload: dict = {"confidence": conf, "file": pdf_path.name, "page": page_no}
+    if text is not None:
+        payload["excerpt"] = text[:1500]
     try:
         from common.db import execute
 
         execute(
-            "INSERT INTO review_queue (kind, ref, payload) VALUES ('ocr_page', %s, %s)",
-            (f"{pdf_path.name}#p{page_no}",
-             json.dumps({"confidence": conf, "excerpt": text[:1500], "file": pdf_path.name},
-                        ensure_ascii=False)),
+            "INSERT INTO review_queue (kind, ref, payload) VALUES ('ocr_page', %s, %s) "
+            "ON CONFLICT (kind, ref) DO UPDATE SET payload = EXCLUDED.payload",
+            (f"{pdf_path.name}#p{page_no}", json.dumps(payload, ensure_ascii=False)),
         )
     except Exception as exc:
         log.warning("could not queue OCR review for %s p%d: %s", pdf_path.name, page_no, exc)

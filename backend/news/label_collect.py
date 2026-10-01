@@ -128,7 +128,8 @@ def collect(batch_id: str) -> dict:
     if unknown_names:
         stats["unknown_areas"] = len(unknown_names)
         execute(
-            "INSERT INTO review_queue (kind, ref, payload, note) VALUES ('area_alias', %s, %s, %s)",
+            "INSERT INTO review_queue (kind, ref, payload, note) VALUES ('area_alias', %s, %s, %s) "
+            "ON CONFLICT (kind, ref) DO UPDATE SET payload = EXCLUDED.payload, note = EXCLUDED.note",
             (f"batch:{batch_id}",
              json.dumps({"names": sorted(unknown_names)}, ensure_ascii=False),
              f"{len(unknown_names)} place name(s) in the news could not be matched to an area - "

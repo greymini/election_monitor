@@ -135,7 +135,9 @@ def extract_document(
                  pdf_path.name, len(ocr_needed), len(pages))
         from ingest.ocr_tesseract import ocr_pages
 
-        results = ocr_pages(pdf_path, ocr_needed)
+        # cache=False is the caller saying this text is personal data (a roll):
+        # it then never reaches disk, and OCR queues no excerpt of it either.
+        results = ocr_pages(pdf_path, ocr_needed, personal=not cache)
         by_page = {r.page_no: r for r in results}
         for i, pt in enumerate(pages):
             r = by_page.get(pt.page_no)

@@ -255,3 +255,25 @@ def test_alliances_are_echoed_back_with_the_assumptions():
     result = project(BOOTHS, ScenarioInput(contest=GIRIDIH, alliance=ALLIANCE_2024, draws=1))
     assert result.assumptions["alliance"] == ALLIANCE_2024
     assert result.assumptions["contest"] == list(GIRIDIH)
+
+
+# --- sympathy swing in both directions -------------------------------------
+# A negative swing is documented as reversing the effect (api/routers/
+# scenario.py). It read party A's share out of party B's row - where it is 0 -
+# so a negative swing moved nothing and the result equalled a swing of zero.
+
+def _margin(swing: float) -> float:
+    return project(BOOTHS, ScenarioInput(contest=GIRIDIH, sympathy_swing=swing,
+                                         new_voter_turnout=0.0, draws=1)).margin_point
+
+
+def test_a_negative_sympathy_swing_moves_votes_from_party_a_to_party_b():
+    # JMM (party A) polled 94,042 = BJP's 90,204 + the 3,838 margin. A -5%
+    # swing moves 5% of JMM's vote to BJP, closing the margin by twice that.
+    moved = 94042 * 0.05
+    assert _margin(-0.05) == pytest.approx(3838.0 - 2 * moved, abs=1)
+
+
+def test_a_swing_of_zero_changes_nothing_and_signs_are_opposite():
+    assert _margin(0.0) == pytest.approx(3838.0, abs=1)
+    assert _margin(0.05) > _margin(0.0) > _margin(-0.05)
