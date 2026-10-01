@@ -41,7 +41,7 @@ against.
 | GET | `/acs/{ac_number}/admin/usage` | admin | `days`? | dict | `frontend/src/pages/Admin.tsx:46` |
 | GET | `/acs/{ac_number}/areas` | any signed-in | — | dict | `frontend/src/pages/MapExplorer.tsx:130`<br>`frontend/src/pages/Results.tsx:35` |
 | GET | `/acs/{ac_number}/booths` | any signed-in | `election_label`?, `area_id`?, `block_id`?, `metric`? | dict | `frontend/src/pages/MapExplorer.tsx:140` |
-| GET | `/acs/{ac_number}/booths/{booth_uid}/card` | any signed-in | — | dict | `frontend/src/components/BoothDrawer.tsx:101` |
+| GET | `/acs/{ac_number}/booths/{booth_uid}/card` | any signed-in | — | dict | `frontend/src/components/BoothDrawer.tsx:123` |
 | GET | `/acs/{ac_number}/candidates` | any signed-in | `election_label`? | dict | `frontend/src/pages/Candidates.tsx:69` |
 | GET | `/acs/{ac_number}/caste` | admin, strategist | `area_id`?, `booth_uid`?, `min_conf`?, `source`? | dict | `frontend/src/components/OverviewInsights.tsx:128`<br>`frontend/src/pages/Caste.tsx:30` |
 | GET | `/acs/{ac_number}/caste/correlation` | admin, strategist | `community`?, `min_conf`? | dict | `frontend/src/pages/CasteScatter.tsx:91` |
@@ -60,12 +60,12 @@ against.
 | POST | `/acs/{ac_number}/scenario` | admin, strategist | — | dict | `frontend/src/pages/Scenario.tsx:32` |
 | GET | `/acs/{ac_number}/summary` | any signed-in | — | dict | `frontend/src/pages/Admin.tsx:57`<br>`frontend/src/pages/Overview.tsx:104` |
 | GET | `/acs/{ac_number}/transfer` | admin, strategist | `year`?, `area_id`?, `format`? | **dict (untyped)** | `frontend/src/pages/Transfer.tsx:30`<br>`frontend/src/pages/Transfer.tsx:70` |
-| POST | `/auth/login` | public | — | Token | `frontend/src/lib/api.ts:150` |
-| GET | `/auth/me` | any signed-in | — | dict | `frontend/src/lib/api.ts:168` |
+| POST | `/auth/login` | public | — | Token | `frontend/src/lib/api.ts:167` |
+| GET | `/auth/me` | any signed-in | — | dict | `frontend/src/lib/api.ts:185` |
 | POST | `/auth/otp` | public | — | dict | **(none)** |
 | POST | `/auth/verify` | public | — | Token | **(none)** |
 | GET | `/compare` | any signed-in | `metric`? | dict | `frontend/src/pages/Compare.tsx:81` |
-| GET | `/config` | public | — | dict | `frontend/src/lib/api.ts:193` |
+| GET | `/config` | public | — | dict | `frontend/src/lib/api.ts:210` |
 | GET | `/health` | public | — | dict | **(none)** |
 
 ## Legacy redirects

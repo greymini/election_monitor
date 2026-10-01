@@ -520,6 +520,11 @@ def serve() -> None:
         f"API and PostgreSQL)")
     import uvicorn
 
+    # Run as `python scripts/dev_stack.py`, sys.path[0] is scripts/, not the
+    # backend root, and uvicorn does not add the working directory - so
+    # "api.main" was not importable and the stack died after building.
+    if str(APP_ROOT) not in sys.path:
+        sys.path.insert(0, str(APP_ROOT))
     uvicorn.run("api.main:app", host="127.0.0.1", port=API_PORT, log_level="info")
 
 

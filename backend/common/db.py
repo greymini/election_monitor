@@ -13,6 +13,7 @@ from typing import Any
 
 import psycopg
 from psycopg.rows import dict_row
+from psycopg.types.numeric import FloatLoader
 from psycopg_pool import ConnectionPool
 
 from common.config import get_settings
@@ -24,13 +25,27 @@ _pool: ConnectionPool | None = None
 _ro_pool: ConnectionPool | None = None
 
 
+def _configure(conn: psycopg.Connection) -> None:
+    """Load NUMERIC as float on every pooled connection.
+
+    psycopg's default is `decimal.Decimal`, and FastAPI (pydantic 2) serialises a
+    Decimal as a JSON *string*, so margin_pct, turnout_pct, priority_score and
+    every other NUMERIC column reached the browser as "25.29" and the frontend's
+    `value.toFixed()` threw on it. The values are percentages, shares and scores
+    already rounded in SQL, well inside float precision; no code here relies on
+    Decimal semantics. tests/e2e/test_api_json_types.py pins this.
+    """
+    conn.adapters.register_loader("numeric", FloatLoader)
+
+
 def get_pool() -> ConnectionPool:
     global _pool
     if _pool is None:
         s = get_settings()
         if not s.database_url:
             raise RuntimeError("DATABASE_URL is not set")
-        _pool = ConnectionPool(s.database_url, min_size=1, max_size=8, kwargs={"row_factory": dict_row})
+        _pool = ConnectionPool(s.database_url, min_size=1, max_size=8,
+                               kwargs={"row_factory": dict_row}, configure=_configure)
     return _pool
 
 
@@ -41,7 +56,8 @@ def get_readonly_pool() -> ConnectionPool:
         url = s.readonly_db_url or s.database_url
         if not url:
             raise RuntimeError("READONLY_DB_URL / DATABASE_URL is not set")
-        _ro_pool = ConnectionPool(url, min_size=0, max_size=4, kwargs={"row_factory": dict_row})
+        _ro_pool = ConnectionPool(url, min_size=0, max_size=4,
+                                  kwargs={"row_factory": dict_row}, configure=_configure)
     return _ro_pool
 
 

@@ -96,7 +96,10 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     },
   })
 
-  if (response.status === 401) {
+  // A 401 on any call but the login itself means the session is over. On the
+  // login call it means the password was wrong, and must say so: treating it
+  // as an expiry told a user who mistyped that their session had expired.
+  if (response.status === 401 && path !== '/auth/login') {
     setSession(null)
     window.dispatchEvent(new CustomEvent('giridih:unauthorised'))
     throw new ApiError(401, 'Session expired. Please sign in again.')
@@ -105,7 +108,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     let detail = `Request failed (${response.status})`
     try {
       const body = await response.json()
-      detail = body.detail ?? detail
+      detail = formatDetail(body.detail) ?? detail
     } catch {
       /* non-JSON error body */
     }
@@ -113,6 +116,20 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   }
   if (response.status === 204) return undefined as T
   return (await response.json()) as T
+}
+
+/** FastAPI sends `detail` as a string for HTTPException and as a list of
+ *  `{loc, msg}` objects for a validation error (422). Rendering the list
+ *  directly showed "[object Object]". */
+export function formatDetail(detail: unknown): string | null {
+  if (typeof detail === 'string') return detail
+  if (Array.isArray(detail)) {
+    const messages = detail
+      .map((d) => (d && typeof d === 'object' && 'msg' in d ? String((d as { msg: unknown }).msg) : null))
+      .filter((m): m is string => Boolean(m))
+    return messages.length ? messages.join('; ') : null
+  }
+  return null
 }
 
 export const api = {

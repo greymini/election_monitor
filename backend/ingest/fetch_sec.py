@@ -28,7 +28,8 @@ log = get_logger(__name__)
 SEAT_TYPES = {"mukhiya", "ZP", "panchayat_samiti", "ward"}
 
 
-def load_csv(path: Path, election_label: str, dry_run: bool = False) -> dict:
+def load_csv(path: Path, election_label: str, dry_run: bool = False,
+             ac_number: int | None = None) -> dict:
     """Load hand-transcribed local results.
 
     SEC PDFs vary too much for a reliable parser, and the volume is small (a few
@@ -49,12 +50,14 @@ def load_csv(path: Path, election_label: str, dry_run: bool = False) -> dict:
             log.info("  %s | %s | %s", r.get("seat_type"), r.get("seat_name"), r.get("winner"))
         return stats
 
+    from ingest.acscope import resolve_election
+
     with connection() as conn, conn.cursor() as cur:
-        cur.execute("SELECT election_id FROM election WHERE label = %s", (election_label,))
-        election = cur.fetchone()
-        if election is None:
-            raise ValueError(f"unknown election label {election_label!r}")
-        eid = election["election_id"]
+        # Labels are per AC since 0014 (PANCHAYAT-2022 exists in every seeded
+        # AC), so the election is resolved with --ac and refused when ambiguous.
+        scope = resolve_election(cur, election_label, ac_number)
+        eid, ac_id = scope.election_id, scope.ac_id
+        log.info("loading into %s", scope)
 
         cur.execute("SELECT abbr, party_id FROM party")
         parties = {r["abbr"].upper(): r["party_id"] for r in cur.fetchall()}
@@ -70,7 +73,9 @@ def load_csv(path: Path, election_label: str, dry_run: bool = False) -> dict:
             area_id = None
             area_name = normalize_text(r.get("area_name"))
             if area_name:
-                cur.execute("SELECT area_id FROM area_alias WHERE alias = %s", (alias_key(area_name),))
+                cur.execute(
+                    "SELECT aa.area_id FROM area_alias aa JOIN area a ON a.area_id = aa.area_id "
+                    "WHERE aa.alias = %s AND a.ac_id = %s", (alias_key(area_name), ac_id))
                 hit = cur.fetchone()
                 if hit:
                     area_id = hit["area_id"]
@@ -85,17 +90,19 @@ def load_csv(path: Path, election_label: str, dry_run: bool = False) -> dict:
             cur.execute(
                 "INSERT INTO local_result (election_id, seat_type, area_id, seat_name, winner, "
                 "runner_up, tagged_party_id, tag_source, tag_confidence, votes, runner_up_votes, "
-                "margin, source_doc) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
+                "margin, source_doc, ac_id) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
                 "ON CONFLICT (election_id, seat_type, seat_name) DO UPDATE SET "
                 "winner = EXCLUDED.winner, runner_up = EXCLUDED.runner_up, "
                 "tagged_party_id = EXCLUDED.tagged_party_id, tag_source = EXCLUDED.tag_source, "
                 "tag_confidence = EXCLUDED.tag_confidence, votes = EXCLUDED.votes, "
-                "runner_up_votes = EXCLUDED.runner_up_votes, margin = EXCLUDED.margin",
+                "runner_up_votes = EXCLUDED.runner_up_votes, margin = EXCLUDED.margin, "
+                "ac_id = EXCLUDED.ac_id",
                 (eid, seat_type, area_id, normalize_text(r.get("seat_name")),
                  normalize_text(r.get("winner")), normalize_text(r.get("runner_up")),
                  parties.get(tagged), r.get("tag_source") or None,
                  float(r["tag_confidence"]) if r.get("tag_confidence") else None,
-                 votes, runner_votes, margin, path.name),
+                 votes, runner_votes, margin, path.name, ac_id),
             )
             stats["loaded"] += 1
     return stats
@@ -107,6 +114,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--download", action="store_true")
     ap.add_argument("--load-csv", metavar="PATH", help="load transcribed results")
     ap.add_argument("--election", help="election label for --load-csv")
+    ap.add_argument("--ac", type=int, help="AC number; required when the label exists in several ACs")
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args(argv)
 
@@ -114,7 +122,7 @@ def main(argv: list[str] | None = None) -> int:
         if not args.election:
             ap.error("--load-csv needs --election")
         with job_context("ingest.fetch_sec.load_csv", election=args.election) as job:
-            stats = load_csv(Path(args.load_csv), args.election, args.dry_run)
+            stats = load_csv(Path(args.load_csv), args.election, args.dry_run, args.ac)
             job.set(**stats)
             job.log_line(str(stats))
             if stats["unmatched_area"]:

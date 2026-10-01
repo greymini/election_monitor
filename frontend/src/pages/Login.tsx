@@ -3,7 +3,9 @@ import { useTranslation } from 'react-i18next'
 
 import { login } from '../lib/api'
 
-export default function Login({ onSignedIn }: { onSignedIn: () => void }) {
+export default function Login(
+  { onSignedIn, notice = null }: { onSignedIn: () => void; notice?: string | null },
+) {
   const { t, i18n } = useTranslation()
   const [phone, setPhone] = useState('')
   const [password, setPassword] = useState('')
@@ -32,11 +34,19 @@ export default function Login({ onSignedIn }: { onSignedIn: () => void }) {
           {t('app.constituency')}
         </p>
 
-        <label className="mt-5 block text-2xs font-medium uppercase tracking-wide"
+        {notice && !error && (
+          <p className="mt-3 text-2xs" role="status" style={{ color: 'var(--status-warning)' }}>
+            {notice}
+          </p>
+        )}
+
+        <label htmlFor="login-phone"
+               className="mt-5 block text-2xs font-medium uppercase tracking-wide"
                style={{ color: 'var(--text-secondary)' }}>
           {t('login.phone')}
         </label>
         <input
+          id="login-phone"
           className="field mt-1 w-full"
           value={phone}
           onChange={(e) => setPhone(e.target.value)}
@@ -45,11 +55,13 @@ export default function Login({ onSignedIn }: { onSignedIn: () => void }) {
           required
         />
 
-        <label className="mt-3 block text-2xs font-medium uppercase tracking-wide"
+        <label htmlFor="login-password"
+               className="mt-3 block text-2xs font-medium uppercase tracking-wide"
                style={{ color: 'var(--text-secondary)' }}>
           {t('login.password')}
         </label>
         <input
+          id="login-password"
           className="field mt-1 w-full"
           type="password"
           value={password}

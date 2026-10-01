@@ -176,19 +176,36 @@ def full_text(pages: list[PageText]) -> str:
 
 def register_source_doc(pdf_path: Path, kind: str, pages: list[PageText],
                         url: str | None = None) -> int | None:
-    """Record the file in source_doc for audit and idempotency (LLD 12)."""
+    """Record the file in source_doc for audit and idempotency (LLD 12).
+
+    The file is on local disk, so the row says `storage_backend='local'` and a
+    `storage_key` - required since 0013. The key is the path relative to
+    RAW_DIR when the file lives there (how LocalStorage resolves keys), and
+    otherwise `kind/filename`, the convention 0013's backfill used. Without it
+    every `extract_pdf --register` failed with a NOT NULL violation.
+    """
+    from common.config import get_settings
     from common.db import query_one
+
+    raw_dir = Path(get_settings().raw_dir).resolve()
+    resolved = pdf_path.resolve()
+    try:
+        key = resolved.relative_to(raw_dir).as_posix()
+    except ValueError:
+        key = f"{kind}/{pdf_path.name}"
 
     digest = sha256_file(pdf_path)
     ocr_pages_n = sum(1 for p in pages if p.source == "ocr")
     row = query_one(
-        "INSERT INTO source_doc (kind, url, filename, sha256, bytes, pages, ocr_pages, parse_status) "
-        "VALUES (%s, %s, %s, %s, %s, %s, %s, 'extracted') "
+        "INSERT INTO source_doc (kind, url, filename, sha256, bytes, pages, ocr_pages, "
+        "parse_status, storage_backend, storage_key) "
+        "VALUES (%s, %s, %s, %s, %s, %s, %s, 'extracted', %s, %s) "
         "ON CONFLICT (sha256) DO UPDATE SET pages = EXCLUDED.pages, ocr_pages = EXCLUDED.ocr_pages, "
         "parse_status = CASE WHEN source_doc.parse_status = 'new' THEN 'extracted' "
         "ELSE source_doc.parse_status END "
         "RETURNING doc_id",
-        (kind, url, pdf_path.name, digest, pdf_path.stat().st_size, len(pages), ocr_pages_n),
+        (kind, url, pdf_path.name, digest, pdf_path.stat().st_size, len(pages), ocr_pages_n,
+         "local", key),
     )
     return row["doc_id"] if row else None
 

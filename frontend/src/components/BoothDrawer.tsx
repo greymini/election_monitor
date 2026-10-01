@@ -86,6 +86,28 @@ interface BoothCard {
 
 type Tab = 'results' | 'voters' | 'community' | 'news' | 'ground' | 'sources'
 
+/** Fill in what an older or partial payload may omit, so a tab never reads a
+ *  property of null. The API now always sends every block (tests/e2e/
+ *  test_booth_card.py), but before that fix `priority` and `new_voters` came
+ *  back null for any booth without a baseline row, and `.inputs_used.length`
+ *  or `.additions` took the whole page down. */
+export function normaliseCard(raw: BoothCard): BoothCard {
+  return {
+    ...raw,
+    results: raw.results ?? [],
+    roll: raw.roll ?? [],
+    crosswalk: raw.crosswalk ?? [],
+    caveats: raw.caveats ?? [],
+    new_voters: raw.new_voters ?? { additions: null, new_voter_pct: null, null_reason: null },
+    priority: {
+      priority_score: raw.priority?.priority_score ?? null,
+      priority_quartile: raw.priority?.priority_quartile ?? null,
+      inputs_used: raw.priority?.inputs_used ?? [],
+      weight_used: raw.priority?.weight_used ?? null,
+    },
+  }
+}
+
 export default function BoothDrawer(
   { boothUid, ac, onClose }: { boothUid: string; ac: AcState; onClose: () => void },
 ) {
@@ -98,7 +120,7 @@ export default function BoothDrawer(
     // stale cache entry cannot surface another constituency's booth, and the
     // request has to be scoped or it hits the legacy redirect to AC-32.
     queryKey: ['booth-card', ac.acNumber, boothUid],
-    queryFn: () => api.get(ac.path(`/booths/${boothUid}/card`)),
+    queryFn: async () => normaliseCard(await api.get<BoothCard>(ac.path(`/booths/${boothUid}/card`))),
     enabled: ac.acNumber !== null,
   })
   const card = query.data

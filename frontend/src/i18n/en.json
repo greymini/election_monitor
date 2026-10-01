@@ -63,7 +63,11 @@
     "dismiss": "Dismiss",
     "copyCommand": "Copy command",
     "copied": "Copied",
-    "noRunnerUp": "no runner-up"
+    "noRunnerUp": "no runner-up",
+    "configFailed": "Could not load the list of constituencies from the server.",
+    "crashTitle": "Something went wrong on this page",
+    "crashBody": "The rest of the app still works. Reload the page, or go back to the overview.",
+    "reload": "Reload"
   },
   "overview": {
     "heading": "Constituency overview",
@@ -166,7 +170,9 @@
     "phone": "Phone number",
     "password": "Password",
     "submit": "Sign in",
-    "failed": "Could not sign in"
+    "failed": "Could not sign in",
+    "wrongCredentials": "Incorrect phone number or password.",
+    "sessionExpired": "Your session expired. Please sign in again."
   },
   "ac": {
     "label": "Constituency",
@@ -316,7 +322,8 @@
     "unmatchedNote": "(share the dictionary could not place, not a community)",
     "noPriority": "No priority score: every input is missing for this booth.",
     "newsPending": "Area-tagged news for this booth arrives with the news layer (Track B).",
-    "groundPending": "Ground reports arrive with the field form (Track B)."
+    "groundPending": "Ground reports arrive with the field form (Track B).",
+    "heading": "Booth {{booth}}"
   },
   "theme": {
     "system": "system",

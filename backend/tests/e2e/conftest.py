@@ -271,3 +271,117 @@ def loaded_dataset(conn, db_url, tmp_path_factory):
             else:
                 os.environ[key] = value
         get_settings.cache_clear()
+
+
+# ---------------------------------------------------------------------------
+# API fixtures: real identifiers, one user per role, a TestClient and tokens.
+# Moved here from test_api_contract.py so every API test module can use them.
+# ---------------------------------------------------------------------------
+
+API_ROLES = ("admin", "strategist", "block")
+
+
+@pytest.fixture(scope="module")
+def ids(loaded_dataset, db_url):
+    """Real identifiers from the loaded data, so a 404 means a bug not a typo."""
+    import psycopg
+
+    with psycopg.connect(db_url, row_factory=psycopg.rows.dict_row) as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT ac_number FROM ac WHERE ac_number = 32")
+            ac_number = cur.fetchone()["ac_number"]
+            # `review_queue.id`, not `item_id`: the POST path parameter is
+            # named `item_id` and the listing returns `id`. Worth a note rather
+            # than a rename, since the route is already in use.
+            cur.execute("SELECT id FROM review_queue WHERE status = 'open' "
+                        "ORDER BY id LIMIT 1")
+            row = cur.fetchone()
+            review_item_id = row["id"] if row else 1
+            cur.execute("SELECT block_id FROM block b JOIN ac a USING (ac_id) "
+                        "WHERE a.ac_number = 32 ORDER BY block_id")
+            blocks = [r["block_id"] for r in cur.fetchall()]
+            # A booth inside the block the `users` fixture gives the block role
+            # (blocks[1] when there are two), so every role is admitted to it
+            # and the sweep tests role access, not block scoping - which
+            # tests/e2e/test_booth_card.py covers on its own.
+            block_user_block = blocks[1] if len(blocks) > 1 else blocks[0]
+            cur.execute("SELECT b.booth_uid FROM booth b JOIN area a ON a.area_id = b.area_id "
+                        "WHERE a.block_id = %s ORDER BY b.booth_uid LIMIT 1",
+                        (block_user_block,))
+            booth_uid = cur.fetchone()["booth_uid"]
+            # The booth PS 1 already maps to, so the POST /admin/crosswalk the
+            # sweep sends is provably a no-op. The sweep has to call every
+            # route, and this one rewrites a crosswalk binding - pointing it at
+            # the current value is how it stays a contract test rather than a
+            # mutation that later assertions have to tolerate.
+            cur.execute("SELECT booth_uid FROM booth_crosswalk x "
+                        "JOIN election e ON e.election_id = x.election_id "
+                        "WHERE e.label = 'VS-2024' AND x.ps_number = 1 "
+                        "AND x.ac_id = (SELECT ac_id FROM ac WHERE ac_number = 32)")
+            row = cur.fetchone()
+            ps1_booth = row["booth_uid"] if row else booth_uid
+            # A second AC with no booth data, for the empty-state and scoping
+            # checks. 42-Tundi is seeded and deliberately never loaded.
+            cur.execute("SELECT ac_number FROM ac WHERE ac_number = %s",
+                        (loaded_dataset["empty_ac"],))
+            empty_ac = cur.fetchone()["ac_number"]
+    return {
+        "ac_number": ac_number, "booth_uid": booth_uid,
+        "election_label": "VS-2024", "review_item_id": review_item_id,
+        "blocks": blocks, "empty_ac": empty_ac, "ps1_booth": ps1_booth,
+    }
+
+
+@pytest.fixture(scope="module")
+def users(loaded_dataset, ids, db_url):
+    """One user per role, created through the real path, with a known password."""
+    import os
+
+    os.environ["DATABASE_URL"] = db_url
+    os.environ.setdefault("JWT_SECRET", "contract-test-secret-at-least-32-bytes-long")
+    from common.config import get_settings
+    from common.db import close_pools
+
+    get_settings.cache_clear()
+    close_pools()
+
+    from api.deps import hash_password
+    from common.db import query_one
+
+    made = {}
+    for index, role in enumerate(API_ROLES):
+        phone = f"95000000{index:02d}"
+        password = f"contract-{role}-pw"
+        block = ids["blocks"][1] if role == "block" and len(ids["blocks"]) > 1 else (
+            ids["blocks"][0] if role == "block" else None)
+        row = query_one(
+            "INSERT INTO app_user (phone, name, role, block_id, password_hash, "
+            "daily_token_budget) VALUES (%s, %s, %s, %s, %s, 150000) "
+            "ON CONFLICT (phone) DO UPDATE SET role = EXCLUDED.role, "
+            "block_id = EXCLUDED.block_id, password_hash = EXCLUDED.password_hash, "
+            "is_active = true RETURNING user_id",
+            (phone, f"Contract {role}", role, block, hash_password(password)),
+        )
+        made[role] = {"phone": phone, "password": password,
+                      "user_id": row["user_id"], "block_id": block}
+    return made
+
+
+@pytest.fixture(scope="module")
+def client(users, db_url):
+    from fastapi.testclient import TestClient
+
+    from api.main import app
+
+    return TestClient(app, raise_server_exceptions=False)
+
+
+@pytest.fixture(scope="module")
+def tokens(client, users):
+    out = {}
+    for role, spec in users.items():
+        response = client.post("/auth/login",
+                               json={"phone": spec["phone"], "password": spec["password"]})
+        assert response.status_code == 200, (role, response.status_code, response.text)
+        out[role] = response.json()["access_token"]
+    return out
