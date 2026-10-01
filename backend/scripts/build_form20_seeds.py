@@ -57,10 +57,17 @@ def form20_rows() -> list[dict]:
                             party_abbr=party, metric="votes", value=total, source=source))
             out.append(dict(ac_number=AC, election_label=label, candidate_name=display,
                             party_abbr=party, metric="postal", value=by_post, source=source))
+        # NOTA's postal ballots, against the same NOTA candidate row the booth
+        # loader uses (ingest.parse_form20.NOTA_CANDIDATE_NAME), so the AC total
+        # can add them (0023).
+        out.append(dict(ac_number=AC, election_label=label, candidate_name="NOTA",
+                        party_abbr="NOTA", metric="postal", value=postal.nota, source=source))
         for metric, value in (("nota", polled.nota),
                               ("total_valid", polled.valid + polled.nota),
                               ("rejected", polled.rejected),
-                              ("postal", postal.valid + postal.nota)):
+                              ("postal", postal.valid + postal.nota),
+                              ("postal_rejected", postal.rejected),
+                              ("votes_polled", polled.total)):
             out.append(dict(ac_number=AC, election_label=label, candidate_name="",
                             party_abbr="", metric=metric, value=value, source=source))
     return out

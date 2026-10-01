@@ -224,7 +224,8 @@ def test_the_ac_winner_agrees_with_the_booth_table(cursor):
 
     cursor.execute(
         "SELECT ac_id, election_id, winner_party, winner_candidate, "
-        "       winner_votes, runner_party, runner_candidate, runner_votes "
+        "       winner_evm_votes AS winner_votes, runner_party, runner_candidate, "
+        "       runner_evm_votes AS runner_votes "
         "FROM mv_ac_summary ORDER BY ac_id, election_id"
     )
     summary = cursor.fetchall()
@@ -234,6 +235,10 @@ def test_the_ac_winner_agrees_with_the_booth_table(cursor):
             "is no winner to check. Not a pass - see items 8 and 9."
         )
 
+    # The booth table is EVM-only, so the comparison is with the summary's EVM
+    # part. The summary ranks on EVM + postal (0023); where postal ballots
+    # changed the order of the top two, the booth table would legitimately
+    # differ - no seeded election has that.
     for row in summary:
         cursor.execute(
             "SELECT contestant, candidate_name, SUM(votes)::INT AS votes "

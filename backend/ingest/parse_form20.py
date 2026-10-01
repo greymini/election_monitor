@@ -588,18 +588,34 @@ def ac_totals_by_column(doc: Form20Document, resolutions: list[resolve_mod.Resol
     against the total that column's candidate published, whatever script the
     header was printed in.
     """
+    # Booth rows are EVM-only; a published total includes postal ballots. Where
+    # postal votes are recorded (metric 'postal', per candidate and for NOTA,
+    # 0023) they are subtracted, so what is compared is the EVM figure the
+    # booth columns must add up to - still at zero tolerance.
     cur.execute(
-        "SELECT candidate_id, metric, value FROM result_ac_total "
-        "WHERE election_id = %s AND metric IN ('votes', 'nota')",
+        "SELECT t.candidate_id, t.metric, t.value, p.abbr FROM result_ac_total t "
+        "LEFT JOIN candidate c ON c.candidate_id = t.candidate_id "
+        "LEFT JOIN party p ON p.party_id = c.party_id "
+        "WHERE t.election_id = %s AND t.metric IN ('votes', 'nota', 'postal')",
         (election_id,),
     )
     by_candidate: dict[int, int] = {}
+    postal: dict[int, int] = {}
     nota_total: int | None = None
+    nota_postal = 0
     for row in cur.fetchall():
         if row["metric"] == "nota" and row["candidate_id"] is None:
             nota_total = row["value"]
         elif row["metric"] == "votes" and row["candidate_id"] is not None:
             by_candidate[row["candidate_id"]] = row["value"]
+        elif row["metric"] == "postal" and row["candidate_id"] is not None:
+            if row["abbr"] == "NOTA":
+                nota_postal = row["value"]
+            else:
+                postal[row["candidate_id"]] = row["value"]
+    by_candidate = {cid: v - postal.get(cid, 0) for cid, v in by_candidate.items()}
+    if nota_total is not None:
+        nota_total -= nota_postal
 
     totals: dict[str, int] = {}
     for r in resolutions:

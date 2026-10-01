@@ -604,18 +604,26 @@ def read_contestants(cur, ac_id: int, label: str,
         "JOIN election e ON e.election_id = t.election_id "
         "LEFT JOIN candidate c ON c.candidate_id = t.candidate_id "
         "LEFT JOIN party p ON p.party_id = c.party_id "
-        "WHERE e.ac_id = %s AND e.label = %s AND t.metric IN ('votes', 'nota') "
+        "WHERE e.ac_id = %s AND e.label = %s AND t.metric IN ('votes', 'nota', 'postal') "
         "ORDER BY t.value DESC",
         (ac_id, label),
     )
+    rows = cur.fetchall()
+    # Booths carry EVM votes only. Where postal ballots are seeded (0023) the
+    # booth columns are planned to the published total minus postal, which is
+    # what the reconciliation gate then expects.
+    postal = {r["name_en"]: r["votes"] for r in rows
+              if r["metric"] == "postal" and r["name_en"]}
     contestants: list[Contestant] = []
     nota: int | None = None
-    for row in cur.fetchall():
-        if row["metric"] == "nota":
-            nota = row["votes"]
-        elif row["name_en"]:
-            contestants.append(Contestant(header=row["name_en"],
-                                          published_votes=row["votes"], is_seeded=True))
+    for row in rows:
+        if row["metric"] == "nota" and row["name_en"] is None:
+            nota = row["votes"] - postal.get("NOTA", 0)
+        elif row["metric"] == "votes" and row["name_en"]:
+            contestants.append(Contestant(
+                header=row["name_en"],
+                published_votes=row["votes"] - postal.get(row["name_en"], 0),
+                is_seeded=True))
     if not contestants:
         return None
 
@@ -739,6 +747,8 @@ def generate(ac_number: int, out_dir: Path, booths: int, roll_booths: int,
             "date": "2024-10-15", "supplement": True, "booths": len(covered),
         })
 
+    register_synthetic(out_dir, documents)
+
     manifest = {
         "generator": "ingest/mock_documents.py",
         "synthetic": True,
@@ -754,6 +764,30 @@ def generate(ac_number: int, out_dir: Path, booths: int, roll_booths: int,
     (out_dir / "manifest.json").write_text(
         json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8")
     return manifest
+
+
+def register_synthetic(out_dir: Path, documents: list[dict]) -> None:
+    """Record every generated document in source_doc with is_synthetic = true.
+
+    The loaders file booth rows under the document's file name; this is what
+    lets the API say, for any loaded election, whether its figures came from a
+    real document or from this generator (0023), instead of presenting mock
+    numbers as "from loaded Form 20".
+    """
+    import hashlib
+
+    from common.db import cursor
+
+    with cursor() as cur:
+        for d in documents:
+            data = (out_dir / d["path"]).read_bytes()
+            cur.execute(
+                "INSERT INTO source_doc (kind, filename, sha256, bytes, storage_backend, "
+                "storage_key, is_synthetic) VALUES (%s, %s, %s, %s, 'local', %s, true) "
+                "ON CONFLICT (sha256) DO UPDATE SET is_synthetic = true",
+                (d["kind"], d["path"], hashlib.sha256(data).hexdigest(), len(data),
+                 f"mock/{d['path']}"),
+            )
 
 
 def main(argv: list[str] | None = None) -> int:

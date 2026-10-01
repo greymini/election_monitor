@@ -25,10 +25,13 @@ ac_number,election_label,candidate_name,party_abbr,metric,value,source
 32,VS-2019,Mohammad Lallu,UNK,postal,1,"ECI Form 20, Giridih VS-2019 (giridih_vs2019_form20.xlsx, Total Votes Polled row)"
 32,VS-2019,Shyam Prasad Barnwal,UNK,votes,1533,"ECI Form 20, Giridih VS-2019 (giridih_vs2019_form20.xlsx, Total Votes Polled row)"
 32,VS-2019,Shyam Prasad Barnwal,UNK,postal,0,"ECI Form 20, Giridih VS-2019 (giridih_vs2019_form20.xlsx, Total Votes Polled row)"
+32,VS-2019,NOTA,NOTA,postal,2,"ECI Form 20, Giridih VS-2019 (giridih_vs2019_form20.xlsx, Total Votes Polled row)"
 32,VS-2019,,,nota,2773,"ECI Form 20, Giridih VS-2019 (giridih_vs2019_form20.xlsx, Total Votes Polled row)"
 32,VS-2019,,,total_valid,167822,"ECI Form 20, Giridih VS-2019 (giridih_vs2019_form20.xlsx, Total Votes Polled row)"
 32,VS-2019,,,rejected,71,"ECI Form 20, Giridih VS-2019 (giridih_vs2019_form20.xlsx, Total Votes Polled row)"
 32,VS-2019,,,postal,271,"ECI Form 20, Giridih VS-2019 (giridih_vs2019_form20.xlsx, Total Votes Polled row)"
+32,VS-2019,,,postal_rejected,71,"ECI Form 20, Giridih VS-2019 (giridih_vs2019_form20.xlsx, Total Votes Polled row)"
+32,VS-2019,,,votes_polled,167893,"ECI Form 20, Giridih VS-2019 (giridih_vs2019_form20.xlsx, Total Votes Polled row)"
 32,VS-2024,Arundhati Mishra,UNK,votes,1208,"ECI Form 20, Giridih VS-2024 (giridih_vs2024_form20.xlsx, Total Votes Polled row)"
 32,VS-2024,Arundhati Mishra,UNK,postal,11,"ECI Form 20, Giridih VS-2024 (giridih_vs2024_form20.xlsx, Total Votes Polled row)"
 32,VS-2024,Nirbhay Kumar Shahabadi,BJP,votes,90204,"ECI Form 20, Giridih VS-2024 (giridih_vs2024_form20.xlsx, Total Votes Polled row)"
@@ -57,10 +60,13 @@ ac_number,election_label,candidate_name,party_abbr,metric,value,source
 32,VS-2024,Rameshwar Dusadh,UNK,postal,0,"ECI Form 20, Giridih VS-2024 (giridih_vs2024_form20.xlsx, Total Votes Polled row)"
 32,VS-2024,Sunaina Pathak,UNK,votes,2635,"ECI Form 20, Giridih VS-2024 (giridih_vs2024_form20.xlsx, Total Votes Polled row)"
 32,VS-2024,Sunaina Pathak,UNK,postal,4,"ECI Form 20, Giridih VS-2024 (giridih_vs2024_form20.xlsx, Total Votes Polled row)"
+32,VS-2024,NOTA,NOTA,postal,11,"ECI Form 20, Giridih VS-2024 (giridih_vs2024_form20.xlsx, Total Votes Polled row)"
 32,VS-2024,,,nota,2004,"ECI Form 20, Giridih VS-2024 (giridih_vs2024_form20.xlsx, Total Votes Polled row)"
 32,VS-2024,,,total_valid,207682,"ECI Form 20, Giridih VS-2024 (giridih_vs2024_form20.xlsx, Total Votes Polled row)"
 32,VS-2024,,,rejected,139,"ECI Form 20, Giridih VS-2024 (giridih_vs2024_form20.xlsx, Total Votes Polled row)"
 32,VS-2024,,,postal,1905,"ECI Form 20, Giridih VS-2024 (giridih_vs2024_form20.xlsx, Total Votes Polled row)"
+32,VS-2024,,,postal_rejected,139,"ECI Form 20, Giridih VS-2024 (giridih_vs2024_form20.xlsx, Total Votes Polled row)"
+32,VS-2024,,,votes_polled,207821,"ECI Form 20, Giridih VS-2024 (giridih_vs2024_form20.xlsx, Total Votes Polled row)"
 32,VS-2019,,,electors,264814,HLD 1.1 (secondary - re-verify vs Form 20)
 32,VS-2024,,,electors,304898,HLD 1.1 (secondary - re-verify vs Form 20)
 33,VS-2024,Jairam Mahato,JLKM,votes,94496,spec-unverified

@@ -31,14 +31,19 @@ class Check:
 
 def check_form20_totals() -> list[Check]:
     """Booth sums against published AC totals, tolerance zero (LLD 4.2)."""
+    # Published totals include postal ballots; booth rows are EVM-only. Where
+    # a candidate's postal votes are recorded (0023) they are added to the
+    # booth sum, so the comparison is like for like.
     rows = query(
         "SELECT e.label, c.name_en AS candidate, p.abbr, t.value AS published, "
-        "COALESCE(SUM(r.votes), 0) AS booth_sum "
+        "COALESCE(SUM(r.votes), 0) + COALESCE(MAX(pt.value), 0) AS booth_sum "
         "FROM result_ac_total t "
         "JOIN election e ON e.election_id = t.election_id "
         "JOIN candidate c ON c.candidate_id = t.candidate_id "
         "LEFT JOIN party p ON p.party_id = c.party_id "
         "LEFT JOIN result_booth r ON r.candidate_id = t.candidate_id "
+        "LEFT JOIN result_ac_total pt ON pt.candidate_id = t.candidate_id "
+        "  AND pt.metric = 'postal' "
         "WHERE t.metric = 'votes' "
         # Only elections with booth results loaded. A seeded published total
         # for a constituency with nothing loaded (31, 33, 42, 61, 65 today) is
@@ -46,7 +51,7 @@ def check_form20_totals() -> list[Check]:
         # sum of 0 failed this check on every correct database.
         "  AND EXISTS (SELECT 1 FROM result_booth rb WHERE rb.election_id = t.election_id) "
         "GROUP BY e.label, c.name_en, p.abbr, t.value "
-        "HAVING COALESCE(SUM(r.votes), 0) <> t.value"
+        "HAVING COALESCE(SUM(r.votes), 0) + COALESCE(MAX(pt.value), 0) <> t.value"
     )
     return [Check(
         "form20_ac_totals", not rows,

@@ -42,6 +42,10 @@ ROLL_BOOTHS = e2e.DATASET_ROLL_BOOTHS
 PUBLISHED_2024 = {"Sudivya Kumar": 94042, "Nirbhay Kumar Shahabadi": 90204,
                   "Navin Anand": 10787}
 PUBLISHED_NOTA_2024 = 2004
+# Postal ballots from the same Form 20 (db/seed/form20/): booth rows are EVM-only,
+# so booth sum + postal is what equals the published total.
+POSTAL_2024 = {"Sudivya Kumar": 863, "Nirbhay Kumar Shahabadi": 863, "Navin Anand": 125}
+POSTAL_NOTA_2024 = 11
 
 
 @pytest.fixture(scope="module")
@@ -178,7 +182,7 @@ def test_each_columns_booth_sum_equals_its_published_ac_total(cursor, pipeline,
               "JOIN candidate c ON c.candidate_id = r.candidate_id "
               "JOIN election e ON e.election_id = r.election_id "
               "WHERE e.label = 'VS-2024' AND c.name_en = %s", (name,))
-    assert row["total"] == published
+    assert row["total"] + POSTAL_2024[name] == published
 
 
 def test_the_nota_booth_sum_equals_the_published_nota_total(cursor, pipeline):
@@ -186,7 +190,7 @@ def test_the_nota_booth_sum_equals_the_published_nota_total(cursor, pipeline):
               "SELECT SUM(m.nota)::INT AS total FROM result_booth_meta m "
               "JOIN election e ON e.election_id = m.election_id "
               "WHERE e.label = 'VS-2024'")
-    assert row["total"] == PUBLISHED_NOTA_2024
+    assert row["total"] + POSTAL_NOTA_2024 == PUBLISHED_NOTA_2024
 
 
 def test_nota_is_in_the_denominator_and_never_the_winner(cursor, pipeline):
@@ -421,4 +425,4 @@ def test_the_published_totals_still_reconcile_after_a_rerun(cursor, pipeline):
                   "JOIN candidate c ON c.candidate_id = r.candidate_id "
                   "JOIN election e ON e.election_id = r.election_id "
                   "WHERE e.label = 'VS-2024' AND c.name_en = %s", (name,))
-        assert row["total"] == published, name
+        assert row["total"] + POSTAL_2024[name] == published, name
