@@ -17,6 +17,8 @@ COPY common ./common
 COPY api ./api
 COPY chatbot ./chatbot
 COPY analytics ./analytics
+# /boundaries serves source warnings and unseeded blocks from the built file.
+COPY db/seed/geo ./db/seed/geo
 
 RUN useradd --create-home --uid 10001 appuser && chown -R appuser /app
 USER appuser

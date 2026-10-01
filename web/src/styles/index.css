@@ -83,6 +83,49 @@
   isolation: isolate;
 }
 
+/* Boundary layers (components/BoundaryLayers.tsx). Classes rather than path
+   colours because Leaflet writes colours as SVG attributes, where var() does not
+   resolve; these rules outrank those attributes.
+
+   The ink does not follow the UI theme: the raster base map is light in both
+   themes, so the dark theme's white text colour drew near-invisible outlines on
+   it. Only when the tiles have failed - and the map is the theme's own surface -
+   does the ink switch to the theme's text colours (`.tiles-failed`). */
+.leaflet-container {
+  --boundary-strong: #1f1f1d;
+  --boundary-mid: #45443f;
+  --boundary-faint: #6f6d66;
+}
+.tiles-failed .leaflet-container {
+  --boundary-strong: var(--text-primary);
+  --boundary-mid: var(--text-secondary);
+  --boundary-faint: var(--text-muted);
+}
+.leaflet-container path.boundary-ac {
+  stroke: var(--boundary-strong);
+  fill: none;
+}
+.leaflet-container path.boundary-block {
+  stroke: var(--boundary-mid);
+  fill: var(--boundary-mid);
+}
+.leaflet-container path.boundary-unseeded {
+  stroke: var(--boundary-faint);
+  fill: var(--boundary-faint);
+}
+.leaflet-container path.boundary-area {
+  stroke: var(--boundary-faint);
+  fill: var(--boundary-strong);
+}
+.leaflet-container path.boundary-selected {
+  stroke: var(--boundary-strong);
+  fill: var(--boundary-strong);
+}
+.leaflet-container path.boundary-dimmed {
+  stroke-opacity: 0.35;
+  fill-opacity: 0;
+}
+
 /* Leaflet needs a concrete height and should not fight the theme. */
 .leaflet-container {
   height: 100%;
