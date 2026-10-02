@@ -163,3 +163,97 @@ def test_places_and_the_place_filter(conn, client, tokens):
     finally:
         with conn.cursor() as cur:
             cur.execute("DELETE FROM news_item WHERE url LIKE 'https://feed.test/p%'")
+
+
+# ---------------------------------------------------------------------------
+# Area news for the map (news plan task 5)
+# ---------------------------------------------------------------------------
+
+def _area(conn, ac_number: int, name: str) -> dict:
+    with conn.cursor() as cur:
+        cur.execute("SELECT ar.area_id, ar.block_id, a.ac_id FROM area ar "
+                    "JOIN ac a ON a.ac_id = ar.ac_id WHERE a.ac_number = %s AND ar.name_en = %s",
+                    (ac_number, name))
+        return cur.fetchone()
+
+
+@pytest.fixture
+def area_items(conn):
+    """One item naming Harladih panchayat (Pirtand), one Pirtand-block item,
+    one Giridih item and one Jharkhand-wide item, all dated 10 Nov 2024."""
+    harladih = _area(conn, 32, "Harladih")
+    assert harladih, "the LGD panchayat seed did not load"
+    giridih = harladih["ac_id"]
+    rows = [
+        ("https://feed.test/a1", "Harladih road protest before the poll", [harladih["area_id"]],
+         [giridih], ["harladih"]),
+        ("https://feed.test/a2", "Pirtand block candidates campaign", [], [giridih], ["pirtand"]),
+        ("https://feed.test/a3", "Giridih seat: JMM rally", [], [giridih], ["giridih"]),
+        ("https://feed.test/a4", "Jharkhand phase two campaign ends", [], [], ["jharkhand"]),
+    ]
+    with conn.cursor() as cur:
+        for url, title, area_ids, ac_ids, terms in rows:
+            cur.execute(
+                "INSERT INTO news_item (url, url_hash, title, published, labelled_at, "
+                "label_method, issues, parties, area_ids, ac_ids, scope, relevance, matched_terms) "
+                "VALUES (%s, %s, %s, '2024-11-10', now(), 'rules', ARRAY['other'], '{}', "
+                "%s::INT[], %s::INT[], 'ac', 0.5, %s)",
+                (url, "test-" + url[-2:], title, area_ids, ac_ids, terms))
+    yield harladih
+    with conn.cursor() as cur:
+        cur.execute("DELETE FROM news_item WHERE url LIKE 'https://feed.test/a%'")
+
+
+def _area_news(client, tokens, area_id, role="admin", ac_number=32, **params):
+    return client.get(f"/acs/{ac_number}/areas/{area_id}/news", params=params,
+                      headers={"Authorization": f"Bearer {tokens[role]}"})
+
+
+def test_area_news_uses_the_poll_window_and_the_area_itself(area_items, client, tokens):
+    body = _area_news(client, tokens, area_items["area_id"], election_label="VS-2024").json()
+    assert body["window"]["basis"] == "poll_date"
+    assert body["window"]["poll_date"] == "2024-11-20"
+    assert body["level"] == "area"
+    assert [r["title"] for r in body["rows"]] == ["Harladih road protest before the poll"]
+    assert body["counts"]["block"] >= 2 and body["counts"]["state"] >= 4
+    assert "result_note" in body
+
+
+def test_area_news_falls_back_to_the_block_then_the_constituency(conn, area_items, client,
+                                                                  tokens):
+    with conn.cursor() as cur:
+        cur.execute("SELECT ar.area_id FROM area ar JOIN block b ON b.block_id = ar.block_id "
+                    "WHERE b.name_en = 'Pirtand Block' AND ar.name_en <> 'Harladih' LIMIT 1")
+        pirtand_gp = cur.fetchone()["area_id"]
+        cur.execute("SELECT ar.area_id FROM area ar JOIN block b ON b.block_id = ar.block_id "
+                    "WHERE b.name_en = 'Giridih Block' AND ar.kind = 'panchayat' LIMIT 1")
+        giridih_gp = cur.fetchone()["area_id"]
+    body = _area_news(client, tokens, pirtand_gp, election_label="VS-2024").json()
+    assert body["level"] == "block"
+    assert "Pirtand block candidates campaign" in {r["title"] for r in body["rows"]}
+    body = _area_news(client, tokens, giridih_gp, election_label="VS-2024").json()
+    # Giridih block's own name is "Giridih", so its block level catches the seat item.
+    assert body["level"] in ("block", "ac")
+
+
+def test_area_news_without_an_election_is_the_last_30_days(area_items, client, tokens):
+    body = _area_news(client, tokens, area_items["area_id"]).json()
+    assert body["window"]["basis"] == "recent"
+    assert "Harladih road protest before the poll" not in {r["title"] for r in body["rows"]}
+
+
+def test_area_news_rejects_another_constituencys_area(area_items, client, tokens):
+    assert _area_news(client, tokens, area_items["area_id"], ac_number=42).status_code == 404
+    assert _area_news(client, tokens, area_items["area_id"],
+                      election_label="NO-SUCH").status_code == 404
+
+
+def test_poll_dates_are_seeded_only_where_verified(conn):
+    with conn.cursor() as cur:
+        cur.execute("SELECT a.ac_number, ev.label, e.poll_date FROM election e "
+                    "JOIN election_event ev ON ev.event_id = e.event_id "
+                    "JOIN ac a ON a.ac_id = e.ac_id WHERE ev.label IN ('VS-2019', 'VS-2024')")
+        dates = {(r["ac_number"], r["label"]): r["poll_date"] for r in cur.fetchall()}
+    assert str(dates[(32, "VS-2024")]) == "2024-11-20"
+    assert str(dates[(32, "VS-2019")]) == "2019-12-16"
+    assert dates[(65, "VS-2024")] is None   # sources disagree; never guessed

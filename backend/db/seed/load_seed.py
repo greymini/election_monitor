@@ -270,6 +270,28 @@ def load_area_boundaries() -> int:
     return loaded
 
 
+def load_poll_dates() -> int:
+    """Poll date and phase of each contest, from poll_dates.csv. Only dates a
+    source confirms are listed; a contest without one keeps NULL, and the area
+    news window then says it has no date rather than use a guessed one. Kanke
+    VS-2024 is absent because the sources found disagree on its phase."""
+    acs = _ac_ids()
+    loaded = 0
+    with cursor() as cur:
+        for r in _rows("poll_dates.csv"):
+            ac_id = acs.get(int(r["ac_number"]))
+            if ac_id is None:
+                continue
+            cur.execute(
+                "UPDATE election e SET poll_date = %s, phase = %s FROM election_event ev "
+                "WHERE ev.event_id = e.event_id AND ev.label = %s AND e.ac_id = %s",
+                (r["poll_date"], int(r["phase"]) if r["phase"] else None,
+                 r["election_label"], ac_id),
+            )
+            loaded += cur.rowcount
+    return loaded
+
+
 # ---------------------------------------------------------------------------
 # Parties
 # ---------------------------------------------------------------------------
@@ -676,13 +698,14 @@ LOADERS = {
     "cards": load_knowledge_cards,
     "boundaries": load_boundaries,
     "area_aliases": load_area_aliases,
+    "poll_dates": load_poll_dates,
     "area_boundaries": load_area_boundaries,
 }
 
 # Order matters: ACs before anything scoped to one, parties before aliases and
 # alliances, events before alliances and contests, elections before ac_totals.
 ORDER = ["acs", "blocks", "areas", "area_aliases", "parties", "party_aliases", "communities",
-         "elections", "party_alliances", "ac_contests", "surnames", "ac_totals",
+         "elections", "poll_dates", "party_alliances", "ac_contests", "surnames", "ac_totals",
          "news_sources", "cards", "boundaries", "area_boundaries"]
 
 

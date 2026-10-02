@@ -8,7 +8,7 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
-from api.deps import CurrentAC, CurrentUser
+from api.deps import CurrentAC, CurrentUser, scoped_block_id
 from common.db import execute, query, query_one
 from common.logging_setup import get_logger
 from common.pii import PiiRejected, screen
@@ -269,6 +269,107 @@ def news_summary(user: CurrentUser, ac: CurrentAC,
         "other_items": other["n"],
         "places": where,
         "top": top,
+    }
+
+
+# Levels an area's news falls back through, narrowest first.
+AREA_NEWS_LEVELS = ("area", "block", "ac", "state")
+
+
+@router.get("/areas/{area_id}/news")
+def area_news(area_id: int, user: CurrentUser, ac: CurrentAC,
+              election_label: str | None = None,
+              days_before: int = Query(45, ge=1, le=365),
+              days_after: int = Query(3, ge=0, le=60),
+              limit: int = Query(20, ge=1, le=100)) -> dict:
+    """News about one panchayat or ward around an election, for the map.
+
+    The window is `days_before` the contest's poll date to `days_after` it, or
+    the last 30 days when no election is given - or when the contest has no
+    verified poll date, which the response says rather than guess one.
+
+    Most areas have no news of their own, so this falls back area -> block ->
+    constituency -> Jharkhand and names the level it used. Every level's count
+    is returned, so the page can say "nothing for this panchayat; showing the
+    block". News is context for a result, never its cause, and the area's
+    result is returned alongside under that wording.
+    """
+    from common.textnorm import fold
+    from news.crawl_rss import _BLOCK_SUFFIX
+
+    area = query_one(
+        "SELECT a.area_id, a.name_en, a.name_hi, a.kind, a.block_id, b.name_en AS block_en, "
+        "b.name_hi AS block_hi FROM area a JOIN block b ON b.block_id = a.block_id "
+        "WHERE a.area_id = %s AND a.ac_id = %s", (area_id, ac.ac_id))
+    if area is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "no such area in this constituency")
+    scoped = scoped_block_id(user)
+    if scoped is not None and area["block_id"] != scoped:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "area outside your block")
+
+    window = {"basis": "recent", "poll_date": None, "election_label": election_label}
+    contest = None
+    if election_label:
+        contest = query_one(
+            "SELECT e.election_id, e.poll_date, e.phase FROM election e "
+            "JOIN election_event ev ON ev.event_id = e.event_id "
+            "WHERE e.ac_id = %s AND ev.label = %s", (ac.ac_id, election_label))
+        if contest is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, f"no election {election_label!r}")
+    if contest and contest["poll_date"]:
+        poll = contest["poll_date"]
+        window.update(basis="poll_date", poll_date=poll,
+                      date_from=poll - timedelta(days=days_before),
+                      date_to=poll + timedelta(days=days_after))
+    else:
+        window.update(basis="no_poll_date" if election_label else "recent",
+                      date_from=date.today() - timedelta(days=30), date_to=date.today())
+
+    block_areas = [r["area_id"] for r in query(
+        "SELECT area_id FROM area WHERE block_id = %s", (area["block_id"],))]
+    block_terms = sorted({fold(_BLOCK_SUFFIX.sub("", n or "").strip())
+                          for n in (area["block_en"], area["block_hi"])} - {""})
+    level_sql = {
+        "area": ("area_ids @> ARRAY[%s]::INT[]", [area_id]),
+        "block": ("(area_ids && %s::INT[] OR matched_terms && %s::TEXT[])",
+                  [block_areas, block_terms]),
+        "ac": ("ac_ids @> ARRAY[%s]::INT[]", [ac.ac_id]),
+        "state": ("TRUE", []),
+    }
+    base = "labelled_at IS NOT NULL AND published BETWEEN %s AND %s"
+    base_params = [window["date_from"], window["date_to"]]
+
+    counts, chosen, rows = {}, None, []
+    for level in AREA_NEWS_LEVELS:
+        clause, params = level_sql[level]
+        counts[level] = query_one(
+            f"SELECT COUNT(*) AS n FROM news_item WHERE {base} AND {clause}",
+            base_params + params)["n"]
+        if chosen is None and counts[level]:
+            chosen = level
+            rows = query(
+                f"SELECT {_ITEM_COLUMNS} FROM news_item WHERE {base} AND {clause} "
+                f"ORDER BY relevance DESC NULLS LAST, published DESC NULLS LAST, news_id DESC "
+                f"LIMIT %s", base_params + params + [limit])
+
+    result = None
+    if contest:
+        result = query_one(
+            "SELECT booths, valid_votes, votes_polled, jmm_pct, bjp_pct, turnout_pct "
+            "FROM mv_area_rollup WHERE ac_id = %s AND election_id = %s AND area_id = %s",
+            (ac.ac_id, contest["election_id"], area_id))
+
+    return {
+        "area": {k: area[k] for k in ("area_id", "name_en", "name_hi", "kind", "block_id",
+                                      "block_en", "block_hi")},
+        "window": window,
+        "level": chosen,
+        "counts": counts,
+        "rows": rows,
+        "result": result,
+        "result_note": None if result else
+        "No booth results are attached to this area yet: the polling-station list, which "
+        "places each booth in its panchayat or ward, is not loaded.",
     }
 
 

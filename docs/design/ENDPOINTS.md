@@ -17,10 +17,10 @@ against.
 
 ## Summary
 
-- **42** live routes, **31** legacy redirects
+- **43** live routes, **31** legacy redirects
 - **35** frontend call sites
 - **5** routes with no explicit response model
-- **14** routes no page calls
+- **15** routes no page calls
 - **0** frontend calls to a route that does not exist
 - **0** calls sending a parameter the route does not accept
 
@@ -39,10 +39,11 @@ against.
 | GET | `/acs/{ac_number}/admin/surnames` | admin | `q`? | dict | **(none)** |
 | POST | `/acs/{ac_number}/admin/surnames` | admin | — | dict | **(none)** |
 | GET | `/acs/{ac_number}/admin/usage` | admin | `days`? | dict | `frontend/src/pages/Admin.tsx:46` |
-| GET | `/acs/{ac_number}/areas` | any signed-in | — | dict | `frontend/src/pages/Booths.tsx:126`<br>`frontend/src/pages/MapExplorer.tsx:172`<br>`frontend/src/pages/Results.tsx:38` |
-| GET | `/acs/{ac_number}/booths` | any signed-in | `election_label`?, `area_id`?, `block_id`?, `metric`? | dict | `frontend/src/pages/MapExplorer.tsx:182` |
-| GET | `/acs/{ac_number}/booths/{booth_uid}/card` | any signed-in | — | dict | `frontend/src/components/BoothDrawer.tsx:151` |
-| GET | `/acs/{ac_number}/boundaries` | any signed-in | — | dict | `frontend/src/pages/MapExplorer.tsx:198` |
+| GET | `/acs/{ac_number}/areas` | any signed-in | — | dict | `frontend/src/pages/Booths.tsx:126`<br>`frontend/src/pages/MapExplorer.tsx:174`<br>`frontend/src/pages/Results.tsx:38` |
+| GET | `/acs/{ac_number}/areas/{area_id}/news` | any signed-in | `election_label`?, `days_before`?, `days_after`?, `limit`? | dict | **(none)** |
+| GET | `/acs/{ac_number}/booths` | any signed-in | `election_label`?, `area_id`?, `block_id`?, `metric`? | dict | `frontend/src/pages/MapExplorer.tsx:184` |
+| GET | `/acs/{ac_number}/booths/{booth_uid}/card` | any signed-in | — | dict | `frontend/src/components/BoothDrawer.tsx:153` |
+| GET | `/acs/{ac_number}/boundaries` | any signed-in | — | dict | `frontend/src/pages/MapExplorer.tsx:200` |
 | GET | `/acs/{ac_number}/candidates` | any signed-in | `election_label`? | dict | `frontend/src/pages/Candidates.tsx:69` |
 | GET | `/acs/{ac_number}/caste` | admin, strategist | `area_id`?, `booth_uid`?, `min_conf`?, `source`? | dict | `frontend/src/components/OverviewInsights.tsx:132`<br>`frontend/src/pages/Caste.tsx:30` |
 | GET | `/acs/{ac_number}/caste/correlation` | admin, strategist | `community`?, `min_conf`? | dict | `frontend/src/pages/CasteScatter.tsx:91` |
@@ -126,6 +127,7 @@ Not necessarily wrong - some are for operators, scripts or a page not yet built 
 - `GET /acs/{ac_number}/admin/sources` (`admin.sources`)
 - `GET /acs/{ac_number}/admin/surnames` (`admin.list_surnames`)
 - `POST /acs/{ac_number}/admin/surnames` (`admin.upsert_surname`)
+- `GET /acs/{ac_number}/areas/{area_id}/news` (`news.area_news`)
 - `GET /acs/{ac_number}/ground-reports` (`news.list_ground_reports`)
 - `POST /acs/{ac_number}/ground-reports` (`news.create_ground_report`)
 - `GET /acs/{ac_number}/news/issues` (`news.issue_clusters`)

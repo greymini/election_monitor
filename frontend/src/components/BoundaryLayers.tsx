@@ -1,3 +1,4 @@
+import { useRef } from 'react'
 import { GeoJSON, Pane } from 'react-leaflet'
 import type { Feature, FeatureCollection, Geometry } from 'geojson'
 import type { Layer, PathOptions } from 'leaflet'
@@ -63,6 +64,7 @@ export default function BoundaryLayers({
   areaId,
   unseededLabel,
   syntheticLabel,
+  onAreaClick,
 }: {
   data: Boundaries
   visible: LayerVisibility
@@ -71,7 +73,13 @@ export default function BoundaryLayers({
   areaId: number | null
   unseededLabel: string
   syntheticLabel: string
+  /** A click on a panchayat or ward. Read through a ref: GeoJSON binds its
+   *  handlers once, at mount, so a changed callback would otherwise be lost. */
+  onAreaClick?: (area: BoundaryProps) => void
 }) {
+  const areaClick = useRef(onAreaClick)
+  areaClick.current = onAreaClick
+
   const nameOf = (p: BoundaryProps) => (hi && p.name_hi ? p.name_hi : p.name_en) ?? ''
 
   const tooltip = (feature: BoundaryFeature, layer: Layer) => {
@@ -127,7 +135,12 @@ export default function BoundaryLayers({
           key={`areas|${key}|${data.areas.features.length}`}
           data={data.areas}
           style={areaStyle as (f?: Feature) => PathOptions}
-          onEachFeature={tooltip as (f: Feature, l: Layer) => void}
+          onEachFeature={((feature: BoundaryFeature, layer: Layer) => {
+            tooltip(feature, layer)
+            if (feature.properties.area_id) {
+              layer.on('click', () => areaClick.current?.(feature.properties))
+            }
+          }) as (f: Feature, l: Layer) => void}
         />
       )}
       {visible.blocks && data.blocks.features.length > 0 && (

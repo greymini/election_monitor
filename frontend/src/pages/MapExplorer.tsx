@@ -6,9 +6,10 @@ import { CircleMarker, MapContainer, Tooltip as LeafletTooltip } from 'react-lea
 import type { LatLngTuple } from 'leaflet'
 
 import BaseTiles from '../components/BaseTiles'
+import { AreaNewsDrawer } from '../components/AreaNews'
 import BoothDrawer from '../components/BoothDrawer'
 import BoundaryLayers from '../components/BoundaryLayers'
-import type { Boundaries, LayerVisibility } from '../components/BoundaryLayers'
+import type { Boundaries, BoundaryProps, LayerVisibility } from '../components/BoundaryLayers'
 import DivergingLegend from '../components/DivergingLegend'
 import FitBounds from '../components/FitBounds'
 import SequentialLegend from '../components/SequentialLegend'
@@ -136,6 +137,7 @@ export default function MapExplorer({ ac }: Props) {
   const [blockId, setBlockId] = useState<string>('')
   const [areaId, setAreaId] = useState<string>('')
   const [selected, setSelected] = useState<string | null>(null)
+  const [areaPanel, setAreaPanel] = useState<BoundaryProps | null>(null)
   const [tilesFailed, setTilesFailed] = useState(false)
   const [tileNoticeDismissed, setTileNoticeDismissed] = useState(false)
   const [layers, setLayers] = useState(rememberedLayers)
@@ -377,6 +379,7 @@ export default function MapExplorer({ ac }: Props) {
                 areaId={areaId ? Number(areaId) : null}
                 unseededLabel={t('map.unseededBlock')}
                 syntheticLabel={t('map.syntheticArea')}
+                onAreaClick={(area) => setAreaPanel(area)}
               />
             )}
             {placed.map((f) => {
@@ -499,6 +502,11 @@ export default function MapExplorer({ ac }: Props) {
 
       {selected && (
         <BoothDrawer boothUid={selected} ac={ac} onClose={() => setSelected(null)} />
+      )}
+      {areaPanel?.area_id && !areaPanel.synthetic && (
+        <AreaNewsDrawer ac={ac} area={{ area_id: areaPanel.area_id, name_en: areaPanel.name_en,
+                                        name_hi: areaPanel.name_hi }}
+                        election={election} onClose={() => setAreaPanel(null)} />
       )}
     </div>
   )

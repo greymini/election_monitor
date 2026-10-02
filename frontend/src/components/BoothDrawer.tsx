@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 
+import { AreaNewsList } from './AreaNews'
 import PartyChip from './PartyChip'
 import { Estimate, FixtureBanner, Missing, SourceLink, Value } from './Provenance'
 import { ErrorState, Loading } from './States'
@@ -81,6 +82,7 @@ interface BoothCard {
     village_or_locality: string | null
     current_ps_number: number | null
     geocode_conf: number | null
+    area_id?: number
     area_en: string
     area_hi: string
     area_kind: string
@@ -451,11 +453,13 @@ export default function BoothDrawer(
               </div>
             )}
 
-            {tab === 'news' && (
-              <p className="text-2xs" style={{ color: 'var(--text-muted)' }}>
-                {t('card.newsPending')}
-              </p>
-            )}
+            {tab === 'news' && (card.booth.area_id
+              ? <AreaNewsList ac={ac} areaId={card.booth.area_id} election="VS-2024" />
+              : (
+                <p className="text-2xs" style={{ color: 'var(--text-muted)' }}>
+                  {t('card.newsPending')}
+                </p>
+              ))}
 
             {tab === 'ground' && (
               <p className="text-2xs" style={{ color: 'var(--text-muted)' }}>

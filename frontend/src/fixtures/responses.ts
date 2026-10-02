@@ -1007,6 +1007,32 @@ function getFixture(clean: string, params: URLSearchParams): unknown | undefined
         ],
         issues: NEWS_ISSUES, fixture: FIXTURE_BANNER,
       }
+    case /^\/areas\/\d+\/news$/.test(rest): {
+      const area = FIXTURE_AREAS.find((a) => a.area_id === Number(rest.split('/')[2]))
+      if (!area || acNumber !== 32) return undefined
+      const block = FIXTURE_BLOCKS.find((b) => b.block_id === area.block_id)!
+      const label = params.get('election_label')
+      return {
+        area: { area_id: area.area_id, name_en: area.name_en, name_hi: area.name_hi,
+                kind: area.kind, block_id: area.block_id, block_en: block.name_en,
+                block_hi: block.name_hi },
+        window: label === 'VS-2024'
+          ? { basis: 'poll_date', poll_date: '2024-11-20', election_label: label,
+              date_from: '2024-10-06', date_to: '2024-11-23' }
+          : { basis: 'recent', poll_date: null, election_label: label,
+              date_from: '2026-09-02', date_to: '2026-10-02' },
+        // Fixture areas are synthetic, so no news names them: the constituency's
+        // items stand in, as the real fallback would.
+        level: 'ac', counts: { area: 0, block: 0, ac: 1, state: 2 },
+        rows: [{ news_id: 2, published: '2026-09-26', source: 'Dainik Bhaskar',
+                 title: 'गिरिडीह उपचुनाव: JLKM की पदयात्रा, झामुमो ने बैठक की',
+                 url: 'https://example.invalid/2', parties: ['JLKM', 'JMM'],
+                 issues: ['candidate/organisation'], relevance: 0.8 }],
+        result: null,
+        result_note: 'No booth results are attached to this area yet.',
+        fixture: FIXTURE_BANNER,
+      }
+    }
     case rest === '/news/summary':
       return {
         since: '2026-09-02', days: 30, scope: 'ac',

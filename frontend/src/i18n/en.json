@@ -485,5 +485,17 @@
       "alliance": "Alliances",
       "other": "Other"
     }
+  },
+  "areaNews": {
+    "heading": "News: {{area}}",
+    "windowPoll": "{{election}}: polled {{poll}}. News from {{range}}.",
+    "windowNoDate": "{{election}} has no verified poll date, so this shows the last 30 days ({{range}}).",
+    "windowRecent": "The last 30 days ({{range}}).",
+    "fallback": "No news names {{area}} in this period; showing news for {{level}}.",
+    "none": "No news in this period at any level. Older elections need the news backfill (not loaded yet).",
+    "resultHeading": "{{election}} result here",
+    "result": "{{booths}} booths · JMM {{jmm}} · BJP {{bjp}} · turnout {{turnout}}",
+    "noResult": "No booth results are placed in this area yet: the polling-station list, which puts each booth in its panchayat or ward, is not loaded.",
+    "contextNotCause": "Shown side by side as context. Coverage near a poll does not show that a story changed a vote."
   }
 }

@@ -57,6 +57,7 @@ PATH_PARAMS = {
     "booth_uid": "booth_uid",
     "election_label": "election_label",
     "item_id": "review_item_id",
+    "area_id": "area_id",
 }
 
 # Bodies for the POST routes. Deliberately the smallest valid body: this test is
