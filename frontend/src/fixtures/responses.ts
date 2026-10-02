@@ -554,6 +554,13 @@ export const FIXTURES: Record<string, unknown> = {
  * figures under a 2019 heading). POST answers the three writes the UI makes,
  * which used to fall through to "No fixture".
  */
+/** Mirrors api/routers/news.py ISSUES. */
+const NEWS_ISSUES = [
+  'water', 'roads', 'electricity', 'health', 'education', 'employment/migration',
+  'mining/coal', 'Parasnath/Marang Buru', 'law-and-order', 'welfare-schemes',
+  'corruption', 'electoral-roll/SIR', 'candidate/organisation', 'alliance', 'other',
+]
+
 export function fixtureFor(path: string, method = 'GET', body?: unknown): unknown | undefined {
   const [clean, search = ''] = path.split('?')
   const query = new URLSearchParams(search)
@@ -970,27 +977,72 @@ function getFixture(clean: string, params: URLSearchParams): unknown | undefined
       }
     case rest === '/news':
       return {
+        // Fixture items are illustrative headlines, not crawled news.
         rows: acNumber !== 32 ? [] : [
           { news_id: 1, published: '2026-09-28', source: 'Prabhat Khabar',
             title: 'पारसनाथ में जलापूर्ति को लेकर प्रदर्शन',
             summary_hi: 'पारसनाथ क्षेत्र के चार गांवों में पेयजल आपूर्ति ठप।',
             summary_en: 'Protest over stalled drinking-water supply in four Parasnath villages.',
-            issues: ['water'], parties: [], sentiment: -1, labelled_at: '2026-09-28',
+            issues: ['water', 'Parasnath/Marang Buru'], parties: [], persons: [], sentiment: -1,
+            labelled_at: '2026-09-28', label_method: 'llm', scope: 'ac', relevance: 0.4,
             url: 'https://example.invalid/1', area_names: ['Parasnath'] },
           { news_id: 2, published: '2026-09-26', source: 'Dainik Bhaskar',
-            title: 'JLKM की पदयात्रा', summary_hi: 'पचंबा में पदयात्रा।',
-            summary_en: 'JLKM padyatra through Pachamba ward.',
-            issues: ['candidate/organisation'], parties: ['JLKM'], sentiment: 1,
-            labelled_at: '2026-09-26', url: 'https://example.invalid/2',
-            area_names: ['Ward 4'] },
-          // An unlabelled item, which is what the stream looks like with no
-          // Anthropic key: keyword-tagged only, and the UI must say so.
+            title: 'गिरिडीह उपचुनाव: JLKM की पदयात्रा, झामुमो ने बैठक की',
+            summary_hi: null, summary_en: null,
+            issues: ['candidate/organisation'], parties: ['JLKM', 'JMM'], persons: [],
+            sentiment: null, labelled_at: '2026-09-26', label_method: 'rules', scope: 'ac',
+            relevance: 0.8, url: 'https://example.invalid/2', area_names: [] },
           { news_id: 3, published: '2026-09-29', source: 'Hindustan',
             title: 'गिरिडीह में सड़क निर्माण', summary_hi: null, summary_en: null,
-            issues: [], parties: [], sentiment: null, labelled_at: null,
+            issues: ['roads'], parties: [], persons: [], sentiment: null,
+            labelled_at: '2026-09-29', label_method: 'rules', scope: 'ac', relevance: 0.25,
             url: 'https://example.invalid/3', area_names: [] },
+          // Jharkhand-wide: names no constituency, shown only with scope=state.
+          { news_id: 4, published: '2026-09-27', source: 'Jagran',
+            title: 'एसआईआर के विरोध में रांची में भाजपा और कांग्रेस आमने-सामने',
+            summary_hi: null, summary_en: null,
+            issues: ['electoral-roll/SIR'], parties: ['BJP', 'INC'], persons: [], sentiment: null,
+            labelled_at: '2026-09-27', label_method: 'rules', scope: 'state', relevance: 0.6,
+            url: 'https://example.invalid/4', area_names: [] },
         ],
-        count: acNumber === 32 ? 3 : 0, fixture: FIXTURE_BANNER,
+        issues: NEWS_ISSUES, fixture: FIXTURE_BANNER,
+      }
+    case rest === '/news/summary':
+      return {
+        since: '2026-09-02', days: 30, scope: 'ac',
+        totals: acNumber !== 32
+          ? { items: 0, political: 0, with_party: 0, rules_labelled: 0, llm_labelled: 0,
+              with_tone: 0, unlabelled: 0 }
+          : { items: 3, political: 1, with_party: 1, rules_labelled: 2, llm_labelled: 1,
+              with_tone: 1, unlabelled: 0 },
+        last_crawled: '2026-09-30T08:00:00+05:30',
+        parties: acNumber !== 32 ? [] : [
+          { party: 'JLKM', items: 1, share_pct: 50 }, { party: 'JMM', items: 1, share_pct: 50 },
+        ],
+        party_weeks: acNumber !== 32 ? [] : [
+          { week: '2026-09-21', party: 'JLKM', items: 1 }, { week: '2026-09-21', party: 'JMM', items: 1 },
+        ],
+        issues: acNumber !== 32 ? [] : [
+          { issue: 'candidate/organisation', items: 1, examples: [
+            { news_id: 2, title: 'गिरिडीह उपचुनाव: JLKM की पदयात्रा, झामुमो ने बैठक की',
+              url: 'https://example.invalid/2', source: 'Dainik Bhaskar', published: '2026-09-26' }] },
+          { issue: 'water', items: 1, examples: [
+            { news_id: 1, title: 'पारसनाथ में जलापूर्ति को लेकर प्रदर्शन',
+              url: 'https://example.invalid/1', source: 'Prabhat Khabar', published: '2026-09-28' }] },
+        ],
+        other_items: 0,
+        places: acNumber !== 32 ? [] : [
+          { place: 'Giridih', name_en: 'Giridih', name_hi: 'गिरिडीह', kind: 'constituency', items: 2 },
+          { place: 'Parasnath', name_en: 'Parasnath', name_hi: 'पारसनाथ', kind: 'landmark', items: 1 },
+        ],
+        top: acNumber !== 32 ? [] : [
+          { news_id: 2, published: '2026-09-26', source: 'Dainik Bhaskar',
+            title: 'गिरिडीह उपचुनाव: JLKM की पदयात्रा, झामुमो ने बैठक की',
+            summary_hi: null, summary_en: null, issues: ['candidate/organisation'],
+            parties: ['JLKM', 'JMM'], persons: [], sentiment: null, label_method: 'rules',
+            scope: 'ac', relevance: 0.8, url: 'https://example.invalid/2' },
+        ],
+        fixture: FIXTURE_BANNER,
       }
     case rest === '/news/issues':
       return {
@@ -1087,10 +1139,17 @@ function applyQuery(clean: string, query: URLSearchParams, answer: unknown): unk
   if (rest === '/news') {
     const q = (query.get('q') ?? '').toLowerCase()
     const issue = query.get('issue')
+    const party = query.get('party')
+    const scope = query.get('scope') ?? 'ac'
     const rows = (data.rows as Obj[]).filter((r) =>
-      (!q || String(r.title).toLowerCase().includes(q))
-      && (!issue || ((r.issues as string[] | null) ?? []).includes(issue)))
-    return { ...data, rows, count: rows.length }
+      (scope === 'state' || r.scope !== 'state')
+      && (!q || String(r.title).toLowerCase().includes(q))
+      && (!issue || ((r.issues as string[] | null) ?? []).includes(issue))
+      && (!party || ((r.parties as string[] | null) ?? []).includes(party)))
+    if (query.get('sort') === 'relevance') {
+      rows.sort((a, b) => Number(b.relevance ?? 0) - Number(a.relevance ?? 0))
+    }
+    return { ...data, rows, count: rows.length, scope }
   }
   if (rest === '/local-results') {
     const seat = query.get('seat_type')
