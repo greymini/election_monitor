@@ -1,0 +1,17 @@
+{
+  "gp_id": "112982",
+  "district": "GIRIDIH",
+  "block": "PIRTAND",
+  "gp_name": "MANDARO",
+  "gp_key": "MANDARO",
+  "layout": "B",
+  "members": [],
+  "stats": {
+    "area": "1123",
+    "total_ward": "5",
+    "total_family": "540",
+    "total_population": "4475",
+    "total_male": "2770",
+    "total_female": "1705"
+  }
+}

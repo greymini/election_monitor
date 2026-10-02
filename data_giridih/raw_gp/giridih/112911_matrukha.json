@@ -1,0 +1,23 @@
+{
+  "gp_id": "112911",
+  "district": "GIRIDIH",
+  "block": "GIRIDIH",
+  "gp_name": "Matrukha",
+  "gp_key": "MATRUKHA",
+  "layout": "A",
+  "members": [
+    {
+      "portal_role": "Mukhiya",
+      "office": "mukhiya",
+      "name": "Ravindra   Kumar"
+    }
+  ],
+  "stats": {
+    "area": "5189.21",
+    "total_ward": "16",
+    "total_family": "3500",
+    "total_population": "7972",
+    "total_male": "4189",
+    "total_female": "3783"
+  }
+}

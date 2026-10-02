@@ -1,0 +1,23 @@
+{
+  "gp_id": "112901",
+  "district": "GIRIDIH",
+  "block": "GIRIDIH",
+  "gp_name": "Phulchi",
+  "gp_key": "PHULCHI",
+  "layout": "A",
+  "members": [
+    {
+      "portal_role": "Mukhiya",
+      "office": "mukhiya",
+      "name": "Champa   Marandi"
+    }
+  ],
+  "stats": {
+    "area": "2000",
+    "total_ward": "10",
+    "total_family": "9967",
+    "total_population": "16500",
+    "total_male": "9000",
+    "total_female": "8500"
+  }
+}

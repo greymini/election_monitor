@@ -1,0 +1,23 @@
+{
+  "gp_id": "112917",
+  "district": "GIRIDIH",
+  "block": "GIRIDIH",
+  "gp_name": "PARSATAND",
+  "gp_key": "PARSATAND",
+  "layout": "B",
+  "members": [
+    {
+      "portal_role": "unknown",
+      "office": "ward_unclassified",
+      "name": "Kunti devi Binod verma Mukhiya g"
+    }
+  ],
+  "stats": {
+    "area": "No idea",
+    "total_ward": "8",
+    "total_family": "3000",
+    "total_population": "8000",
+    "total_male": "4500",
+    "total_female": "3500"
+  }
+}

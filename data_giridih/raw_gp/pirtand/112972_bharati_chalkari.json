@@ -1,0 +1,17 @@
+{
+  "gp_id": "112972",
+  "district": "GIRIDIH",
+  "block": "PIRTAND",
+  "gp_name": "BHARATI CHALKARI",
+  "gp_key": "BHARATI CHALKARI",
+  "layout": "B",
+  "members": [],
+  "stats": {
+    "area": "424.7",
+    "total_ward": "23",
+    "total_family": "775",
+    "total_population": "1850",
+    "total_male": "951",
+    "total_female": "899"
+  }
+}

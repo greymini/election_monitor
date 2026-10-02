@@ -1,0 +1,23 @@
+{
+  "gp_id": "112985",
+  "district": "GIRIDIH",
+  "block": "PIRTAND",
+  "gp_name": "SIMARKOTHI",
+  "gp_key": "SIMARKOTHI",
+  "layout": "B",
+  "members": [
+    {
+      "portal_role": "unknown",
+      "office": "ward_unclassified",
+      "name": "Md Saba Ansari Yusuf Ansari"
+    }
+  ],
+  "stats": {
+    "area": "400",
+    "total_ward": "12",
+    "total_family": "4000",
+    "total_population": "6628",
+    "total_male": "3523",
+    "total_female": "3105"
+  }
+}

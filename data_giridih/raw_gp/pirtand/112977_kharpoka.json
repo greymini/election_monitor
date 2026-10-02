@@ -1,0 +1,103 @@
+{
+  "gp_id": "112977",
+  "district": "GIRIDIH",
+  "block": "PIRTAND",
+  "gp_name": "Kharpoka",
+  "gp_key": "KHARPOKA",
+  "layout": "A",
+  "members": [
+    {
+      "portal_role": "Mukhiya",
+      "office": "mukhiya",
+      "name": "Md Tanweer"
+    },
+    {
+      "portal_role": "Up-Mukhiya",
+      "office": "up_mukhiya",
+      "name": "Mithu Thakur"
+    },
+    {
+      "portal_role": "Panchayat Sachiv",
+      "office": "panchayat_sachiv",
+      "name": "Nakul Ravidas Puran Ravidas"
+    },
+    {
+      "portal_role": "Rojgar Sevak",
+      "office": "rojgar_sevak",
+      "name": "Uday Kumar Rana"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Muniya Khatoon"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Banu Khatun"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Churaman Kolh"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Lal Mohammad"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Hakiman Khatun"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Safina Bibi"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Raju Saw"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Sahnaj Khatun"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Rupa Devi"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Jahangir Ansari"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Mithu Thakur"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Jyoti Kumari"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Not Elected Not Elected"
+    }
+  ],
+  "stats": {
+    "area": "2937",
+    "total_ward": "17",
+    "total_family": "13000",
+    "total_population": "15000",
+    "total_male": "9500",
+    "total_female": "5500"
+  }
+}

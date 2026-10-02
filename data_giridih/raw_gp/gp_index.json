@@ -1,0 +1,335 @@
+{
+  "GIRIDIH": [
+    {
+      "block": "GIRIDIH",
+      "gp": "KHAWA",
+      "gp_id": "112907",
+      "members": 17,
+      "file": "../data_giridih/raw_gp/giridih/112907_khawa.json"
+    },
+    {
+      "block": "GIRIDIH",
+      "gp": "PARSATAND",
+      "gp_id": "112917",
+      "members": 1,
+      "file": "../data_giridih/raw_gp/giridih/112917_parsatand.json"
+    },
+    {
+      "block": "GIRIDIH",
+      "gp": "SENADONI",
+      "gp_id": "112921",
+      "members": 12,
+      "file": "../data_giridih/raw_gp/giridih/112921_senadoni.json"
+    },
+    {
+      "block": "GIRIDIH",
+      "gp": "PURNANAGAR",
+      "gp_id": "112920",
+      "members": 14,
+      "file": "../data_giridih/raw_gp/giridih/112920_purnanagar.json"
+    },
+    {
+      "block": "GIRIDIH",
+      "gp": "BADGUNDA KHURD",
+      "gp_id": "112892",
+      "members": 13,
+      "file": "../data_giridih/raw_gp/giridih/112892_badgunda_khurd.json"
+    },
+    {
+      "block": "GIRIDIH",
+      "gp": "BARAHMORIYA",
+      "gp_id": "112894",
+      "members": 14,
+      "file": "../data_giridih/raw_gp/giridih/112894_barahmoriya.json"
+    },
+    {
+      "block": "GIRIDIH",
+      "gp": "MATRUKHA",
+      "gp_id": "112911",
+      "members": 1,
+      "file": "../data_giridih/raw_gp/giridih/112911_matrukha.json"
+    },
+    {
+      "block": "GIRIDIH",
+      "gp": "JASPUR",
+      "gp_id": "112904",
+      "members": 1,
+      "file": "../data_giridih/raw_gp/giridih/112904_jaspur.json"
+    },
+    {
+      "block": "GIRIDIH",
+      "gp": "MAHESHLUNDI",
+      "gp_id": "112909",
+      "members": 2,
+      "file": "../data_giridih/raw_gp/giridih/112909_maheshlundi.json"
+    },
+    {
+      "block": "GIRIDIH",
+      "gp": "AKDONI KHURD",
+      "gp_id": "112890",
+      "members": 12,
+      "file": "../data_giridih/raw_gp/giridih/112890_akdoni_khurd.json"
+    },
+    {
+      "block": "GIRIDIH",
+      "gp": "PINDATAND",
+      "gp_id": "112919",
+      "members": 17,
+      "file": "../data_giridih/raw_gp/giridih/112919_pindatand.json"
+    },
+    {
+      "block": "GIRIDIH",
+      "gp": "ALGUNDA",
+      "gp_id": "112891",
+      "members": 11,
+      "file": "../data_giridih/raw_gp/giridih/112891_algunda.json"
+    },
+    {
+      "block": "GIRIDIH",
+      "gp": "BAJTO",
+      "gp_id": "112893",
+      "members": 16,
+      "file": "../data_giridih/raw_gp/giridih/112893_bajto.json"
+    },
+    {
+      "block": "GIRIDIH",
+      "gp": "PHULCHI",
+      "gp_id": "112901",
+      "members": 1,
+      "file": "../data_giridih/raw_gp/giridih/112901_phulchi.json"
+    },
+    {
+      "block": "GIRIDIH",
+      "gp": "PATRODIH",
+      "gp_id": "112918",
+      "members": 1,
+      "file": "../data_giridih/raw_gp/giridih/112918_patrodih.json"
+    },
+    {
+      "block": "GIRIDIH",
+      "gp": "GADI SRIRAMPUR",
+      "gp_id": "112902",
+      "members": 12,
+      "file": "../data_giridih/raw_gp/giridih/112902_gadi_srirampur.json"
+    },
+    {
+      "block": "GIRIDIH",
+      "gp": "SINDWARIYA",
+      "gp_id": "112924",
+      "members": 15,
+      "file": "../data_giridih/raw_gp/giridih/112924_sindwariya.json"
+    },
+    {
+      "block": "GIRIDIH",
+      "gp": "AKDONI KALA",
+      "gp_id": "112889",
+      "members": 15,
+      "file": "../data_giridih/raw_gp/giridih/112889_akdoni_kala.json"
+    },
+    {
+      "block": "GIRIDIH",
+      "gp": "UDANABAD",
+      "gp_id": "112927",
+      "members": 2,
+      "file": "../data_giridih/raw_gp/giridih/112927_udanabad.json"
+    },
+    {
+      "block": "GIRIDIH",
+      "gp": "PAHADPUR",
+      "gp_id": "112913",
+      "members": 16,
+      "file": "../data_giridih/raw_gp/giridih/112913_pahadpur.json"
+    },
+    {
+      "block": "GIRIDIH",
+      "gp": "KARHARBARI",
+      "gp_id": "112906",
+      "members": 17,
+      "file": "../data_giridih/raw_gp/giridih/112906_karharbari.json"
+    },
+    {
+      "block": "GIRIDIH",
+      "gp": "BERDONGA",
+      "gp_id": "112896",
+      "members": 5,
+      "file": "../data_giridih/raw_gp/giridih/112896_berdonga.json"
+    },
+    {
+      "block": "GIRIDIH",
+      "gp": "PALMO",
+      "gp_id": "112914",
+      "members": 13,
+      "file": "../data_giridih/raw_gp/giridih/112914_palmo.json"
+    },
+    {
+      "block": "GIRIDIH",
+      "gp": "JITPUR",
+      "gp_id": "112905",
+      "members": 13,
+      "file": "../data_giridih/raw_gp/giridih/112905_jitpur.json"
+    },
+    {
+      "block": "GIRIDIH",
+      "gp": "CHUNJAKA",
+      "gp_id": "112899",
+      "members": 3,
+      "file": "../data_giridih/raw_gp/giridih/112899_chunjaka.json"
+    },
+    {
+      "block": "GIRIDIH",
+      "gp": "MANGARODIH",
+      "gp_id": "112910",
+      "members": 1,
+      "file": "../data_giridih/raw_gp/giridih/112910_mangarodih.json"
+    },
+    {
+      "block": "GIRIDIH",
+      "gp": "LEDA",
+      "gp_id": "112908",
+      "members": 14,
+      "file": "../data_giridih/raw_gp/giridih/112908_leda.json"
+    },
+    {
+      "block": "GIRIDIH",
+      "gp": "TELODIH",
+      "gp_id": "112926",
+      "members": 19,
+      "file": "../data_giridih/raw_gp/giridih/112926_telodih.json"
+    },
+    {
+      "block": "GIRIDIH",
+      "gp": "SIKDARDIH",
+      "gp_id": "112923",
+      "members": 10,
+      "file": "../data_giridih/raw_gp/giridih/112923_sikdardih.json"
+    },
+    {
+      "block": "GIRIDIH",
+      "gp": "MOHANPUR",
+      "gp_id": "112912",
+      "members": 1,
+      "file": "../data_giridih/raw_gp/giridih/112912_mohanpur.json"
+    }
+  ],
+  "PIRTAND": [
+    {
+      "block": "PIRTAND",
+      "gp": "NAWADIH",
+      "gp_id": "112983",
+      "members": 15,
+      "file": "../data_giridih/raw_gp/pirtand/112983_nawadih.json"
+    },
+    {
+      "block": "PIRTAND",
+      "gp": "KUDKO",
+      "gp_id": "112979",
+      "members": 19,
+      "file": "../data_giridih/raw_gp/pirtand/112979_kudko.json"
+    },
+    {
+      "block": "PIRTAND",
+      "gp": "KHUKHARA",
+      "gp_id": "112978",
+      "members": 0,
+      "file": "../data_giridih/raw_gp/pirtand/112978_khukhara.json"
+    },
+    {
+      "block": "PIRTAND",
+      "gp": "TUIYO",
+      "gp_id": "112986",
+      "members": 0,
+      "file": "../data_giridih/raw_gp/pirtand/112986_tuiyo.json"
+    },
+    {
+      "block": "PIRTAND",
+      "gp": "HARLADIH",
+      "gp_id": "112976",
+      "members": 0,
+      "file": "../data_giridih/raw_gp/pirtand/112976_harladih.json"
+    },
+    {
+      "block": "PIRTAND",
+      "gp": "MADHUBAN",
+      "gp_id": "112981",
+      "members": 0,
+      "file": "../data_giridih/raw_gp/pirtand/112981_madhuban.json"
+    },
+    {
+      "block": "PIRTAND",
+      "gp": "BISHUNPUR",
+      "gp_id": "112973",
+      "members": 0,
+      "file": "../data_giridih/raw_gp/pirtand/112973_bishunpur.json"
+    },
+    {
+      "block": "PIRTAND",
+      "gp": "KUMHARLALO",
+      "gp_id": "112980",
+      "members": 16,
+      "file": "../data_giridih/raw_gp/pirtand/112980_kumharlalo.json"
+    },
+    {
+      "block": "PIRTAND",
+      "gp": "BANDH",
+      "gp_id": "112971",
+      "members": 0,
+      "file": "../data_giridih/raw_gp/pirtand/112971_bandh.json"
+    },
+    {
+      "block": "PIRTAND",
+      "gp": "MANDARO",
+      "gp_id": "112982",
+      "members": 0,
+      "file": "../data_giridih/raw_gp/pirtand/112982_mandaro.json"
+    },
+    {
+      "block": "PIRTAND",
+      "gp": "BADGAWAN",
+      "gp_id": "112970",
+      "members": 5,
+      "file": "../data_giridih/raw_gp/pirtand/112970_badgawan.json"
+    },
+    {
+      "block": "PIRTAND",
+      "gp": "KHARPOKA",
+      "gp_id": "112977",
+      "members": 17,
+      "file": "../data_giridih/raw_gp/pirtand/112977_kharpoka.json"
+    },
+    {
+      "block": "PIRTAND",
+      "gp": "PALGANJ",
+      "gp_id": "112984",
+      "members": 0,
+      "file": "../data_giridih/raw_gp/pirtand/112984_palganj.json"
+    },
+    {
+      "block": "PIRTAND",
+      "gp": "CHIRKI",
+      "gp_id": "112975",
+      "members": 0,
+      "file": "../data_giridih/raw_gp/pirtand/112975_chirki.json"
+    },
+    {
+      "block": "PIRTAND",
+      "gp": "CHILGA",
+      "gp_id": "112974",
+      "members": 11,
+      "file": "../data_giridih/raw_gp/pirtand/112974_chilga.json"
+    },
+    {
+      "block": "PIRTAND",
+      "gp": "BHARATI CHALKARI",
+      "gp_id": "112972",
+      "members": 0,
+      "file": "../data_giridih/raw_gp/pirtand/112972_bharati_chalkari.json"
+    },
+    {
+      "block": "PIRTAND",
+      "gp": "SIMARKOTHI",
+      "gp_id": "112985",
+      "members": 1,
+      "file": "../data_giridih/raw_gp/pirtand/112985_simarkothi.json"
+    }
+  ]
+}

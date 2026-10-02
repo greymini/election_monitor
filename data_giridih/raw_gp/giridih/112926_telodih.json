@@ -1,0 +1,113 @@
+{
+  "gp_id": "112926",
+  "district": "GIRIDIH",
+  "block": "GIRIDIH",
+  "gp_name": "Telodih",
+  "gp_key": "TELODIH",
+  "layout": "A",
+  "members": [
+    {
+      "portal_role": "Mukhiya",
+      "office": "mukhiya",
+      "name": "Shabbir  Alam"
+    },
+    {
+      "portal_role": "Up-Mukhiya",
+      "office": "up_mukhiya",
+      "name": "Abdul Kuddus Ansari"
+    },
+    {
+      "portal_role": "Panchayat Sachiv",
+      "office": "panchayat_sachiv",
+      "name": "Shazeb  Shamim"
+    },
+    {
+      "portal_role": "Rojgar Sevak",
+      "office": "rojgar_sevak",
+      "name": "Md  Islam"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Rehana  Khatoon"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Mariyam  Khatoon"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Md Rizwan Ansari"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Md Naim Uddin Ansari"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Halima  Khatoon"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Md  Nawazish"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Sakina  Khatun"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Shamima  Khatoon"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Rukshana  Parween"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Sakeena  Parween"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Taslim  Arif"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Manoj Kumar Singh"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Azaz Ahmad Ansari"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Nurjahan  Khatun"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Shambhunath  Sahu"
+    }
+  ],
+  "stats": {
+    "area": "1020",
+    "total_ward": "16",
+    "total_family": "1343",
+    "total_population": "8240",
+    "total_male": "4440",
+    "total_female": "3800"
+  }
+}

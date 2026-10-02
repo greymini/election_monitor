@@ -1,0 +1,73 @@
+{
+  "gp_id": "112891",
+  "district": "GIRIDIH",
+  "block": "GIRIDIH",
+  "gp_name": "Algunda",
+  "gp_key": "ALGUNDA",
+  "layout": "A",
+  "members": [
+    {
+      "portal_role": "Mukhiya",
+      "office": "mukhiya",
+      "name": "Bhagirath   Mandal"
+    },
+    {
+      "portal_role": "Up-Mukhiya",
+      "office": "up_mukhiya",
+      "name": "Bindeshwari   Devi"
+    },
+    {
+      "portal_role": "Panchayat Sachiv",
+      "office": "panchayat_sachiv",
+      "name": "Rajendra   Pandit"
+    },
+    {
+      "portal_role": "Rojgar Sevak",
+      "office": "rojgar_sevak",
+      "name": "Vijay  Kumar  Verma"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Alka   Devi"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Bharat   Yadav"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Sushila   Soren"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Rina   Devi"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Chandani   Khatun"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Dropati   Devi"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Babulal   Mahto"
+    }
+  ],
+  "stats": {
+    "area": "700",
+    "total_ward": "10",
+    "total_family": "1500",
+    "total_population": "9000",
+    "total_male": "5000",
+    "total_female": "4000"
+  }
+}

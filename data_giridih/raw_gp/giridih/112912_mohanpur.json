@@ -1,0 +1,23 @@
+{
+  "gp_id": "112912",
+  "district": "GIRIDIH",
+  "block": "GIRIDIH",
+  "gp_name": "Mohanpur",
+  "gp_key": "MOHANPUR",
+  "layout": "A",
+  "members": [
+    {
+      "portal_role": "Mukhiya",
+      "office": "mukhiya",
+      "name": "Malti  Devi"
+    }
+  ],
+  "stats": {
+    "area": "12000",
+    "total_ward": "14",
+    "total_family": "2000",
+    "total_population": "12000",
+    "total_male": "6900",
+    "total_female": "5100"
+  }
+}

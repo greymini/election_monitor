@@ -1,0 +1,88 @@
+{
+  "gp_id": "112920",
+  "district": "GIRIDIH",
+  "block": "GIRIDIH",
+  "gp_name": "Purnanagar",
+  "gp_key": "PURNANAGAR",
+  "layout": "A",
+  "members": [
+    {
+      "portal_role": "Mukhiya",
+      "office": "mukhiya",
+      "name": "Meena Badri Rajwar Devi"
+    },
+    {
+      "portal_role": "Up-Mukhiya",
+      "office": "up_mukhiya",
+      "name": "Sunil Kumar Saw"
+    },
+    {
+      "portal_role": "Panchayat Sachiv",
+      "office": "panchayat_sachiv",
+      "name": "Uday Kumar  Bharti"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Nandkishor  Pandey"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Champa  Devi"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Savitri  Devi"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Renu  Devi"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Ujjwal Kumar Tiwari"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Anjali  Kumari"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Sukra  Murmu"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Khiru  Kumar"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Sonamuni  Devi"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Md  Noushad"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Fulvanti  Devi"
+    }
+  ],
+  "stats": {
+    "area": "",
+    "total_ward": "14",
+    "total_family": "0",
+    "total_population": "0",
+    "total_male": "",
+    "total_female": ""
+  }
+}

@@ -1,0 +1,103 @@
+{
+  "gp_id": "112906",
+  "district": "GIRIDIH",
+  "block": "GIRIDIH",
+  "gp_name": "Karharbari",
+  "gp_key": "KARHARBARI",
+  "layout": "A",
+  "members": [
+    {
+      "portal_role": "Mukhiya",
+      "office": "mukhiya",
+      "name": "Sahara  Khatun"
+    },
+    {
+      "portal_role": "Panchayat Sachiv",
+      "office": "panchayat_sachiv",
+      "name": "Dularchand Prasad Kushwaha"
+    },
+    {
+      "portal_role": "Rojgar Sevak",
+      "office": "rojgar_sevak",
+      "name": "Basant Kumar Mandal"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Shabana   Parween"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Selina  Tudu"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Rabia  Bano"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Md Farid Hasan"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Afsana  Pravin"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Sahjadi  Bano"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Sonu  Devi"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Charlish  Hembrom"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Sangeeta  Hansda"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Mustakim  Ansari"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Shabana  Parween"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Aman  Besra"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Babita  Devi"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Nisha  Gupta"
+    }
+  ],
+  "stats": {
+    "area": "1700",
+    "total_ward": "17",
+    "total_family": "2150",
+    "total_population": "8500",
+    "total_male": "4500",
+    "total_female": "4000"
+  }
+}

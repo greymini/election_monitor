@@ -1,0 +1,68 @@
+{
+  "gp_id": "112923",
+  "district": "GIRIDIH",
+  "block": "GIRIDIH",
+  "gp_name": "Sikdardih",
+  "gp_key": "SIKDARDIH",
+  "layout": "A",
+  "members": [
+    {
+      "portal_role": "Mukhiya",
+      "office": "mukhiya",
+      "name": "Jamila  Khatoon"
+    },
+    {
+      "portal_role": "Up-Mukhiya",
+      "office": "up_mukhiya",
+      "name": "Fagendra Kumar Das"
+    },
+    {
+      "portal_role": "Panchayat Sachiv",
+      "office": "panchayat_sachiv",
+      "name": "Babujan  Murmu"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Sajiya  Praween"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Nuresha  Khatoon"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Dulari  Devi"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Rakhi  Devi"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Mustak  Ansari"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Raju  Ravidas"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Radhika  Devi"
+    }
+  ],
+  "stats": {
+    "area": "4500",
+    "total_ward": "9",
+    "total_family": "400",
+    "total_population": "8193",
+    "total_male": "4500",
+    "total_female": "3500"
+  }
+}

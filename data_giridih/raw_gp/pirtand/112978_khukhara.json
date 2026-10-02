@@ -1,0 +1,17 @@
+{
+  "gp_id": "112978",
+  "district": "GIRIDIH",
+  "block": "PIRTAND",
+  "gp_name": "KHUKHARA",
+  "gp_key": "KHUKHARA",
+  "layout": "B",
+  "members": [],
+  "stats": {
+    "area": "0",
+    "total_ward": "10",
+    "total_family": "0",
+    "total_population": "0",
+    "total_male": "0",
+    "total_female": "0"
+  }
+}

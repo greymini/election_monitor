@@ -1,0 +1,93 @@
+{
+  "gp_id": "112924",
+  "district": "GIRIDIH",
+  "block": "GIRIDIH",
+  "gp_name": "Sindwariya",
+  "gp_key": "SINDWARIYA",
+  "layout": "A",
+  "members": [
+    {
+      "portal_role": "Mukhiya",
+      "office": "mukhiya",
+      "name": "Rameshwar  Prasad  Verma"
+    },
+    {
+      "portal_role": "Up-Mukhiya",
+      "office": "up_mukhiya",
+      "name": "Dilchand  Prasad  Verma"
+    },
+    {
+      "portal_role": "Panchayat Sachiv",
+      "office": "panchayat_sachiv",
+      "name": "Bhuneshwar Prasad  Verma"
+    },
+    {
+      "portal_role": "Rojgar Sevak",
+      "office": "rojgar_sevak",
+      "name": "Ranjit   Kumar"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Manisha   Verma"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Chanda  Devi"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Gaytri  Devi"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Binod  Prasad  Yadav"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Prayag Prasad  Verma"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Sunaina  Devi"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Reeta  Pandey"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Ramlal   Tudu"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Kamli   Hansda"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Raj Kishor Singh"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Samina  Khatun"
+    }
+  ],
+  "stats": {
+    "area": "1945 hak",
+    "total_ward": "12",
+    "total_family": "7468",
+    "total_population": "7468",
+    "total_male": "3534",
+    "total_female": "3934"
+  }
+}

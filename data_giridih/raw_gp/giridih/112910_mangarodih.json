@@ -1,0 +1,23 @@
+{
+  "gp_id": "112910",
+  "district": "GIRIDIH",
+  "block": "GIRIDIH",
+  "gp_name": "Mangarodih",
+  "gp_key": "MANGARODIH",
+  "layout": "A",
+  "members": [
+    {
+      "portal_role": "Mukhiya",
+      "office": "mukhiya",
+      "name": "Asha   Devi"
+    }
+  ],
+  "stats": {
+    "area": "660",
+    "total_ward": "13",
+    "total_family": "870",
+    "total_population": "8972",
+    "total_male": "4981",
+    "total_female": "3991"
+  }
+}

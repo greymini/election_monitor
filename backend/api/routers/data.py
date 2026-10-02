@@ -125,6 +125,7 @@ def summary(user: CurrentUser, ac: CurrentAC) -> dict:
         "  AS caste_rows, "
         "(SELECT COUNT(*) FROM demography WHERE ac_id = %(ac)s) AS census_rows, "
         "(SELECT COUNT(*) FROM local_result WHERE ac_id = %(ac)s) AS local_result_rows, "
+        "(SELECT COUNT(*) FROM local_office_holder WHERE ac_id = %(ac)s) AS office_holder_rows, "
         "(SELECT COUNT(*) FROM source_doc WHERE ac_id = %(ac)s) AS source_docs, "
         "(SELECT COUNT(*) FROM source_doc WHERE ac_id = %(ac)s AND kind = 'form20' "
         "   AND parse_status = 'loaded' AND NOT is_synthetic) AS form20_real_docs, "
@@ -782,6 +783,47 @@ def local_results(user: CurrentUser, ac: CurrentAC, election_label: str | None =
         "rows": rows, "count": len(rows),
         "note": ("Panchayat elections are contested without party symbols. Any party shown here "
                  "is a manual tag; tag_source records who assigned it and on what basis."),
+    }
+
+
+@router.get("/local-caste")
+def local_caste(user: CurrentUser, ac: CurrentAC, area_id: int | None = None) -> dict:
+    """Estimated caste composition per panchayat, derived from booth-level estimates.
+
+    Returns an empty array (not an error) when caste_estimate has no rows for
+    this AC. community_pct is each community's share within the GP; estimated_votes
+    is turnout-weighted and NULL when booth-level result data is absent.
+    """
+    clauses, params = ["v.ac_id = %s"], [ac.ac_id]
+    if area_id is not None:
+        clauses.append("v.area_id = %s")
+        params.append(area_id)
+    block_id = scoped_block_id(user)
+    if block_id is not None:
+        clauses.append(
+            "v.area_id IN (SELECT area_id FROM area WHERE block_id = %s)"
+        )
+        params.append(block_id)
+
+    rows = query(
+        f"""
+        SELECT v.area_id, v.area_en, v.area_hi, v.block_en,
+               v.community, v.estimated_voters, v.community_pct, v.estimated_votes
+        FROM mv_local_caste_vote v
+        WHERE {' AND '.join(clauses)}
+        ORDER BY v.area_en, v.community_pct DESC
+        """,
+        params,
+    )
+    return {
+        "rows": rows,
+        "count": len(rows),
+        "note": (
+            "Community figures are estimates derived from booth-level caste data and "
+            "should not be presented as census counts. estimated_votes is turnout-weighted "
+            "and approximates how many votes each community may have cast at the last VS "
+            "election in the corresponding booths. Empty when caste data is not loaded."
+        ),
     }
 
 

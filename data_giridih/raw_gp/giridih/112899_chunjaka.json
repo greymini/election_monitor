@@ -1,0 +1,33 @@
+{
+  "gp_id": "112899",
+  "district": "GIRIDIH",
+  "block": "GIRIDIH",
+  "gp_name": "Chunjaka",
+  "gp_key": "CHUNJAKA",
+  "layout": "A",
+  "members": [
+    {
+      "portal_role": "Mukhiya",
+      "office": "mukhiya",
+      "name": "Savitri   Devi"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Rubi  Saw"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Jyoti  Kumari"
+    }
+  ],
+  "stats": {
+    "area": "1000 heactor",
+    "total_ward": "18",
+    "total_family": "3000",
+    "total_population": "6500",
+    "total_male": "3500",
+    "total_female": "3000"
+  }
+}

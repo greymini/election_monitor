@@ -1,0 +1,23 @@
+{
+  "gp_id": "112904",
+  "district": "GIRIDIH",
+  "block": "GIRIDIH",
+  "gp_name": "Jaspur",
+  "gp_key": "JASPUR",
+  "layout": "A",
+  "members": [
+    {
+      "portal_role": "Mukhiya",
+      "office": "mukhiya",
+      "name": "Budhni   Devi"
+    }
+  ],
+  "stats": {
+    "area": "5000",
+    "total_ward": "10",
+    "total_family": "1200",
+    "total_population": "10000",
+    "total_male": "6000",
+    "total_female": "4000"
+  }
+}

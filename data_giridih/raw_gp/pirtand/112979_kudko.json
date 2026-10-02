@@ -1,0 +1,113 @@
+{
+  "gp_id": "112979",
+  "district": "GIRIDIH",
+  "block": "PIRTAND",
+  "gp_name": "KUDKO",
+  "gp_key": "KUDKO",
+  "layout": "B",
+  "members": [
+    {
+      "portal_role": "unknown",
+      "office": "ward_unclassified",
+      "name": "MANTU MURMU SARKAR MURMU"
+    },
+    {
+      "portal_role": "unknown",
+      "office": "ward_unclassified",
+      "name": "DHANESHWARI DEVI DINESH MAHTO"
+    },
+    {
+      "portal_role": "unknown",
+      "office": "ward_unclassified",
+      "name": "PALLWI KUMARI MRITUNJAY GUPTA"
+    },
+    {
+      "portal_role": "unknown",
+      "office": "ward_unclassified",
+      "name": "RAJU RAVIDAS"
+    },
+    {
+      "portal_role": "unknown",
+      "office": "ward_unclassified",
+      "name": "SONU KUMAR GUPTA"
+    },
+    {
+      "portal_role": "unknown",
+      "office": "ward_unclassified",
+      "name": "SITARAM MAHTO"
+    },
+    {
+      "portal_role": "unknown",
+      "office": "ward_unclassified",
+      "name": "NARAYAN KOLH"
+    },
+    {
+      "portal_role": "unknown",
+      "office": "ward_unclassified",
+      "name": "DHASHMI KUMARI DINESH RAJAK"
+    },
+    {
+      "portal_role": "unknown",
+      "office": "ward_unclassified",
+      "name": "DHANESHWARI DEVI DINESH MAHTO"
+    },
+    {
+      "portal_role": "unknown",
+      "office": "ward_unclassified",
+      "name": "SURESH KOLH"
+    },
+    {
+      "portal_role": "unknown",
+      "office": "ward_unclassified",
+      "name": "SHANTI DEVI"
+    },
+    {
+      "portal_role": "unknown",
+      "office": "ward_unclassified",
+      "name": "SUNITA DEVI"
+    },
+    {
+      "portal_role": "unknown",
+      "office": "ward_unclassified",
+      "name": "CHUNILAL MURMU"
+    },
+    {
+      "portal_role": "unknown",
+      "office": "ward_unclassified",
+      "name": "SANYOJTI  HANSDA"
+    },
+    {
+      "portal_role": "unknown",
+      "office": "ward_unclassified",
+      "name": "NEMCHAND HANSDA"
+    },
+    {
+      "portal_role": "unknown",
+      "office": "ward_unclassified",
+      "name": "MAHABALI MARANDI"
+    },
+    {
+      "portal_role": "unknown",
+      "office": "ward_unclassified",
+      "name": "PABITA KUMARI"
+    },
+    {
+      "portal_role": "unknown",
+      "office": "ward_unclassified",
+      "name": "RITA DEVI"
+    },
+    {
+      "portal_role": "unknown",
+      "office": "ward_unclassified",
+      "name": "AJAY BESRA"
+    }
+  ],
+  "stats": {
+    "area": "507",
+    "total_ward": "15",
+    "total_family": "5000",
+    "total_population": "33000",
+    "total_male": "15000",
+    "total_female": "15000"
+  }
+}

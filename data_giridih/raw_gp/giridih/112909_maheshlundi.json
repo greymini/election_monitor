@@ -1,0 +1,28 @@
+{
+  "gp_id": "112909",
+  "district": "GIRIDIH",
+  "block": "GIRIDIH",
+  "gp_name": "Maheshlundi",
+  "gp_key": "MAHESHLUNDI",
+  "layout": "A",
+  "members": [
+    {
+      "portal_role": "Mukhiya",
+      "office": "mukhiya",
+      "name": "Shivnath   Saw"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Jagdish  Das"
+    }
+  ],
+  "stats": {
+    "area": "10",
+    "total_ward": "15",
+    "total_family": "2000",
+    "total_population": "15000",
+    "total_male": "8000",
+    "total_female": "7000"
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "gp_id": "112981",
+  "district": "GIRIDIH",
+  "block": "PIRTAND",
+  "gp_name": "MADHUBAN",
+  "gp_key": "MADHUBAN",
+  "layout": "B",
+  "members": [],
+  "stats": {
+    "area": "321.49",
+    "total_ward": "17",
+    "total_family": "1756",
+    "total_population": "8575",
+    "total_male": "4465",
+    "total_female": "4110"
+  }
+}

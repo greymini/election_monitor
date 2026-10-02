@@ -1,0 +1,17 @@
+{
+  "gp_id": "112986",
+  "district": "GIRIDIH",
+  "block": "PIRTAND",
+  "gp_name": "TUIYO",
+  "gp_key": "TUIYO",
+  "layout": "B",
+  "members": [],
+  "stats": {
+    "area": "450",
+    "total_ward": "13",
+    "total_family": "2500",
+    "total_population": "7500",
+    "total_male": "7500",
+    "total_female": "3000"
+  }
+}

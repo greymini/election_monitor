@@ -1,0 +1,17 @@
+{
+  "gp_id": "112976",
+  "district": "GIRIDIH",
+  "block": "PIRTAND",
+  "gp_name": "HARLADIH",
+  "gp_key": "HARLADIH",
+  "layout": "B",
+  "members": [],
+  "stats": {
+    "area": "450",
+    "total_ward": "13",
+    "total_family": "5500",
+    "total_population": "12000",
+    "total_male": "7000",
+    "total_female": "5000"
+  }
+}

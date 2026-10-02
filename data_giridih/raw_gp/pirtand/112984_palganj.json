@@ -1,0 +1,17 @@
+{
+  "gp_id": "112984",
+  "district": "GIRIDIH",
+  "block": "PIRTAND",
+  "gp_name": "PALGANJ",
+  "gp_key": "PALGANJ",
+  "layout": "B",
+  "members": [],
+  "stats": {
+    "area": "213",
+    "total_ward": "11",
+    "total_family": "1100",
+    "total_population": "9000",
+    "total_male": "5000",
+    "total_female": "4500"
+  }
+}

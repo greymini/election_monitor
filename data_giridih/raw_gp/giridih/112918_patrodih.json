@@ -1,0 +1,23 @@
+{
+  "gp_id": "112918",
+  "district": "GIRIDIH",
+  "block": "GIRIDIH",
+  "gp_name": "Patrodih",
+  "gp_key": "PATRODIH",
+  "layout": "A",
+  "members": [
+    {
+      "portal_role": "Mukhiya",
+      "office": "mukhiya",
+      "name": "Indu Kumar Kumari"
+    }
+  ],
+  "stats": {
+    "area": "300",
+    "total_ward": "15",
+    "total_family": "800",
+    "total_population": "120000",
+    "total_male": "610",
+    "total_female": "590"
+  }
+}

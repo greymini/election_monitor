@@ -1,0 +1,17 @@
+{
+  "gp_id": "112973",
+  "district": "GIRIDIH",
+  "block": "PIRTAND",
+  "gp_name": "Bishunpur",
+  "gp_key": "BISHUNPUR",
+  "layout": "B",
+  "members": [],
+  "stats": {
+    "area": "5673",
+    "total_ward": "14",
+    "total_family": "1344",
+    "total_population": "8166",
+    "total_male": "4165",
+    "total_female": "4001"
+  }
+}

@@ -1,0 +1,78 @@
+{
+  "gp_id": "112921",
+  "district": "GIRIDIH",
+  "block": "GIRIDIH",
+  "gp_name": "Senadoni",
+  "gp_key": "SENADONI",
+  "layout": "A",
+  "members": [
+    {
+      "portal_role": "Mukhiya",
+      "office": "mukhiya",
+      "name": "Baleshwar   Yadav"
+    },
+    {
+      "portal_role": "Up-Mukhiya",
+      "office": "up_mukhiya",
+      "name": "Jay Prakash Deo"
+    },
+    {
+      "portal_role": "Panchayat Sachiv",
+      "office": "panchayat_sachiv",
+      "name": "Puran   Manjhi"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Basanti   Devi"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Pankaj  Kumar  Verma"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Anita   Devi"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Kitabun   Khatun"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Shukar  Muni Devi"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Savitri   Devi"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Bebi  Devi"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Rohit  Kumar  Yadav"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Prity   Kumari"
+    }
+  ],
+  "stats": {
+    "area": "35200",
+    "total_ward": "11",
+    "total_family": "1300",
+    "total_population": "6300",
+    "total_male": "3200",
+    "total_female": "3100"
+  }
+}

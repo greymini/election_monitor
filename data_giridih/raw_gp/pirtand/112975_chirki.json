@@ -1,0 +1,17 @@
+{
+  "gp_id": "112975",
+  "district": "GIRIDIH",
+  "block": "PIRTAND",
+  "gp_name": "CHIRKI",
+  "gp_key": "CHIRKI",
+  "layout": "B",
+  "members": [],
+  "stats": {
+    "area": "300",
+    "total_ward": "10",
+    "total_family": "500",
+    "total_population": "20000",
+    "total_male": "12000",
+    "total_female": "80000"
+  }
+}

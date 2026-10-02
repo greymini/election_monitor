@@ -1,0 +1,17 @@
+{
+  "gp_id": "112971",
+  "district": "GIRIDIH",
+  "block": "PIRTAND",
+  "gp_name": "BANDH",
+  "gp_key": "BANDH",
+  "layout": "B",
+  "members": [],
+  "stats": {
+    "area": "3730",
+    "total_ward": "7",
+    "total_family": "3400",
+    "total_population": "8000",
+    "total_male": "4200",
+    "total_female": "3800"
+  }
+}

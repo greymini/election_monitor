@@ -30,6 +30,7 @@ export interface DataHealth {
   caste_rows: number
   census_rows: number
   local_result_rows: number
+  office_holder_rows?: number
   source_docs: number
   /** Form 20 documents loaded from real ECI files (not generated). */
   form20_real_docs?: number
@@ -127,6 +128,14 @@ export default function DataHealthStrip({
         ? t('health.rows', { n: health.local_result_rows })
         : null,
       command: `python -m ingest.fetch_sec --ac ${ac} --election PANCHAYAT-2022 --load-csv <csv>`,
+    },
+    {
+      label: 'Office holders',
+      state: state((health.office_holder_rows ?? 0) > 0),
+      detail: (health.office_holder_rows ?? 0) > 0
+        ? t('health.rows', { n: health.office_holder_rows })
+        : null,
+      command: `python -m ingest.load_office_holders --csv <csv> --ac ${ac}`,
     },
   ]
 

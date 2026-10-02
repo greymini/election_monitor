@@ -1,0 +1,78 @@
+{
+  "gp_id": "112902",
+  "district": "GIRIDIH",
+  "block": "GIRIDIH",
+  "gp_name": "Gadi Srirampur",
+  "gp_key": "GADI SRIRAMPUR",
+  "layout": "A",
+  "members": [
+    {
+      "portal_role": "Mukhiya",
+      "office": "mukhiya",
+      "name": "Kanchan   Devi"
+    },
+    {
+      "portal_role": "Up-Mukhiya",
+      "office": "up_mukhiya",
+      "name": "Guddi Devi"
+    },
+    {
+      "portal_role": "Panchayat Sachiv",
+      "office": "panchayat_sachiv",
+      "name": "Uday Kumar Bharti"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Nilam   Devi"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Md Ajad Alam"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Kalicharan   Soren"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Kanchan   Devi"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Banarjee  Turi"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Sarswati  Devi"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Kamli  Devi"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Sushma  Devi"
+    },
+    {
+      "portal_role": "Ward Sadasya",
+      "office": "ward",
+      "name": "Bablu  Kumar"
+    }
+  ],
+  "stats": {
+    "area": "0",
+    "total_ward": "15",
+    "total_family": "1500",
+    "total_population": "0",
+    "total_male": "4000",
+    "total_female": "3200"
+  }
+}

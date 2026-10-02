@@ -1,0 +1,28 @@
+{
+  "gp_id": "112927",
+  "district": "GIRIDIH",
+  "block": "GIRIDIH",
+  "gp_name": "Udanabad",
+  "gp_key": "UDANABAD",
+  "layout": "A",
+  "members": [
+    {
+      "portal_role": "Mukhiya",
+      "office": "mukhiya",
+      "name": "Kajal  Devi"
+    },
+    {
+      "portal_role": "Panchayat Sachiv",
+      "office": "panchayat_sachiv",
+      "name": "Deepa  Ekka"
+    }
+  ],
+  "stats": {
+    "area": "2500",
+    "total_ward": "17",
+    "total_family": "1500",
+    "total_population": "5500",
+    "total_male": "2800",
+    "total_female": "2700"
+  }
+}
