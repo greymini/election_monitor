@@ -116,6 +116,9 @@ AC_ROUTES = [
     "/candidates",
     "/local-politics",
     "/news",
+    "/news?scope=state&party=BJP&sort=relevance&days=30&q=giridih",
+    "/news/summary",
+    "/news/summary?scope=state&days=7",
 ]
 
 

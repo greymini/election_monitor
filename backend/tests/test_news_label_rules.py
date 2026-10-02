@@ -45,6 +45,12 @@ def test_every_issue_in_the_llm_enum_has_keywords():
     assert set(ISSUE_TERMS) | {"other"} == set(ISSUE_ENUM)
 
 
+def test_the_api_lists_the_same_issues_as_the_labellers():
+    from api.routers.news import ISSUES
+
+    assert ISSUES == ISSUE_ENUM
+
+
 def test_sir_stories_have_an_issue_of_their_own():
     lab = label("एसआईआर के विरोध में झामुमो का प्रदर्शन, वोट चोरी का आरोप", "", R)
     assert "electoral-roll/SIR" in lab.issues
