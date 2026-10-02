@@ -80,7 +80,7 @@ DEV_USERS = [
 # crosswalk binds the older elections' PS numbers onto those booths, and the
 # roll has to be linked to an election before any turnout figure exists.
 STEPS = ["migrate", "seed", "generate", "ps_list", "form20", "crosswalk", "roll",
-         "caste", "geo", "refresh", "users"]
+         "caste", "geo", "news", "refresh", "users"]
 
 
 # ---------------------------------------------------------------------------
@@ -352,6 +352,13 @@ def step_geo(py: str, args) -> None:
         "scripts.dev_geo")
 
 
+def step_news(py: str) -> None:
+    """Real news, crawled live from the configured feeds - the one dataset here
+    that is not synthetic. A source that fails is recorded on news_source and
+    skipped, so being offline costs the news and nothing else."""
+    run([py, "-m", "news.crawl_rss", "--limit", "1500"], "news.crawl_rss")
+
+
 def step_refresh(py: str) -> None:
     # --blocking: REFRESH ... CONCURRENTLY cannot run on a view that has never
     # been populated, which is every view in a freshly built stack. refresh.py
@@ -426,6 +433,7 @@ STEP_FUNCS = {
     "roll": lambda py, args: step_roll(py),
     "caste": lambda py, args: step_caste(py),
     "geo": step_geo,
+    "news": lambda py, args: step_news(py),
     "refresh": lambda py, args: step_refresh(py),
     "users": lambda py, args: step_users(py),
 }
