@@ -26,17 +26,17 @@ SELECT
     a.ac_id,
     cm.community_id,
     cm.name_en                              AS community,
-    SUM(ce.estimate)::INT                   AS estimated_voters,
+    SUM(ce.est_count)::INT                  AS estimated_voters,
     ROUND(
-        100.0 * SUM(ce.estimate) /
-        NULLIF(SUM(SUM(ce.estimate)) OVER (PARTITION BY a.area_id), 0),
+        100.0 * SUM(ce.est_count) /
+        NULLIF(SUM(SUM(ce.est_count)) OVER (PARTITION BY a.area_id), 0),
         1
     )                                       AS community_pct,
     -- Turnout-weighted estimated votes (NULL when booth result data absent)
     SUM(
         CASE
             WHEN snap.electors > 0 AND rbm.total_valid IS NOT NULL
-            THEN ce.estimate::FLOAT / snap.electors * rbm.total_valid
+            THEN ce.est_count::FLOAT / snap.electors * rbm.total_valid
             ELSE NULL
         END
     )::INT                                  AS estimated_votes
@@ -59,12 +59,14 @@ LEFT JOIN LATERAL (
     LIMIT  1
 ) snap ON true
 -- latest VS result_booth_meta for total valid votes
+-- result_booth_meta has no booth_uid; join via booth's ps_number+ac_id
 LEFT JOIN LATERAL (
     SELECT rbm2.total_valid
     FROM   result_booth_meta rbm2
     JOIN   election e2 ON e2.election_id = rbm2.election_id
-    WHERE  rbm2.booth_uid = ce.booth_uid
-      AND  e2.kind        = 'VS'
+    WHERE  rbm2.ps_number = b.current_ps_number
+      AND  rbm2.ac_id     = b.ac_id
+      AND  e2.type        = 'VS'
       AND  e2.ac_id       = a.ac_id
     ORDER  BY e2.election_id DESC
     LIMIT  1
