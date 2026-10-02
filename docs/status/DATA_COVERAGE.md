@@ -16,6 +16,10 @@ secondary document, not yet checked against ECI · **Missing** = shown as "—" 
 | S3 | **News**: Google News RSS queries and state news feeds | Headlines and summaries, last 30 days, Jharkhand politics plus constituency places | `backend/db/seed/news_sources.csv` (26 sources) | `news.crawl_rss`, then `news.label_rules` |
 | S4 | HLD 1.1 (project design document) | Electors 2019/2024, 2014 result, party tags of the top candidates, contest pairs | `backend/db/seed/ac_totals.csv`, `ac_contest.csv`, `form20/candidate_parties.csv` | `db/seed/load_seed.py` |
 | S5 | DataMeet AC outlines, geoBoundaries block outlines | Map boundaries (marked `verified: false`) | `backend/db/seed/geo/boundaries.json` | seed step `boundaries` |
+| S6 | **Local Government Directory** (LGD, 01 Oct 2026, ramSeraph mirror) | 134 gram panchayats of Giridih, Pirtand, Gandey, Bengabad and Dumri blocks with LGD codes; 743 villages as aliases; constituency by the villages' `ac_no` (D-012). English names only | `backend/db/seed/areas_panchayats.csv`, `area_aliases.csv` | `scripts/build_panchayats.py`, seed steps `areas`, `area_aliases` |
+| S7 | india-geodata (CC0): LGD villages dissolved by panchayat; SBM wards (Dec 2021) | 129 panchayat and 36 municipal ward polygons | `backend/db/seed/geo/areas.json` | seed step `area_boundaries` |
+| S9 | **BLO list**, AC-32 parts 276–385 (scanned, transcribed; `extracted_blo_data.xlsx`) | Current polling-station buildings and villages in Hindi for 110 Pirtand-block stations; 57 matched to an LGD village and panchayat; Hindi names for 8 panchayats. BLO names and phones deliberately not loaded. Parts are renumbered since 2024, so not joined to Form 20 booths | `backend/db/seed/ps_list/giridih_current_parts.csv` | `scripts/build_ps_list_current.py`, then `scripts/build_panchayats.py` |
+| S8 | Poll dates: All India Radio, Deccan Herald / NewsX, India TV / The Quint phase lists | VS-2019 and VS-2024 poll date and phase per constituency; Kanke VS-2024 left empty (sources disagree) | `backend/db/seed/poll_dates.csv` | seed step `poll_dates` |
 
 Every check in `ingest/form20_tables.problems()` passes on S1 and S2:
 - each row adds up;
@@ -57,7 +61,8 @@ Every check in `ingest/form20_tables.problems()` passes on S1 and S2:
 | Map: booth markers | | | **No locations, so no markers** |
 | Map: turnout, electors, new-voter metrics | | | No roll |
 | Map: priority score | Closeness and volatility (S1, S2) | | New-voter and floating terms |
-| Map: boundaries | | S5 (unverified) | Ward and panchayat polygons |
+| Map: boundaries | Panchayat and ward polygons (S7) | AC and block outlines (S5, unverified) | Panchayats outside Giridih district |
+| Map: click a panchayat or ward | Its news around the selected election's poll date (S3, S8), falling back to block, constituency, Jharkhand | | The area's result: no booth sits in a panchayat until the PS list is loaded |
 | **Candidates**: names and vote totals 2019/2024 | S1, S2 | | |
 | Candidates: party | JMM, BJP, JLKM | (tags from HLD 1.1) | 10 candidates in 2019 and 11 in 2024 show "party not in source" |
 | Candidates: age, education, assets, cases | | | No affidavit data |
@@ -69,18 +74,19 @@ Every check in `ingest/form20_tables.problems()` passes on S1 and S2:
 | **Local polls** | | | No SEC results |
 | **Local politics** | | | No office holders, events or organisations |
 | **Factors** (knowledge cards) | Cards 01 and 07: votes from S1, S2 | Electors and the other cards cite HLD/LLD | |
-| **News** | S3, keyword-labelled (parties, issues, candidates, relevance) | | Tone (sentiment) is not analysed; panchayat tagging waits for real panchayat names |
+| **News** | S3, keyword-labelled (parties, issues, candidates, places, panchayats via S6) | | Tone is not analysed. Panchayat tagging matches English names only, so Hindi news rarely reaches a panchayat. News before Sept 2026 needs the backfill (task 6) |
 
 ## 3. What is missing, what it unlocks, where to get it
 
 | Missing data | Unlocks | Source to get it | Loader |
 |---|---|---|---|
-| **Polling-station list 2024** (and 2019) | Station names and buildings, real blocks, wards and panchayats, map markers (after geocoding), block-scoped users, review of the 2019 → 2024 mapping | CEO Jharkhand / DEO Giridih PS list PDFs | `ingest.parse_pslist`, then `ingest.geocode` |
+| **Polling-station list 2024** (and 2019); the rest of the current list (parts 1–275, Giridih block and town) | Station names and buildings, real blocks, wards and panchayats, map markers (after geocoding), block-scoped users, review of the 2019 → 2024 mapping | CEO Jharkhand / DEO Giridih PS list PDFs | `ingest.parse_pslist`, then `ingest.geocode` |
 | **Electoral roll** (mother roll and supplements) | Booth electors and turnout, new voters, Voters page, caste estimates, priority and Scenario new-voter terms | CEO Jharkhand roll PDFs (needs Tesseract `hin`+`eng` and poppler) | `ingest.parse_roll --link-election` |
 | **Electors 2019/2024 from ECI** | Turns AC turnout from secondary to real | ECI statistical reports | `ac_totals.csv` |
 | **Party of every candidate** | Removes "party not in source" | ECI candidate list / Form 7A, MyNeta affidavits | `form20/candidate_parties.csv`, then `scripts/build_form20_seeds.py` |
 | **LS-2024 Form 20, Giridih segment** | Transfer page, floating vote, priority floating term | ECI Form 20 for Giridih PC | `ingest.ls_segment` / `parse_form20` |
-| **Gram panchayats (LGD)** | Panchayat filter, news tagged to panchayats | LGD (ramSeraph mirror); news plan task 4 | `db/seed/areas_panchayats.csv` |
+| **Hindi panchayat names** | Hindi news tagged to panchayats; Hindi labels on the map | Jharkhand SEC panchayat list | `db/seed/areas_panchayats.csv` `name_hi` |
+| **Panchayats of the other ACs** (Nawadih, Chandrapura, Tundi, Silli, Kanke blocks) | Map and news for those ACs | LGD for Bokaro, Dhanbad, Ranchi districts | `scripts/build_panchayats.py` |
 | **SEC panchayat / ULB 2022 results** | Local polls | jharkhandsec.gov.in, transcribed to CSV | `ingest.fetch_sec --load-csv` |
 | **Census 2011 village data** | Census blend in community estimates | Census 2011 PCA + Village Directory | `ingest.load_csv demography` |
 | **Candidate affidavits, local office holders** | Candidate profiles, Local politics | MyNeta/ADR, TCPD | `ingest.load_csv candidate_profile` / `local_office_holder` |

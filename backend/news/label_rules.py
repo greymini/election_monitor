@@ -42,7 +42,7 @@ from common.db import query, query_one
 from common.jobs import job_context
 from common.logging_setup import get_logger
 from common.textnorm import fold
-from news.crawl_rss import _BLOCK_SUFFIX, PARTY_TERMS, POLITICAL_TERMS, has_term, term_pattern
+from news.crawl_rss import _BLOCK_SUFFIX, AC_LANDMARKS, PARTY_TERMS, POLITICAL_TERMS, has_term, term_pattern
 from news.label_batch import ISSUE_ENUM
 
 log = get_logger(__name__)
@@ -261,6 +261,13 @@ def build_rules() -> Rules:
         larger = {fold(_BLOCK_SUFFIX.sub("", n or "")) for r in query(
             "SELECT name_en, name_hi FROM ac UNION ALL SELECT name_en, name_hi FROM block")
             for n in (r["name_en"], r["name_hi"])}
+        # Landmarks too: Parasnath is a hill, a pilgrimage and a railway station
+        # in another block, not the Madhuban village LGD calls "Parasnath Hill".
+        # A landmark that is itself a panchayat (Madhuban) still tags it.
+        own = {fold(n) for r in query("SELECT name_en, name_hi FROM area")
+               for n in (r["name_en"], r["name_hi"])}
+        larger |= {fold(n) for pairs in AC_LANDMARKS.values() for pair in pairs
+                   for n in pair} - own
         for row in query("SELECT area_id, ac_id, name_en, name_hi FROM area"):
             area_ac[row["area_id"]] = row["ac_id"]
             for name in (row["name_en"], row["name_hi"]):

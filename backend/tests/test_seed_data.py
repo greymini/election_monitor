@@ -418,3 +418,29 @@ def test_event_labels_have_no_ac_specific_suffix():
     for r in rows("election_event.csv"):
         assert "(" not in r["label"], r
         assert r["label"] == f"{r['type']}-{r['year']}"
+
+
+def test_current_ps_list_carries_no_personal_data():
+    """The BLO list it comes from names each booth level officer and their
+    mobile number. Neither belongs in the repository (scripts/build_ps_list_current.py)."""
+    import re
+
+    path = SEED / "ps_list" / "giridih_current_parts.csv"
+    text = path.read_text(encoding="utf-8")
+    assert not re.search(r"(?<!\d)[6-9]\d{9}(?!\d)", text), "a mobile number is in the seed"
+    columns = text.splitlines()[0].lower().split(",")
+    for column in columns:
+        assert not column.startswith(("blo_", "mobile", "phone", "officer", "बीएलओ", "मोबाइल")), column
+
+
+def test_current_ps_list_matches_only_seeded_panchayats():
+    parts = rows("ps_list/giridih_current_parts.csv")
+    numbers = [int(r["part_number"]) for r in parts]
+    assert numbers == sorted(set(numbers)), "a part is listed twice"
+    codes = {r["code"] for r in rows("areas_panchayats.csv")}
+    matched = [r for r in parts if r["status"] == "matched"]
+    assert matched
+    for r in matched:
+        assert r["panchayat_code"] in codes, r
+    for r in parts:
+        assert r["status"] in ("matched", "unmatched"), r

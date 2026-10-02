@@ -31,6 +31,11 @@ block whose panchayats are split between constituencies.
   a panchayat the village dissolve does not cover.
 * `SBM_Wards_giridih.geojson` - india-geodata `SBM_Wards`, the 36 Giridih
   municipal wards (Swachh Bharat Mission, December 2021).
+* `db/seed/ps_list/giridih_current_parts.csv` (scripts/build_ps_list_current.py),
+  if present: polling-station villages in Hindi, matched to LGD villages. A
+  matched village adds its Hindi spelling as an alias of its panchayat, and a
+  panchayat named after one of them gets that spelling as `name_hi` - the only
+  Hindi panchayat names there are, since LGD has none.
 
 **Which constituency.** AC-32's composition is disputed between sources: the
 LGD constituency-coverage table says AC-32 covers the whole Giridih
@@ -185,6 +190,32 @@ def build() -> dict:
         aliases.append({"ac_number": ac, "block_name_en": block_name, "kind": "panchayat",
                         "area_name_en": gp_name, "alias": v["Village Name (In English)"].strip(),
                         "script": "en", "source": f"{SOURCE_VILLAGE}: village of {gp_name}"})
+
+    # Hindi spellings from the polling-station list (official, printed in Hindi).
+    ps_list = SEED / "ps_list" / "giridih_current_parts.csv"
+    if ps_list.exists():
+        from build_ps_list_current import key as latin_key
+
+        by_code = {int(p["code"]): p for p in panchayats}
+        seen_hi = set()
+        for r in _rows(ps_list):
+            if r["status"] != "matched" or not r["panchayat_code"].isdigit():
+                continue
+            gp = by_code.get(int(r["panchayat_code"]))
+            if gp is None:
+                continue
+            if latin_key(r["village_lgd"]) == latin_key(gp["name_en"]) and gp["name_hi"] == gp["name_en"]:
+                gp["name_hi"] = r["village_hi"]
+                gp["source"] += "; Hindi name from the polling-station list"
+            key = fold(r["village_hi"])
+            if len(key) < MIN_ALIAS or key in seen_hi or key in reserved:
+                continue
+            seen_hi.add(key)
+            aliases.append({"ac_number": gp["ac_number"], "block_name_en": gp["block_name_en"],
+                            "kind": "panchayat", "area_name_en": gp["name_en"],
+                            "alias": r["village_hi"], "script": "hi",
+                            "source": f"polling-station list part {r['part_number']}: "
+                                      f"{r['village_lgd']}, village of {gp['name_en']}"})
 
     return {"panchayats": panchayats, "aliases": aliases, "features": features,
             "new_blocks": sorted(new_blocks), "skipped": skipped}
