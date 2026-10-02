@@ -7,10 +7,10 @@ services:
     # A1. This was `image: pgvector/pgvector:pg16`, which ships pgvector and no
     # PostGIS, so 0001_extensions.sql failed on its first line and a clean
     # checkout could not start at all. Built locally from the PostGIS image
-    # with pgvector added; docker/Dockerfile.db explains why that direction and
+    # with pgvector added; backend/docker/Dockerfile.db explains why that direction and
     # verifies all four extensions at build time.
     build:
-      context: .
+      context: ./backend
       dockerfile: docker/Dockerfile.db
     image: giridih-db:pg16-postgis34-pgvector
     container_name: giridih-db
@@ -22,7 +22,6 @@ services:
       TZ: ${TZ:-Asia/Kolkata}
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ./db/migrations:/migrations:ro
     ports:
       - "127.0.0.1:5432:5432"   # localhost only - never expose the DB publicly
     healthcheck:
@@ -47,7 +46,7 @@ services:
 
   api:
     build:
-      context: .
+      context: ./backend
       dockerfile: docker/Dockerfile.api
     container_name: giridih-api
     restart: unless-stopped
@@ -56,10 +55,10 @@ services:
       db:
         condition: service_healthy
     volumes:
-      - ./api:/app/api:ro
-      - ./chatbot:/app/chatbot:ro
-      - ./common:/app/common:ro
-      - ./analytics:/app/analytics:ro
+      - ./backend/api:/app/api:ro
+      - ./backend/chatbot:/app/chatbot:ro
+      - ./backend/common:/app/common:ro
+      - ./backend/analytics:/app/analytics:ro
       - models:/models
     ports:
       - "127.0.0.1:8000:8000"
@@ -76,7 +75,7 @@ services:
 
   worker:
     build:
-      context: .
+      context: ./backend
       dockerfile: docker/Dockerfile.worker
     container_name: giridih-worker
     restart: unless-stopped
@@ -89,12 +88,13 @@ services:
       - ocr:/data/ocr
       - backups:/data/backups
       - models:/models
-      - ./ingest:/app/ingest:ro
-      - ./news:/app/news:ro
-      - ./analytics:/app/analytics:ro
-      - ./common:/app/common:ro
-      - ./worker:/app/worker:ro
-      - ./db:/app/db:ro
+      - ./backend/ingest:/app/ingest:ro
+      - ./backend/news:/app/news:ro
+      - ./backend/chatbot:/app/chatbot:ro
+      - ./backend/analytics:/app/analytics:ro
+      - ./backend/common:/app/common:ro
+      - ./backend/worker:/app/worker:ro
+      - ./backend/db:/app/db:ro
     deploy:
       resources:
         limits:
@@ -103,8 +103,8 @@ services:
 
   web:
     build:
-      context: ./web
-      dockerfile: ../docker/Dockerfile.web
+      context: ./frontend
+      dockerfile: docker/Dockerfile
     container_name: giridih-web
     restart: unless-stopped
     depends_on:
@@ -113,7 +113,7 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ./docker/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./frontend/docker/nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - certs:/etc/letsencrypt
     deploy:
       resources:

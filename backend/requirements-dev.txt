@@ -1,0 +1,46 @@
+-r requirements-api.txt
+
+# Tests must run what production runs. jellyfish lives in requirements-worker.txt
+# and nothing requirements-dev pulled in provided it, so every crosswalk test ran
+# against common/similarity's pure-Python fallback while the worker ran jellyfish,
+# and the two disagreed by up to 0.12 (audit A7). Same pin as the worker.
+jellyfish==1.2.1
+
+# The Form 20 / PS list / roll end-to-end tests parse real PDF fixtures.
+pdfplumber==0.11.10
+
+# scripts/dev_stack.py: a self-contained PostgreSQL 16 that runs as an ordinary
+# user out of a directory, with no Docker, no service and no administrator
+# rights. This is what makes it possible to apply a migration, refresh a view
+# and run tests/e2e in this environment at all - DECISIONS.md D-002 recorded
+# every one of those gates as NOT VERIFIED HERE for want of a database.
+#
+# Its bundled server is minimal: plpgsql and pgvector only, no PostGIS, no
+# pg_trgm, no unaccent. Finding N4 and the header of 0001_extensions.sql are
+# about living with that; the deployment image still has all four.
+pgserver==0.1.4
+
+pytest==9.1.1
+pytest-asyncio==1.4.0
+ruff==0.16.8
+
+# A self-contained PostgreSQL 16, pip-installed, no Docker and no administrator
+# rights. It is what makes tests/test_metric_functions_sql.py able to *execute*
+# the generated metric functions rather than only lint them - A1 blocked the
+# full stack for the whole of this work, and the generated SQL would otherwise
+# have shipped having never run.
+#
+# It is not a substitute for the real image. It bundles pgvector but not
+# PostGIS, pg_trgm or unaccent, so 0001_extensions.sql cannot be applied against
+# it and the views cannot be built. tests/e2e/ still needs a real database; see
+# docker/Dockerfile.db and UAT_READINESS.md 1A.
+pgserver==0.1.4
+
+# Build-time only: scripts/build_boundaries.py turns the DataMeet AC shapefile and
+# geoBoundaries blocks into db/seed/geo/boundaries.json. Nothing at runtime, and
+# no test, imports either.
+shapely==2.1.2
+pyshp==3.1.6
+
+# Form 20 tables in db/seed/form20/ are read by tests and the seed builder.
+openpyxl==3.1.5

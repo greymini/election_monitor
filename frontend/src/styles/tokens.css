@@ -1,0 +1,163 @@
+/* Design tokens.
+ *
+ * Every categorical and diverging value here was validated with the dataviz
+ * validator (scripts/validate_palette.js). Two findings shaped the result and
+ * should not be undone casually:
+ *
+ * 1. The conventional JMM green and BJP saffron are indistinguishable under
+ *    red-green colour blindness at similar lightness (delta-E 3.2 protan). Making
+ *    the green dark and the saffron light raises that to 20.0 while keeping
+ *    both instantly recognisable. That lightness split is load-bearing.
+ *
+ * 2. For the SAME reason, green<->saffron cannot be a DIVERGING ramp: a diverging
+ *    scale needs lightness to carry magnitude, so both arms end up at matched
+ *    lightness and collapse under protan (delta-E 4.6-5.9). The margin and swing
+ *    scales therefore use the validated blue<->red pair with a neutral grey
+ *    midpoint, and the legend names the parties and shows their own colour
+ *    chips at each end so the mapping is explicit.
+ *
+ * Charts cap at three real parties plus an "Others" fold: with more than three,
+ * no ordering of party hues clears the all-pairs floors.
+ */
+
+:root {
+  color-scheme: light;
+
+  /* Surfaces and ink */
+  --surface-1: #fcfcfb;
+  --surface-2: #f4f3f0;
+  --plane: #f9f9f7;
+  --text-primary: #0b0b0b;
+  --text-secondary: #52514e;
+  --text-muted: #898781;
+  --gridline: #e1e0d9;
+  --baseline: #c3c2b7;
+
+  /* Parties - categorical, fixed by entity and never by rank */
+  --party-jmm: #1a6b39;
+  --party-bjp: #ff8c42;
+  --party-jlkm: #6d3fc4;
+  --party-ajsu: #c98500;
+  --party-inc: #2a78d6;
+  --party-rjd: #1baf7a;
+  --party-other: #a8a69e;
+  --party-nota: #52514e;
+
+  /* Diverging: JMM lead (blue) <-> neutral <-> BJP lead (red) */
+  --div-a5: #0d366b;
+  --div-a4: #184f95;
+  --div-a3: #256abf;
+  --div-a2: #3987e5;
+  --div-a1: #86b6ef;
+  --div-mid: #f0efec;
+  --div-b1: #f3b0ae;
+  --div-b2: #e57573;
+  --div-b3: #d03b3b;
+  --div-b4: #a82c2c;
+  --div-b5: #7d1f1f;
+
+  /* Sequential: one hue, light to dark (turnout, new-voter share) */
+  --seq-1: #cde2fb;
+  --seq-2: #9ec5f4;
+  --seq-3: #6da7ec;
+  --seq-4: #3987e5;
+  --seq-5: #256abf;
+  --seq-6: #184f95;
+  --seq-7: #0d366b;
+
+  /* Status - reserved, never reused as a series colour */
+  --status-good: #0ca30c;
+  --status-warning: #fab219;
+  --status-serious: #ec835a;
+  --status-critical: #d03b3b;
+
+  /* Short names the components use. They were never defined, so every
+     unverified badge, warning chip and the fixture banner fell back to grey. */
+  --status-ok: var(--status-good);
+  --status-warn: var(--status-warning);
+  --status-warn-bg: color-mix(in srgb, var(--status-warning) 16%, transparent);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+    --surface-1: #1a1a19;
+    --surface-2: #232322;
+    --plane: #0d0d0d;
+    --text-primary: #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted: #898781;
+    --gridline: #2c2c2a;
+    --baseline: #383835;
+
+    --party-jmm: #35a05f;
+    --party-bjp: #ff9a58;
+    --party-jlkm: #9085e9;
+    --party-ajsu: #d2a021;
+    --party-inc: #3987e5;
+    --party-rjd: #199e70;
+    --party-other: #898781;
+    --party-nota: #c3c2b7;
+
+    --div-a5: #86b6ef;
+    --div-a4: #5598e7;
+    --div-a3: #3987e5;
+    --div-a2: #256abf;
+    --div-a1: #1c5cab;
+    --div-mid: #383835;
+    --div-b1: #8f3030;
+    --div-b2: #b33636;
+    --div-b3: #d03b3b;
+    --div-b4: #e66767;
+    --div-b5: #f3b0ae;
+
+    --seq-1: #0d366b;
+    --seq-2: #184f95;
+    --seq-3: #256abf;
+    --seq-4: #3987e5;
+    --seq-5: #5598e7;
+    --seq-6: #86b6ef;
+    --seq-7: #cde2fb;
+  }
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --surface-1: #1a1a19;
+  --surface-2: #232322;
+  --plane: #0d0d0d;
+  --text-primary: #ffffff;
+  --text-secondary: #c3c2b7;
+  --text-muted: #898781;
+  --gridline: #2c2c2a;
+  --baseline: #383835;
+
+  --party-jmm: #35a05f;
+  --party-bjp: #ff9a58;
+  --party-jlkm: #9085e9;
+  --party-ajsu: #d2a021;
+  --party-inc: #3987e5;
+  --party-rjd: #199e70;
+  --party-other: #898781;
+  --party-nota: #c3c2b7;
+
+  --div-a5: #86b6ef;
+  --div-a4: #5598e7;
+  --div-a3: #3987e5;
+  --div-a2: #256abf;
+  --div-a1: #1c5cab;
+  --div-mid: #383835;
+  --div-b1: #8f3030;
+  --div-b2: #b33636;
+  --div-b3: #d03b3b;
+  --div-b4: #e66767;
+  --div-b5: #f3b0ae;
+
+  --seq-1: #0d366b;
+  --seq-2: #184f95;
+  --seq-3: #256abf;
+  --seq-4: #3987e5;
+  --seq-5: #5598e7;
+  --seq-6: #86b6ef;
+  --seq-7: #cde2fb;
+}

@@ -1,0 +1,10 @@
+# The image runs `npm ci` itself; the host's node_modules must not enter the
+# build context (audit A4), nor build output, test artefacts or local env files.
+node_modules
+dist
+test-results
+playwright-report
+e2e
+.env
+.env.*
+!.env.example

@@ -1,6 +1,6 @@
-# Repo-root ignores. The application subtree has its own giridih-monitor/.gitignore;
-# this file covers the root and repeats the dangerous patterns so a mistake in one
-# place cannot commit a secret or a voter record.
+# Repo-wide ignores for backend/, frontend/ and docs/. The dangerous patterns
+# (secrets, source PDFs, OCR text, backups) are globbed with ** so they hold in
+# every subdirectory: a mistake in one place cannot commit a secret or a voter record.
 
 # Secrets & local config — never commit
 .env
@@ -34,14 +34,20 @@ htmlcov/
 # Node
 node_modules/
 **/node_modules/
-web/dist/
-**/web/dist/
-**/web/.vite/
+frontend/dist/
+**/frontend/.vite/
 *.tsbuildinfo
 
 # Playwright
 test-results/
 playwright-report/
+**/e2e/screenshots/
+
+# Local CSV inputs for loaders (may hold personal or unpublished data)
+data/
+
+# Scratch files
+*.tmp.*
 
 # OS / editor
 Thumbs.db
@@ -51,6 +57,5 @@ desktop.ini
 .idea/
 .vscode/
 
-# Local development stack (scripts/dev_stack.py): an embedded PostgreSQL
-# cluster, generated synthetic source documents, and dev credentials.
+# scripts/dev_stack.py: embedded PostgreSQL data, generated PDFs, logs
 .devstack/
