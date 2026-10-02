@@ -6,7 +6,7 @@ and there is nothing here that needs a DAG.
 
 Schedule (Asia/Kolkata):
 
-    news.crawl                every 4 hours
+    news.crawl                every 4 hours  (then news.label_rules)
     news.label_batch          01:00
     news.label_collect        07:00  (then news.embed)
     ceo.check_new_supplement  06:00

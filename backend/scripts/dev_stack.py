@@ -381,6 +381,8 @@ def step_news(py: str) -> None:
     that is not synthetic. A source that fails is recorded on news_source and
     skipped, so being offline costs the news and nothing else."""
     run([py, "-m", "news.crawl_rss", "--limit", "1500"], "news.crawl_rss")
+    # Keyword labels, so /news has something to list without an Anthropic key.
+    run([py, "-m", "news.label_rules"], "news.label_rules")
 
 
 def step_form20_real(py: str, args) -> None:

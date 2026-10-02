@@ -27,7 +27,8 @@ MIN_RELEVANCE = 0.25
 
 def open_batches() -> list[str]:
     rows = query(
-        "SELECT DISTINCT batch_id FROM news_item WHERE batch_id IS NOT NULL AND labelled_at IS NULL"
+        "SELECT DISTINCT batch_id FROM news_item WHERE batch_id IS NOT NULL "
+        "AND label_method IS DISTINCT FROM 'llm'"
     )
     return [r["batch_id"] for r in rows]
 
@@ -116,7 +117,8 @@ def collect(batch_id: str) -> dict:
         execute(
             "UPDATE news_item SET summary_hi = %s, summary_en = %s, issues = %s, parties = %s, "
             "persons = %s, sentiment = %s, sentiment_by_party = %s, area_ids = %s, "
-            "area_names_raw = %s, labelled_by = %s, labelled_at = now() WHERE news_id = %s",
+            "area_names_raw = %s, labelled_by = %s, label_method = 'llm', labelled_at = now() "
+            "WHERE news_id = %s",
             (payload.get("summary_hi"), payload.get("summary_en"),
              payload.get("issues") or [], payload.get("parties") or [],
              payload.get("persons") or [], overall,

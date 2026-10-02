@@ -89,10 +89,15 @@ PARTY_TERMS: dict[str, list[str]] = {
     "CPIML": ["cpi ml", "cpiml", "भाकपा माले", "माले"],
 }
 
-# Landmarks that identify a constituency but are not an AC, block or area name.
+# Landmarks that identify a constituency but are not an AC, block or area name,
+# as (English, Hindi) so the News page can show them as one place.
+AC_LANDMARKS: dict[int, list[tuple[str, str]]] = {
+    32: [("Parasnath", "पारसनाथ"), ("Madhuban", "मधुबन"), ("Marang Buru", "मरांग बुरु")],
+}
 AC_EXTRA_TERMS: dict[int, list[str]] = {
-    32: ["पारसनाथ", "parasnath", "मधुबन", "madhuban", "मरांग बुरु", "marang buru",
-         "ac 32", "एसी 32"],
+    ac: [t for pair in pairs for t in (pair[1], pair[0].lower())]
+        + ([f"ac {ac}", f"एसी {ac}"] if ac == 32 else [])
+    for ac, pairs in AC_LANDMARKS.items()
 }
 
 _DEVANAGARI = re.compile(r"[ऀ-ॿ]")
@@ -125,6 +130,12 @@ def _terms(values) -> list[str]:
     return sorted({fold(v) for v in values if v and fold(v)})
 
 
+def term_pattern(term: str) -> str:
+    """The regex for `term` as whole words (see has_term)."""
+    tail = r"[ऀ-ॿ]*" if _DEVANAGARI.search(term) else ""
+    return rf"(?<![\wऀ-ॿ]){re.escape(term)}{tail}(?![\wऀ-ॿ])"
+
+
 def has_term(haystack: str, term: str) -> bool:
     """`term` as whole words in `haystack` (both already folded).
 
@@ -133,9 +144,7 @@ def has_term(haystack: str, term: str) -> bool:
     """
     if not term:
         return False
-    tail = r"[ऀ-ॿ]*" if _DEVANAGARI.search(term) else ""
-    return re.search(rf"(?<![\wऀ-ॿ]){re.escape(term)}{tail}(?![\wऀ-ॿ])",
-                     haystack) is not None
+    return re.search(term_pattern(term), haystack) is not None
 
 
 def classify(title: str, summary: str, m: Matchers) -> Verdict:
