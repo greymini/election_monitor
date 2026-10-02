@@ -42,7 +42,7 @@ from common.db import query, query_one
 from common.jobs import job_context
 from common.logging_setup import get_logger
 from common.textnorm import fold
-from news.crawl_rss import PARTY_TERMS, POLITICAL_TERMS, has_term, term_pattern
+from news.crawl_rss import _BLOCK_SUFFIX, PARTY_TERMS, POLITICAL_TERMS, has_term, term_pattern
 from news.label_batch import ISSUE_ENUM
 
 log = get_logger(__name__)
@@ -255,13 +255,19 @@ def build_rules() -> Rules:
     areas: dict[int, set[str]] = {}
     area_ac: dict[int, int] = {}
     try:
+        # A panchayat named like its block or constituency (Dumri, Gandey) is
+        # not what "Dumri by-election" means: the larger unit wins, and the
+        # crawler already tags it.
+        larger = {fold(_BLOCK_SUFFIX.sub("", n or "")) for r in query(
+            "SELECT name_en, name_hi FROM ac UNION ALL SELECT name_en, name_hi FROM block")
+            for n in (r["name_en"], r["name_hi"])}
         for row in query("SELECT area_id, ac_id, name_en, name_hi FROM area"):
             area_ac[row["area_id"]] = row["ac_id"]
             for name in (row["name_en"], row["name_hi"]):
-                if _usable_area_name(fold(name)):
+                if _usable_area_name(fold(name)) and fold(name) not in larger:
                     areas.setdefault(row["area_id"], set()).add(fold(name))
         for row in query("SELECT alias, area_id FROM area_alias"):
-            if _usable_area_name(fold(row["alias"])):
+            if _usable_area_name(fold(row["alias"])) and fold(row["alias"]) not in larger:
                 areas.setdefault(row["area_id"], set()).add(fold(row["alias"]))
     except Exception as exc:
         log.warning("areas unavailable (%s); no areas will be tagged", exc)

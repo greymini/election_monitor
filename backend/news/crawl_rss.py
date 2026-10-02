@@ -142,7 +142,9 @@ def has_term(haystack: str, term: str) -> bool:
     A Devanagari term may run into a suffix on its last word; a Latin term must
     end at a word boundary.
     """
-    if not term:
+    # The substring test is a cheap necessary condition: with hundreds of
+    # village names per constituency, most terms are not in the text at all.
+    if not term or term not in haystack:
         return False
     return re.search(term_pattern(term), haystack) is not None
 
