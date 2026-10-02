@@ -264,7 +264,10 @@ def build_real():
             if geometry is None:
                 continue
             seed_name = SOURCE_BLOCK_NAMES.get(source_name)
-            row = seeded.get(number, {}).get(seed_name) if seed_name else None
+            # A block split between constituencies is seeded as "<Block> (part)"
+            # in the one that holds the smaller share (scripts/build_panchayats.py).
+            row = (seeded.get(number, {}).get(seed_name)
+                   or seeded.get(number, {}).get(f"{seed_name} (part)")) if seed_name else None
             block_features.append({
                 "type": "Feature",
                 "geometry": rounded(geometry),
@@ -410,7 +413,7 @@ def dump(path: pathlib.Path, data: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, ensure_ascii=False, separators=(",", ":")) + "\n",
                     encoding="utf-8")
-    print(f"wrote {path.relative_to(ROOT)} ({path.stat().st_size // 1024} kB, "
+    print(f"wrote {path.relative_to(ROOT.parent)} ({path.stat().st_size // 1024} kB, "
           f"{len(data['features'])} features)")
 
 

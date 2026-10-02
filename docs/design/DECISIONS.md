@@ -370,3 +370,31 @@ For the record, the original rationale follows.
 > point-in-polygon assignment, nearest-booth search - needs PostGIS, and the deployment image has it.
 > At that point the capability check becomes a hard requirement for those code paths rather than a
 > schema-wide one.
+
+## D-012 · Panchayats are seeded from LGD and placed by their villages' constituency
+
+**Date:** 2 Oct 2026. **Status:** adopted.
+
+The panchayat seed had been empty on purpose (N9): names were to come from the PS
+list. No PS list is available, and the map and the news need panchayats now. The
+Local Government Directory is the official register of panchayats, so it is not
+"invented geography"; `scripts/build_panchayats.py` builds the seed from it.
+
+Sources disagree on AC-32's composition:
+
+| Source | Says |
+|---|---|
+| LGD constituency coverage | AC-32 covers the whole Giridih sub-district and the municipal corporation |
+| ECI 2008 delimitation order | Twelve Giridih-block panchayats belong to Gandey (31) |
+| LGD villages' `ac_no` | 13 of Giridih block's 30 panchayats are mostly in AC-31 |
+
+The finest-grained source wins: each panchayat goes where most of its villages
+are, and its `membership` column records the evidence, including split ones.
+Jharkhand kept its 1976 AC boundaries, so this needs checking against the
+polling-station list; when that is loaded, its assignment of booths to
+panchayats overrides this.
+
+LGD has no Hindi panchayat names, and machine transliteration got none of eight
+known names right, so `name_hi` repeats the English name rather than show a
+wrong Hindi spelling.
+

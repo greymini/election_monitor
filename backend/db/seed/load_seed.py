@@ -158,8 +158,10 @@ def load_blocks() -> int:
 def load_areas() -> int:
     """Wards and panchayats, resolved to a block by (ac_number, block name).
 
-    `areas_panchayats.csv` ships empty on purpose: panchayat names come from the
-    published PS list, not from a seed file anyone typed. See db/seed/README.md.
+    `areas_panchayats.csv` is generated from the Local Government Directory by
+    scripts/build_panchayats.py - the official list, not names anyone typed. LGD
+    has no Hindi panchayat names, so `name_hi` repeats the English one rather
+    than carry a guessed transliteration. See db/seed/README.md.
     """
     rows = _rows("areas_wards.csv") + _rows("areas_panchayats.csv")
     acs = _ac_ids()
@@ -200,6 +202,71 @@ def load_areas() -> int:
                     (key, area_id, script),
                 )
             loaded += 1
+    return loaded
+
+
+def _area_id(cur, ac_id: int, block_name: str, kind: str, name: str) -> int | None:
+    cur.execute(
+        "SELECT a.area_id FROM area a JOIN block b ON b.block_id = a.block_id "
+        "WHERE a.ac_id = %s AND b.name_en = %s AND a.kind = %s AND a.name_en = %s",
+        (ac_id, block_name, kind, name),
+    )
+    row = cur.fetchone()
+    return row["area_id"] if row else None
+
+
+def load_area_aliases() -> int:
+    """Other names for an area - a panchayat's villages - from area_aliases.csv
+    (scripts/build_panchayats.py). A name already taken by another area keeps
+    its first owner: area_alias.alias is unique, and a village name that the
+    build found in two panchayats is not in the file at all."""
+    acs = _ac_ids()
+    loaded = 0
+    with cursor() as cur:
+        for r in _rows("area_aliases.csv"):
+            ac_id = acs.get(int(r["ac_number"]))
+            area_id = ac_id and _area_id(cur, ac_id, r["block_name_en"], r["kind"],
+                                         r["area_name_en"])
+            key = alias_key(r["alias"])
+            if not area_id or not key:
+                continue
+            cur.execute(
+                "INSERT INTO area_alias (alias, area_id, script, source) "
+                "VALUES (%s, %s, %s, %s) ON CONFLICT (alias) DO NOTHING",
+                (key, area_id, r["script"], r["source"]),
+            )
+            loaded += cur.rowcount
+    return loaded
+
+
+def load_area_boundaries() -> int:
+    """Panchayat and ward polygons from geo/areas.json (scripts/build_panchayats.py),
+    with the label point as the area centroid the geocoder falls back on."""
+    import json
+
+    path = SEED_DIR / "geo" / "areas.json"
+    if not path.exists():
+        log.warning("seed file missing: geo/areas.json")
+        return 0
+    data = json.loads(path.read_text(encoding="utf-8"))
+    acs = _ac_ids()
+    loaded = 0
+    with cursor() as cur:
+        for feature in data["features"]:
+            props = feature["properties"]
+            ac_id = acs.get(props["ac_number"])
+            area_id = ac_id and _area_id(cur, ac_id, props["block_name_en"], props["kind"],
+                                         props["name_en"])
+            if not area_id:
+                continue
+            lon, lat = props["label_point"]
+            cur.execute(
+                "UPDATE area SET boundary = %s::jsonb, boundary_source = %s, "
+                "centroid_lon = %s, centroid_lat = %s WHERE area_id = %s",
+                (json.dumps(feature["geometry"]), data["sources"][props["source"]],
+                 lon, lat, area_id),
+            )
+            loaded += cur.rowcount
     return loaded
 
 
@@ -608,13 +675,15 @@ LOADERS = {
     "news_sources": load_news_sources,
     "cards": load_knowledge_cards,
     "boundaries": load_boundaries,
+    "area_aliases": load_area_aliases,
+    "area_boundaries": load_area_boundaries,
 }
 
 # Order matters: ACs before anything scoped to one, parties before aliases and
 # alliances, events before alliances and contests, elections before ac_totals.
-ORDER = ["acs", "blocks", "areas", "parties", "party_aliases", "communities",
+ORDER = ["acs", "blocks", "areas", "area_aliases", "parties", "party_aliases", "communities",
          "elections", "party_alliances", "ac_contests", "surnames", "ac_totals",
-         "news_sources", "cards", "boundaries"]
+         "news_sources", "cards", "boundaries", "area_boundaries"]
 
 
 def main(argv: list[str] | None = None) -> int:
