@@ -315,6 +315,10 @@ def ids(loaded_dataset, db_url):
                         "WHERE a.block_id = %s ORDER BY b.booth_uid LIMIT 1",
                         (block_user_block,))
             booth_uid = cur.fetchone()["booth_uid"]
+            # An area in the same block, for /areas/{area_id}/news.
+            cur.execute("SELECT area_id FROM area WHERE block_id = %s ORDER BY area_id LIMIT 1",
+                        (block_user_block,))
+            area_id = cur.fetchone()["area_id"]
             # The booth PS 1 already maps to, so the POST /admin/crosswalk the
             # sweep sends is provably a no-op. The sweep has to call every
             # route, and this one rewrites a crosswalk binding - pointing it at
@@ -335,6 +339,7 @@ def ids(loaded_dataset, db_url):
         "ac_number": ac_number, "booth_uid": booth_uid,
         "election_label": "VS-2024", "review_item_id": review_item_id,
         "blocks": blocks, "empty_ac": empty_ac, "ps1_booth": ps1_booth,
+        "area_id": area_id,
     }
 
 

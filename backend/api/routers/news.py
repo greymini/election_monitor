@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from datetime import date, timedelta
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
-from api.deps import CurrentAC, CurrentUser
+from api.deps import CurrentAC, CurrentUser, scoped_block_id
 from common.db import execute, query, query_one
 from common.logging_setup import get_logger
 from common.pii import PiiRejected, screen
@@ -15,33 +16,98 @@ from common.pii import PiiRejected, screen
 log = get_logger(__name__)
 router = APIRouter(prefix="/acs/{ac_number}", tags=["news"])
 
+# The same list as news/label_batch.py ISSUE_ENUM (tests/test_news_label_rules.py
+# keeps them equal). Not imported: label_batch pulls in the Anthropic client,
+# which the API does not need.
 ISSUES = [
     "water", "roads", "electricity", "health", "education", "employment/migration",
     "mining/coal", "Parasnath/Marang Buru", "law-and-order", "welfare-schemes",
-    "corruption", "candidate/organisation", "alliance", "other",
+    "corruption", "electoral-roll/SIR", "candidate/organisation", "alliance", "other",
 ]
+
+# Items as lists return them. `relevance` and `label_method` let the UI say how
+# an item was labelled; `persons` are candidates only (news/label_rules.py).
+_ITEM_COLUMNS = (
+    "news_id, published, source, title, summary_hi, summary_en, issues, parties, persons, "
+    "sentiment, sentiment_by_party, area_ids, ac_ids, scope, relevance, label_method, url"
+)
+
+# "Political" in the summary: a party or candidate named, or an election or
+# office word (the rules score those 0.3 or more).
+_POLITICAL = "(cardinality(parties) > 0 OR cardinality(persons) > 0 OR relevance >= 0.3)"
+
+
+def _places(ac) -> list[dict]:
+    """The places of one constituency a reader would recognise in a headline:
+    the AC itself, its blocks and towns, landmarks and named areas, each with
+    the folded spellings the crawler records in `matched_terms`. Blocks and the
+    town that share a name ("Giridih Block", "Giridih Municipal Corporation")
+    are one place, because a headline cannot tell them apart."""
+    from common.textnorm import fold
+    from news.crawl_rss import _BLOCK_SUFFIX, AC_LANDMARKS
+
+    places: dict[str, dict] = {}
+
+    def add(name_en: str, name_hi: str | None, kind: str) -> None:
+        name_en = _BLOCK_SUFFIX.sub("", name_en or "").strip()
+        name_hi = _BLOCK_SUFFIX.sub("", name_hi or "").strip()
+        key = fold(name_en)
+        if not key or len(key) < 4 or key.startswith(("ward", "unassigned", "ps list")):
+            return
+        place = places.setdefault(key, {"place": name_en, "name_en": name_en,
+                                        "name_hi": name_hi or name_en, "kind": kind,
+                                        "terms": set()})
+        place["terms"].update(t for t in (fold(name_en), fold(name_hi)) if t)
+
+    add(ac.name_en, ac.name_hi, "constituency")
+    for r in query("SELECT name_en, name_hi FROM block WHERE ac_id = %s ORDER BY block_id",
+                   (ac.ac_id,)):
+        add(r["name_en"], r["name_hi"], "block")
+    for en, hi_name in AC_LANDMARKS.get(ac.ac_number, []):
+        add(en, hi_name, "landmark")
+    for r in query("SELECT name_en, name_hi FROM area WHERE ac_id = %s ORDER BY area_id",
+                   (ac.ac_id,)):
+        add(r["name_en"], r["name_hi"], "area")
+    return [{**p, "terms": sorted(p["terms"])} for p in places.values()]
+
+
+def _scope_clause(scope: str, ac_id: int) -> tuple[str, list]:
+    """'ac': items tagged to this constituency. 'state': all the Jharkhand news
+    the crawler kept, tagged or not - the by-election is fought by state parties
+    over state issues, and that coverage names no seat."""
+    if scope == "ac":
+        return "ac_ids @> ARRAY[%s]::INT[]", [ac_id]
+    return "TRUE", []
 
 
 @router.get("/news")
 def news_list(user: CurrentUser, ac: CurrentAC, q: str | None = None,
               date_from: date | None = None, date_to: date | None = None,
-              issue: str | None = None, area_id: int | None = None,
+              days: int | None = Query(None, ge=1, le=3650),
+              issue: str | None = None, party: str | None = None,
+              area_id: int | None = None, place: str | None = None,
+              scope: Literal["ac", "state"] = "ac",
+              sort: Literal["date", "relevance"] = "date",
               include_unlabelled: bool = False,
               limit: int = Query(50, ge=1, le=200)) -> dict:
-    """Recent items for this constituency. With `q`, ranks by vector similarity.
+    """Recent items for this constituency, or with scope=state for all of
+    Jharkhand. With `q`, ranks by vector similarity when embeddings exist and
+    falls back to a title match when they do not.
 
     An article can concern several constituencies, so `news_item.ac_ids` is an
     array and this filters with the GIN-indexed `@>`.
 
-    `include_unlabelled` exists because labelling needs an Anthropic key. Without
-    one the crawl still works but nothing is ever labelled, and the page was
-    permanently empty with no explanation - the filter on labelled_at looked
-    like "no news" rather than "no key". Unlabelled items are keyword-tagged to
-    an AC by the crawl (news.crawl_rss.tag_acs) and the UI marks them as such.
+    `include_unlabelled` covers items the labellers have not reached. Every
+    crawl is followed by news/label_rules.py, so that is only the moments in
+    between; an item labelled by keyword rules says so in `label_method`.
     """
-    clauses, params = ["ac_ids @> ARRAY[%s]::INT[]"], [ac.ac_id]
+    scope_sql, params = _scope_clause(scope, ac.ac_id)
+    clauses = [scope_sql]
     if not include_unlabelled:
         clauses.append("labelled_at IS NOT NULL")
+    if days:
+        clauses.append("published >= %s")
+        params.append(date.today() - timedelta(days=days))
     if date_from:
         clauses.append("published >= %s")
         params.append(date_from)
@@ -51,10 +117,19 @@ def news_list(user: CurrentUser, ac: CurrentAC, q: str | None = None,
     if issue:
         clauses.append("%s = ANY(issues)")
         params.append(issue)
+    if party:
+        clauses.append("%s = ANY(parties)")
+        params.append(party)
     if area_id:
         clauses.append("%s = ANY(area_ids)")
         params.append(area_id)
-    where = " AND ".join(clauses)
+    if place:
+        # A place of this constituency, as /news/summary lists it.
+        match = next((p for p in _places(ac) if p["place"] == place), None)
+        if match is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, f"no place {place!r} in this constituency")
+        clauses.append("matched_terms && %s::TEXT[]")
+        params.append(match["terms"])
 
     vector = None
     if q:
@@ -63,25 +138,239 @@ def news_list(user: CurrentUser, ac: CurrentAC, q: str | None = None,
 
             vector = embed_query(q)
         except Exception as exc:
-            log.warning("embedding unavailable (%s) - ranking by date", exc)
+            log.warning("embedding unavailable (%s) - matching titles instead", exc)
 
+    rows = []
     if vector is not None:
+        where = " AND ".join(clauses)
         rows = query(
-            f"SELECT news_id, published, source, title, summary_hi, summary_en, issues, "
-            f"parties, sentiment, sentiment_by_party, area_ids, url, "
-            f"1 - (embedding <=> %s::vector) AS similarity "
+            f"SELECT {_ITEM_COLUMNS}, 1 - (embedding <=> %s::vector) AS similarity "
             f"FROM news_item WHERE {where} AND embedding IS NOT NULL "
             f"ORDER BY embedding <=> %s::vector LIMIT %s",
             [str(vector)] + params + [str(vector), limit],
         )
-    else:
+    # news.embed runs nightly, so fresh items have no embedding yet; with none
+    # the vector search finds nothing, and a title match is the honest fallback.
+    if not rows:
+        if q:
+            # Without embeddings the search box used to be ignored altogether.
+            clauses.append("title ILIKE %s")
+            params.append(f"%{q}%")
+        where = " AND ".join(clauses)
+        order = ("relevance DESC NULLS LAST, published DESC NULLS LAST, news_id DESC"
+                 if sort == "relevance" else "published DESC NULLS LAST, news_id DESC")
         rows = query(
-            f"SELECT news_id, published, source, title, summary_hi, summary_en, issues, "
-            f"parties, sentiment, sentiment_by_party, area_ids, url, NULL AS similarity "
-            f"FROM news_item WHERE {where} ORDER BY published DESC, news_id DESC LIMIT %s",
+            f"SELECT {_ITEM_COLUMNS}, NULL AS similarity "
+            f"FROM news_item WHERE {where} ORDER BY {order} LIMIT %s",
             params + [limit],
         )
-    return {"rows": rows, "count": len(rows), "issues": ISSUES}
+    return {"rows": rows, "count": len(rows), "issues": ISSUES, "scope": scope}
+
+
+@router.get("/news/summary")
+def news_summary(user: CurrentUser, ac: CurrentAC,
+                 days: int = Query(30, ge=1, le=365),
+                 scope: Literal["ac", "state"] = "ac") -> dict:
+    """What the press has said in the last `days`: which parties it talks
+    about, which issues, and the most relevant items.
+
+    Party figures are **mentions in coverage** - items naming a party - not
+    support, and the UI labels them so. Tone exists only for LLM-labelled
+    items; the keyword rules never set it.
+    """
+    since = date.today() - timedelta(days=days)
+    scope_sql, scope_params = _scope_clause(scope, ac.ac_id)
+    base = f"published >= %s AND labelled_at IS NOT NULL AND {scope_sql}"
+    params = [since] + scope_params
+
+    totals = query_one(
+        f"SELECT COUNT(*) AS items, "
+        f"  COUNT(*) FILTER (WHERE {_POLITICAL}) AS political, "
+        f"  COUNT(*) FILTER (WHERE cardinality(parties) > 0) AS with_party, "
+        f"  COUNT(*) FILTER (WHERE label_method = 'rules') AS rules_labelled, "
+        f"  COUNT(*) FILTER (WHERE label_method = 'llm') AS llm_labelled, "
+        f"  COUNT(*) FILTER (WHERE sentiment IS NOT NULL) AS with_tone "
+        f"FROM news_item WHERE {base}", params)
+    unlabelled = query_one(
+        f"SELECT COUNT(*) AS n FROM news_item WHERE published >= %s "
+        f"AND labelled_at IS NULL AND {scope_sql}", params)
+    crawled = query_one("SELECT (SELECT MAX(last_ok_at) FROM news_source) AS last_ok, "
+                        "(SELECT MAX(fetched_at) FROM news_item) AS last_item")
+
+    parties = query(
+        f"SELECT party, COUNT(*) AS items FROM news_item, UNNEST(parties) AS party "
+        f"WHERE {base} GROUP BY party ORDER BY items DESC, party", params)
+    mentions = sum(r["items"] for r in parties) or 1
+    for r in parties:
+        r["share_pct"] = round(100.0 * r["items"] / mentions, 1)
+
+    party_weeks = query(
+        f"SELECT date_trunc('week', published)::date AS week, party, COUNT(*) AS items "
+        f"FROM news_item, UNNEST(parties) AS party "
+        f"WHERE {base} GROUP BY week, party ORDER BY week, party", params)
+
+    issues = query(
+        f"SELECT issue, COUNT(*) AS items FROM news_item, UNNEST(issues) AS issue "
+        f"WHERE {base} AND issue <> 'other' GROUP BY issue ORDER BY items DESC, issue", params)
+    examples = query(
+        f"SELECT issue, news_id, title, url, source, published FROM ("
+        f"  SELECT issue, news_id, title, url, source, published, ROW_NUMBER() OVER ("
+        f"    PARTITION BY issue ORDER BY relevance DESC NULLS LAST, published DESC, news_id DESC"
+        f"  ) AS rank FROM news_item, UNNEST(issues) AS issue "
+        f"  WHERE {base} AND issue <> 'other') ranked WHERE rank <= 2 "
+        f"ORDER BY issue, rank", params)
+    by_issue: dict[str, list] = {}
+    for e in examples:
+        by_issue.setdefault(e.pop("issue"), []).append(e)
+    for r in issues:
+        r["examples"] = by_issue.get(r["issue"], [])
+    other = query_one(
+        f"SELECT COUNT(*) AS n FROM news_item WHERE {base} AND issues = ARRAY['other']", params)
+
+    # Where the news is from. In this constituency: its places, by the terms
+    # the crawler matched. Across Jharkhand: our constituencies, plus the
+    # items that name none of them.
+    if scope == "ac":
+        places = _places(ac)
+        counts = {p["place"]: 0 for p in places}
+        for row in query(f"SELECT matched_terms FROM news_item WHERE {base}", params):
+            hit = set(row["matched_terms"] or [])
+            for p in places:
+                if hit.intersection(p["terms"]):
+                    counts[p["place"]] += 1
+        where = [{"place": p["place"], "name_en": p["name_en"], "name_hi": p["name_hi"],
+                  "kind": p["kind"], "items": counts[p["place"]]}
+                 for p in places if counts[p["place"]]]
+        where.sort(key=lambda r: -r["items"])
+    else:
+        where = query(
+            f"SELECT a.ac_number, a.name_en, a.name_hi, COUNT(*) AS items "
+            f"FROM news_item n JOIN ac a ON a.ac_id = ANY(n.ac_ids) "
+            f"WHERE {base} GROUP BY a.ac_number, a.name_en, a.name_hi "
+            f"ORDER BY items DESC, a.ac_number", params)
+        unseated = query_one(
+            f"SELECT COUNT(*) AS n FROM news_item WHERE {base} AND cardinality(ac_ids) = 0",
+            params)
+        where.append({"ac_number": None, "name_en": "Rest of Jharkhand",
+                      "name_hi": "शेष झारखंड", "items": unseated["n"]})
+
+    top = query(
+        f"SELECT {_ITEM_COLUMNS} FROM news_item WHERE {base} "
+        f"ORDER BY relevance DESC NULLS LAST, published DESC NULLS LAST, news_id DESC LIMIT 8",
+        params)
+
+    return {
+        "since": since, "days": days, "scope": scope,
+        "totals": {**totals, "unlabelled": unlabelled["n"]},
+        "last_crawled": crawled["last_ok"] or crawled["last_item"],
+        "parties": parties,
+        "party_weeks": party_weeks,
+        "issues": issues,
+        "other_items": other["n"],
+        "places": where,
+        "top": top,
+    }
+
+
+# Levels an area's news falls back through, narrowest first.
+AREA_NEWS_LEVELS = ("area", "block", "ac", "state")
+
+
+@router.get("/areas/{area_id}/news")
+def area_news(area_id: int, user: CurrentUser, ac: CurrentAC,
+              election_label: str | None = None,
+              days_before: int = Query(45, ge=1, le=365),
+              days_after: int = Query(3, ge=0, le=60),
+              limit: int = Query(20, ge=1, le=100)) -> dict:
+    """News about one panchayat or ward around an election, for the map.
+
+    The window is `days_before` the contest's poll date to `days_after` it, or
+    the last 30 days when no election is given - or when the contest has no
+    verified poll date, which the response says rather than guess one.
+
+    Most areas have no news of their own, so this falls back area -> block ->
+    constituency -> Jharkhand and names the level it used. Every level's count
+    is returned, so the page can say "nothing for this panchayat; showing the
+    block". News is context for a result, never its cause, and the area's
+    result is returned alongside under that wording.
+    """
+    from common.textnorm import fold
+    from news.crawl_rss import _BLOCK_SUFFIX
+
+    area = query_one(
+        "SELECT a.area_id, a.name_en, a.name_hi, a.kind, a.block_id, b.name_en AS block_en, "
+        "b.name_hi AS block_hi FROM area a JOIN block b ON b.block_id = a.block_id "
+        "WHERE a.area_id = %s AND a.ac_id = %s", (area_id, ac.ac_id))
+    if area is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "no such area in this constituency")
+    scoped = scoped_block_id(user)
+    if scoped is not None and area["block_id"] != scoped:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "area outside your block")
+
+    window = {"basis": "recent", "poll_date": None, "election_label": election_label}
+    contest = None
+    if election_label:
+        contest = query_one(
+            "SELECT e.election_id, e.poll_date, e.phase FROM election e "
+            "JOIN election_event ev ON ev.event_id = e.event_id "
+            "WHERE e.ac_id = %s AND ev.label = %s", (ac.ac_id, election_label))
+        if contest is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, f"no election {election_label!r}")
+    if contest and contest["poll_date"]:
+        poll = contest["poll_date"]
+        window.update(basis="poll_date", poll_date=poll,
+                      date_from=poll - timedelta(days=days_before),
+                      date_to=poll + timedelta(days=days_after))
+    else:
+        window.update(basis="no_poll_date" if election_label else "recent",
+                      date_from=date.today() - timedelta(days=30), date_to=date.today())
+
+    block_areas = [r["area_id"] for r in query(
+        "SELECT area_id FROM area WHERE block_id = %s", (area["block_id"],))]
+    block_terms = sorted({fold(_BLOCK_SUFFIX.sub("", n or "").strip())
+                          for n in (area["block_en"], area["block_hi"])} - {""})
+    level_sql = {
+        "area": ("area_ids @> ARRAY[%s]::INT[]", [area_id]),
+        "block": ("(area_ids && %s::INT[] OR matched_terms && %s::TEXT[])",
+                  [block_areas, block_terms]),
+        "ac": ("ac_ids @> ARRAY[%s]::INT[]", [ac.ac_id]),
+        "state": ("TRUE", []),
+    }
+    base = "labelled_at IS NOT NULL AND published BETWEEN %s AND %s"
+    base_params = [window["date_from"], window["date_to"]]
+
+    counts, chosen, rows = {}, None, []
+    for level in AREA_NEWS_LEVELS:
+        clause, params = level_sql[level]
+        counts[level] = query_one(
+            f"SELECT COUNT(*) AS n FROM news_item WHERE {base} AND {clause}",
+            base_params + params)["n"]
+        if chosen is None and counts[level]:
+            chosen = level
+            rows = query(
+                f"SELECT {_ITEM_COLUMNS} FROM news_item WHERE {base} AND {clause} "
+                f"ORDER BY relevance DESC NULLS LAST, published DESC NULLS LAST, news_id DESC "
+                f"LIMIT %s", base_params + params + [limit])
+
+    result = None
+    if contest:
+        result = query_one(
+            "SELECT booths, valid_votes, votes_polled, jmm_pct, bjp_pct, turnout_pct "
+            "FROM mv_area_rollup WHERE ac_id = %s AND election_id = %s AND area_id = %s",
+            (ac.ac_id, contest["election_id"], area_id))
+
+    return {
+        "area": {k: area[k] for k in ("area_id", "name_en", "name_hi", "kind", "block_id",
+                                      "block_en", "block_hi")},
+        "window": window,
+        "level": chosen,
+        "counts": counts,
+        "rows": rows,
+        "result": result,
+        "result_note": None if result else
+        "No booth results are attached to this area yet: the polling-station list, which "
+        "places each booth in its panchayat or ward, is not loaded.",
+    }
 
 
 @router.get("/news/issues")

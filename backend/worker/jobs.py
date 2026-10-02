@@ -13,9 +13,14 @@ log = get_logger(__name__)
 
 
 def _news_crawl() -> dict:
+    """Crawl, then keyword-label what arrived, so new items reach /news without
+    waiting for the nightly LLM batch (which also needs a key)."""
     from news.crawl_rss import crawl
+    from news.label_rules import run as label_rules
 
-    return crawl()
+    stats = crawl()
+    stats["rules_labelled"] = label_rules()["labelled"]
+    return stats
 
 
 def _news_label_batch() -> dict:

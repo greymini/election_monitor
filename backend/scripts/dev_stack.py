@@ -90,9 +90,9 @@ DEV_USERS = [
 # mock dataset instead - generated PDFs through the PDF loaders, a mock roll,
 # community estimates and synthetic map points - which exercises the parts of
 # the pipeline the real data cannot yet (PS lists, rolls, geocoding).
-STEPS_REAL = ["migrate", "seed", "form20_real", "refresh", "users"]
+STEPS_REAL = ["migrate", "seed", "form20_real", "news", "refresh", "users"]
 STEPS_SYNTHETIC = ["migrate", "seed", "generate", "ps_list", "form20", "crosswalk", "roll",
-                   "caste", "geo", "refresh", "users"]
+                   "caste", "geo", "news", "refresh", "users"]
 STEPS = STEPS_SYNTHETIC + ["form20_real"]          # every step name, for --from-step
 FORM20_FILES = [("VS-2024", "giridih_vs2024_form20.xlsx", True),
                 ("VS-2019", "giridih_vs2019_form20.xlsx", False)]
@@ -376,6 +376,15 @@ def step_geo(py: str, args) -> None:
         "scripts.dev_geo")
 
 
+def step_news(py: str) -> None:
+    """Real news, crawled live from the configured feeds - the one dataset here
+    that is not synthetic. A source that fails is recorded on news_source and
+    skipped, so being offline costs the news and nothing else."""
+    run([py, "-m", "news.crawl_rss", "--limit", "1500"], "news.crawl_rss")
+    # Keyword labels, so /news has something to list without an Anthropic key.
+    run([py, "-m", "news.label_rules"], "news.label_rules")
+
+
 def step_form20_real(py: str, args) -> None:
     """The real Form 20: the anchor election first (it creates the booths), then
     the older one onto the same booths if its station numbering is stable."""
@@ -464,6 +473,7 @@ STEP_FUNCS = {
     "roll": lambda py, args: step_roll(py),
     "caste": lambda py, args: step_caste(py),
     "geo": step_geo,
+    "news": lambda py, args: step_news(py),
     "form20_real": step_form20_real,
     "refresh": lambda py, args: step_refresh(py),
     "users": lambda py, args: step_users(py),

@@ -332,10 +332,13 @@ def test_every_ac_has_at_least_one_block(acs):
 def test_new_ac_blocks_are_marked_unverified():
     """Block lists for the five new ACs come from the spec, not from a PS list.
     The spec says to seed them with source='spec-unverified' until the real list
-    is available."""
+    is available. The one exception is a block split between constituencies by
+    LGD village data (scripts/build_panchayats.py), which says so."""
     for r in rows("ac_blocks.csv"):
         if r["ac_number"] != "32":
-            assert r["source"] == "spec-unverified", r
+            assert r["source"] in ("spec-unverified", "lgd-village-ac"), r
+            if r["source"] == "lgd-village-ac":
+                assert r["name_en"].endswith("(part)"), r
 
 
 def test_generated_block_ids_stay_inside_smallint():
@@ -348,10 +351,55 @@ def test_generated_block_ids_stay_inside_smallint():
         assert n < 100, f"AC {ac_number} has {n} blocks; the *100 scheme allows 99"
 
 
-def test_panchayat_seed_is_deliberately_empty():
-    """Panchayat names come from the published PS list. A seeded guess would be
-    invented geography, which db/seed/README.md explains at length."""
-    assert rows("areas_panchayats.csv") == []
+def test_panchayats_come_from_lgd_with_a_code_and_their_evidence():
+    """Panchayat names are the Local Government Directory's, never typed in: each
+    row carries its LGD code, its source and why it sits in that constituency
+    (db/seed/README.md, DECISIONS D-012)."""
+    panchayats = rows("areas_panchayats.csv")
+    assert len(panchayats) > 100
+    blocks = {(r["ac_number"], r["name_en"]) for r in rows("ac_blocks.csv")}
+    for r in panchayats:
+        assert r["kind"] == "panchayat", r
+        assert r["code"].isdigit() and r["source"].startswith("LGD"), r
+        assert r["membership"], r
+        assert (r["ac_number"], r["block_name_en"]) in blocks, r
+    codes = [r["code"] for r in panchayats]
+    assert len(codes) == len(set(codes)), "a panchayat is seeded twice"
+    names = [(r["block_name_en"], r["name_en"]) for r in panchayats]
+    assert len(names) == len(set(names)), "two panchayats share a name in one block"
+
+
+def test_giridih_has_both_its_blocks_panchayats():
+    by_block: dict[str, int] = {}
+    for r in rows("areas_panchayats.csv"):
+        if r["ac_number"] == "32":
+            by_block[r["block_name_en"]] = by_block.get(r["block_name_en"], 0) + 1
+    # LGD: 30 Giridih-block panchayats, 13 of whose villages are in Gandey (31).
+    assert by_block == {"Giridih Block": 17, "Pirtand Block": 17}
+
+
+def test_village_aliases_point_at_seeded_panchayats():
+    seeded = {(r["ac_number"], r["block_name_en"], r["name_en"])
+              for r in rows("areas_panchayats.csv")}
+    aliases = rows("area_aliases.csv")
+    assert aliases
+    for r in aliases:
+        assert (r["ac_number"], r["block_name_en"], r["area_name_en"]) in seeded, r
+    keys = [r["alias"].casefold() for r in aliases]
+    assert len(keys) == len(set(keys)), "an alias names two panchayats"
+
+
+def test_area_polygons_match_seeded_areas():
+    import json
+
+    seeded = {(r["ac_number"], r["block_name_en"], r["kind"], r["name_en"])
+              for r in rows("areas_panchayats.csv") + rows("areas_wards.csv")}
+    data = json.loads((SEED / "geo" / "areas.json").read_text(encoding="utf-8"))
+    for f in data["features"]:
+        p = f["properties"]
+        assert (str(p["ac_number"]), p["block_name_en"], p["kind"], p["name_en"]) in seeded, p
+        assert p["source"] in data["sources"], p
+        assert f["geometry"]["type"] in ("Polygon", "MultiPolygon"), p
 
 
 def test_exactly_one_baseline_event():
@@ -370,3 +418,29 @@ def test_event_labels_have_no_ac_specific_suffix():
     for r in rows("election_event.csv"):
         assert "(" not in r["label"], r
         assert r["label"] == f"{r['type']}-{r['year']}"
+
+
+def test_current_ps_list_carries_no_personal_data():
+    """The BLO list it comes from names each booth level officer and their
+    mobile number. Neither belongs in the repository (scripts/build_ps_list_current.py)."""
+    import re
+
+    path = SEED / "ps_list" / "giridih_current_parts.csv"
+    text = path.read_text(encoding="utf-8")
+    assert not re.search(r"(?<!\d)[6-9]\d{9}(?!\d)", text), "a mobile number is in the seed"
+    columns = text.splitlines()[0].lower().split(",")
+    for column in columns:
+        assert not column.startswith(("blo_", "mobile", "phone", "officer", "बीएलओ", "मोबाइल")), column
+
+
+def test_current_ps_list_matches_only_seeded_panchayats():
+    parts = rows("ps_list/giridih_current_parts.csv")
+    numbers = [int(r["part_number"]) for r in parts]
+    assert numbers == sorted(set(numbers)), "a part is listed twice"
+    codes = {r["code"] for r in rows("areas_panchayats.csv")}
+    matched = [r for r in parts if r["status"] == "matched"]
+    assert matched
+    for r in matched:
+        assert r["panchayat_code"] in codes, r
+    for r in parts:
+        assert r["status"] in ("matched", "unmatched"), r

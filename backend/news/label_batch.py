@@ -26,7 +26,7 @@ log = get_logger(__name__)
 ISSUE_ENUM = [
     "water", "roads", "electricity", "health", "education", "employment/migration",
     "mining/coal", "Parasnath/Marang Buru", "law-and-order", "welfare-schemes",
-    "corruption", "candidate/organisation", "alliance", "other",
+    "corruption", "electoral-roll/SIR", "candidate/organisation", "alliance", "other",
 ]
 
 LABEL_SYSTEM = """You label local news from Giridih district, Jharkhand, for an
@@ -64,7 +64,9 @@ MAX_BODY_CHARS = 6000
 def pending(limit: int) -> list[dict]:
     return query(
         "SELECT news_id, published, source, title, body FROM news_item "
-        "WHERE labelled_at IS NULL AND batch_id IS NULL "
+        # Rules labels (news/label_rules.py) are a stand-in until a key exists;
+        # the LLM re-labels them.
+        "WHERE (labelled_at IS NULL OR label_method = 'rules') AND batch_id IS NULL "
         "ORDER BY published DESC NULLS LAST, news_id DESC LIMIT %s",
         (limit,),
     )
