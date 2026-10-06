@@ -198,7 +198,7 @@ export async function downloadCsv(path: string, filename: string): Promise<void>
   }
 }
 
-export async function login(phone: string, password: string): Promise<Session> {
+export async function login(username: string, password: string): Promise<Session> {
   if (USE_FIXTURES) {
     const session: Session = {
       access_token: 'fixture-token', role: 'admin',
@@ -207,7 +207,7 @@ export async function login(phone: string, password: string): Promise<Session> {
     setSession(session)
     return session
   }
-  const session = await api.post<Session>('/auth/login', { phone, password })
+  const session = await api.post<Session>('/auth/login', { username, password })
   setSession(session)
   return session
 }

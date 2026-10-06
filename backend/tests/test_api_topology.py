@@ -473,7 +473,7 @@ def test_every_data_route_requires_authentication():
     the new URL is more useful than a 401. `test_legacy_routes_only_redirect`
     checks that redirecting is all they do.
     """
-    public = {"/health", "/config", "/auth/login", "/auth/otp", "/auth/verify",
+    public = {"/health", "/config", "/auth/login",
               "/openapi.json", "/docs", "/docs/oauth2-redirect", "/redoc"}
     from api.routers.legacy import router as legacy_router
 
@@ -516,7 +516,7 @@ def test_every_data_route_is_scoped_to_a_constituency():
     constituency or silently mixes all of them."""
     unscoped_ok = {
         "/health", "/config", "/acs", "/compare", "/acs/{}",
-        "/auth/login", "/auth/otp", "/auth/verify", "/auth/me",
+        "/auth/login", "/auth/me",
         "/openapi.json", "/docs", "/docs/oauth2-redirect", "/redoc",
     }
     from api.routers.legacy import router as legacy_router

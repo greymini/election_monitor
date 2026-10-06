@@ -350,6 +350,10 @@ def users(loaded_dataset, ids, db_url):
 
     os.environ["DATABASE_URL"] = db_url
     os.environ.setdefault("JWT_SECRET", "contract-test-secret-at-least-32-bytes-long")
+    os.environ.setdefault("AUTH_MODE", "password")
+    os.environ.setdefault("APP_USERNAME", "contract-admin")
+    os.environ.setdefault("APP_PASSWORD", "contract-admin-password-12")
+    os.environ.setdefault("ALLOW_MULTI_USER", "1")
     from common.config import get_settings
     from common.db import close_pools
 
@@ -362,18 +366,19 @@ def users(loaded_dataset, ids, db_url):
     made = {}
     for index, role in enumerate(API_ROLES):
         phone = f"95000000{index:02d}"
+        username = f"contract-{role}"
         password = f"contract-{role}-pw"
         block = ids["blocks"][1] if role == "block" and len(ids["blocks"]) > 1 else (
             ids["blocks"][0] if role == "block" else None)
         row = query_one(
-            "INSERT INTO app_user (phone, name, role, block_id, password_hash, "
-            "daily_token_budget) VALUES (%s, %s, %s, %s, %s, 150000) "
-            "ON CONFLICT (phone) DO UPDATE SET role = EXCLUDED.role, "
+            "INSERT INTO app_user (phone, username, name, role, block_id, password_hash, "
+            "daily_token_budget) VALUES (%s, %s, %s, %s, %s, %s, 150000) "
+            "ON CONFLICT (phone) DO UPDATE SET role = EXCLUDED.role, username = EXCLUDED.username, "
             "block_id = EXCLUDED.block_id, password_hash = EXCLUDED.password_hash, "
             "is_active = true RETURNING user_id",
-            (phone, f"Contract {role}", role, block, hash_password(password)),
+            (phone, username, f"Contract {role}", role, block, hash_password(password)),
         )
-        made[role] = {"phone": phone, "password": password,
+        made[role] = {"username": username, "password": password,
                       "user_id": row["user_id"], "block_id": block}
     return made
 
@@ -392,7 +397,7 @@ def tokens(client, users):
     out = {}
     for role, spec in users.items():
         response = client.post("/auth/login",
-                               json={"phone": spec["phone"], "password": spec["password"]})
+                               json={"username": spec["username"], "password": spec["password"]})
         assert response.status_code == 200, (role, response.status_code, response.text)
         out[role] = response.json()["access_token"]
     return out

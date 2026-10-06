@@ -12,7 +12,7 @@ from fastapi import FastAPI, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from api.routers import acs, admin, auth, data, legacy, news, scenario
+from api.routers import acs, admin, auth, data, directory, legacy, news, scenario
 from common.config import get_settings
 from common.db import close_pools, query, query_one
 from common.logging_setup import get_logger, setup_logging
@@ -38,6 +38,13 @@ async def lifespan(app: FastAPI):
     # means uvicorn exits; the module still imports, so the app stays
     # introspectable.
     check_jwt_secret(settings.jwt_secret)
+    if settings.auth_mode == "password":
+        if not (settings.app_username or "").strip() or not (settings.app_password or "").strip():
+            raise RuntimeError("APP_USERNAME and APP_PASSWORD must be set when AUTH_MODE=password")
+        from scripts.ensure_single_user import main as ensure_single_user
+
+        if ensure_single_user() != 0:
+            raise RuntimeError("APP_USERNAME/APP_PASSWORD bootstrap failed")
 
     log.info("starting API (auth_mode=%s, chat=%s, analysis model=%s)",
              settings.auth_mode, settings.chat_enabled, settings.model_analysis)
@@ -152,6 +159,7 @@ def config() -> dict:
 app.include_router(auth.router)
 app.include_router(acs.router)
 app.include_router(data.router)
+app.include_router(directory.router)
 app.include_router(news.router)
 app.include_router(scenario.router)
 app.include_router(admin.router)

@@ -637,6 +637,120 @@ def _split_front_matter(text: str) -> tuple[dict[str, str], str]:
     return meta, parts[2].strip()
 
 
+def load_ps_current_parts() -> int:
+    """BLO current-part list (AC 32 parts 276-385) into ps_current_part."""
+    path = SEED_DIR / "ps_list" / "giridih_current_parts.csv"
+    if not path.exists():
+        log.warning("seed file missing: ps_list/giridih_current_parts.csv")
+        return 0
+    acs = _ac_ids()
+    loaded = 0
+    with cursor() as cur:
+        for r in _rows("ps_list/giridih_current_parts.csv"):
+            ac_number = int(r["ac_number"])
+            ac_id = acs.get(ac_number)
+            if ac_id is None:
+                continue
+            block_id = None
+            block_name = (r.get("block_name_en") or "").strip()
+            if block_name:
+                cur.execute(
+                    "SELECT block_id FROM block WHERE ac_id = %s AND name_en = %s",
+                    (ac_id, block_name),
+                )
+                block = cur.fetchone()
+                block_id = block["block_id"] if block else None
+            area_id = None
+            panchayat_code = (r.get("panchayat_code") or "").strip()
+            if panchayat_code:
+                cur.execute(
+                    "SELECT area_id FROM area WHERE ac_id = %s AND code = %s AND kind = 'panchayat'",
+                    (ac_id, panchayat_code),
+                )
+                row = cur.fetchone()
+                area_id = row["area_id"] if row else None
+            part_number = int(r["part_number"])
+            score = float(r["score"]) if (r.get("score") or "").strip() else None
+            cur.execute(
+                "INSERT INTO ps_current_part (ac_id, part_number, building_hi, village_hi, "
+                "block_id, village_lgd, village_code, area_id, match_score, match_status, "
+                "note, source) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
+                "ON CONFLICT (ac_id, part_number) DO UPDATE SET "
+                "building_hi = EXCLUDED.building_hi, village_hi = EXCLUDED.village_hi, "
+                "block_id = EXCLUDED.block_id, village_lgd = EXCLUDED.village_lgd, "
+                "village_code = EXCLUDED.village_code, area_id = EXCLUDED.area_id, "
+                "match_score = EXCLUDED.match_score, match_status = EXCLUDED.match_status, "
+                "note = EXCLUDED.note, source = EXCLUDED.source",
+                (
+                    ac_id,
+                    part_number,
+                    r.get("building_hi") or None,
+                    r.get("village_hi") or None,
+                    block_id,
+                    r.get("village_lgd") or None,
+                    r.get("village_code") or None,
+                    area_id,
+                    score,
+                    r.get("status") or None,
+                    r.get("note") or None,
+                    r.get("source") or "BLO list",
+                ),
+            )
+            loaded += 1
+    return loaded
+
+
+def load_gp_officials() -> int:
+    """GP portal JSON dumps into gp_official (roles the elected-office loader skips)."""
+    import json
+
+    repo_root = SEED_DIR.parents[2]  # giridih-monitor/ (not backend/)
+    index_path = repo_root / "data_giridih" / "raw_gp" / "gp_index.json"
+    if not index_path.exists():
+        log.warning("data_giridih/raw_gp/gp_index.json missing")
+        return 0
+    index = json.loads(index_path.read_text(encoding="utf-8"))
+    loaded = 0
+    portal_source = "grampanchayat.jharkhand.gov.in"
+    with cursor() as cur:
+        for entries in index.values():
+            for entry in entries:
+                rel = (entry.get("file") or "").replace("../data_giridih/", "").lstrip("/")
+                gp_path = (repo_root / "data_giridih" / rel).resolve()
+                if not gp_path.is_file():
+                    log.warning("gp file missing: %s", gp_path)
+                    continue
+                data = json.loads(gp_path.read_text(encoding="utf-8"))
+                gp_id = str(data.get("gp_id") or entry.get("gp_id") or "")
+                cur.execute(
+                    "SELECT area_id FROM area WHERE kind = 'panchayat' AND code = %s",
+                    (gp_id,),
+                )
+                area = cur.fetchone()
+                if area is None:
+                    log.warning("no area for gp_id %s (%s)", gp_id, gp_path.name)
+                    continue
+                area_id = area["area_id"]
+                cur.execute(
+                    "DELETE FROM gp_official WHERE area_id = %s AND source = %s",
+                    (area_id, portal_source),
+                )
+                for member in data.get("members") or []:
+                    name = (member.get("name") or "").strip()
+                    if not name:
+                        continue
+                    portal_role = member.get("portal_role") or member.get("office") or "official"
+                    office = member.get("office") or portal_role
+                    cur.execute(
+                        "INSERT INTO gp_official (area_id, gp_lgd_code, portal_role, office, "
+                        "name, source) VALUES (%s, %s, %s, %s, %s, %s)",
+                        (area_id, gp_id, portal_role, office, name, portal_source),
+                    )
+                    loaded += 1
+    return loaded
+
+
 def load_boundaries() -> int:
     """AC and block outlines from geo/boundaries.json (scripts/build_boundaries.py).
 
@@ -700,13 +814,16 @@ LOADERS = {
     "area_aliases": load_area_aliases,
     "poll_dates": load_poll_dates,
     "area_boundaries": load_area_boundaries,
+    "ps_current_parts": load_ps_current_parts,
+    "gp_officials": load_gp_officials,
 }
 
 # Order matters: ACs before anything scoped to one, parties before aliases and
 # alliances, events before alliances and contests, elections before ac_totals.
 ORDER = ["acs", "blocks", "areas", "area_aliases", "parties", "party_aliases", "communities",
          "elections", "poll_dates", "party_alliances", "ac_contests", "surnames", "ac_totals",
-         "news_sources", "cards", "boundaries", "area_boundaries"]
+         "news_sources", "cards", "boundaries", "area_boundaries", "ps_current_parts",
+         "gp_officials"]
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -6,6 +6,7 @@ import {
 } from 'recharts'
 
 import DataTable, { type Column } from '../components/DataTable'
+import { ModelledChip } from '../components/Provenance'
 import { Empty, ErrorState, Loading } from '../components/States'
 import { api } from '../lib/api'
 import { CONFIDENCE_FLOOR, num, pct } from '../lib/format'
@@ -25,7 +26,11 @@ export default function Caste({ ac }: { ac: AcState }) {
   const [minConf, setMinConf] = useState(CONFIDENCE_FLOOR)
   const ink = chartInk()
 
-  const query = useQuery<{ rows: Row[]; disclaimer: string }>({
+  const query = useQuery<{
+    rows: Row[]
+    disclaimer: string
+    provenance?: { method_note?: string | null } | null
+  }>({
     queryKey: ['caste', ac.acNumber, minConf],
     queryFn: () => api.get(ac.path(`/caste?min_conf=${minConf}`)),
     enabled: ac.acNumber !== null,
@@ -76,7 +81,10 @@ export default function Caste({ ac }: { ac: AcState }) {
 
   return (
     <div className="space-y-3">
-      <h1 className="text-lg font-semibold">{t('caste.heading')}</h1>
+        <h1 className="text-lg font-semibold">{t('caste.heading')}</h1>
+        {query.data?.provenance?.method_note && (
+          <ModelledChip note={query.data.provenance.method_note} />
+        )}
 
       <div className="card px-4 py-3" style={{ borderColor: 'var(--status-warning)' }}>
         <p className="text-2xs" style={{ color: 'var(--text-secondary)' }}>

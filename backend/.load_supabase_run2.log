@@ -1,0 +1,45 @@
+[load_supabase] $ -m db.seed.load_seed --only gp_officials
+[load_supabase]   2026-10-06 20:43:00 INFO    __main__                 seed gp_officials      373 row(s)
+[load_supabase] $ -m ingest.load_form20_tables /Users/phoenix/Documents/election-monitor/giridih-monitor/backend/db/seed/form20/giridih_vs2024_form20.xlsx --ac 32 --election VS-2024 --create-booths
+[load_supabase]   2026-10-06 20:50:39 INFO    __main__                 votes_polled         207821
+[load_supabase]   2026-10-06 20:50:39 INFO    __main__                 postal               1905
+[load_supabase]   2026-10-06 20:50:39 INFO    __main__                 crosswalk            anchor (new booths)
+[load_supabase]   2026-10-06 20:50:39 INFO    __main__                 numbering_evidence   None
+[load_supabase]   2026-10-06 20:50:39 INFO    __main__                 written              True
+[load_supabase] $ -m ingest.load_form20_tables /Users/phoenix/Documents/election-monitor/giridih-monitor/backend/db/seed/form20/giridih_vs2019_form20.xlsx --ac 32 --election VS-2019
+[load_supabase]   2026-10-06 20:57:08 INFO    __main__                 votes_polled         167893
+[load_supabase]   2026-10-06 20:57:08 INFO    __main__                 postal               271
+[load_supabase]   2026-10-06 20:57:08 INFO    __main__                 crosswalk            same station number
+[load_supabase]   2026-10-06 20:57:08 INFO    __main__                 numbering_evidence   {'same_ps_r': 0.959, 'best_offset_r': 0.286, 'stations_compared': 367, 'stable': True}
+[load_supabase]   2026-10-06 20:57:08 INFO    __main__                 written              True
+[load_supabase] $ -m ingest.fetch_sec --load-csv /Users/phoenix/Documents/election-monitor/giridih-monitor/data_giridih/gazette_results_ac32.csv --election PANCHAYAT-2022 --ac 32
+[load_supabase]   2026-10-06 20:57:09 INFO    __main__                 loading into PANCHAYAT-2022 in AC 32-Giridih (election_id 56)
+[load_supabase]   2026-10-06 20:58:39 INFO    common.jobs              [ingest.fetch_sec.load_csv] {'rows': 664, 'loaded': 664, 'unmatched_area': 225, 'bad_seat_type': 0}
+[load_supabase]   2026-10-06 20:58:39 WARNING __main__                 225 row(s) could not be matched to a panchayat or ward - add the spellings to area_alias
+[load_supabase] $ -m ingest.load_office_holders --csv /Users/phoenix/Documents/election-monitor/giridih-monitor/data_giridih/panchayat_members_load.csv --ac 32
+[load_supabase]     Purnanagar
+[load_supabase]     Udanabad
+[load_supabase]   2026-10-06 20:59:34 INFO    common.jobs              [ingest.load_office_holders] {'rows': 373, 'loaded': 373, 'updated': 0, 'skipped_bad_office': 0, 'skipped_no_name': 0, 'unmatched_area': 78}
+[load_supabase]   2026-10-06 20:59:34 WARNING __main__                 78 row(s) had unmatched areas — add spellings to area_aliases.csv
+[load_supabase]   2026-10-06 20:59:34 INFO    __main__                 done: {'rows': 373, 'loaded': 373, 'updated': 0, 'skipped_bad_office': 0, 'skipped_no_name': 0, 'unmatched_area': 78}
+[load_supabase] $ -m news.crawl_rss --limit 1500
+[load_supabase]   2026-10-06 21:00:48 WARNING __main__                 feed failed https://www.bhaskar.com/rss-v1--category-4402.xml: Server error '500 Internal Server Error' for url 'https://www.bhaskar.com/rss-v1--category-4402.xml'
+[load_supabase]   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500
+[load_supabase]   2026-10-06 21:00:50 WARNING __main__                 feed failed https://www.livehindustan.com/rss/jharkhand: Server error '503 Service Unavailable' for url 'https://www.livehindustan.com/rss/jharkhand'
+[load_supabase]   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/503
+[load_supabase]   2026-10-06 21:03:10 INFO    common.jobs              [news.crawl] 26 source(s), 1529 item(s) seen, 880 Jharkhand-political, 751 new (450 tagged to a constituency), 129 duplicate, 2 source(s) failed
+[load_supabase] $ -m news.label_rules
+[load_supabase]   2026-10-06 21:05:51 INFO    common.jobs              [news.label_rules] {"labelled": 751, "with_party": 268, "with_issue": 359, "with_area": 22, "with_person": 32, "ac_scope": 467, "issues": {"other": 392, "electoral-roll/SIR": 80, "roads": 63, "candidate/organisation": 54, "law-and-order": 47, "Parasnath/Marang Buru": 45, "education": 32, "health": 18, "employment/migration": 16, "corruption": 15, "mining/coal": 11, "alliance": 8, "water": 7, "welfare-schemes": 6, "electricity": 4}}
+Traceback (most recent call last):
+  File "/Users/phoenix/Documents/election-monitor/giridih-monitor/backend/scripts/load_supabase.py", line 136, in <module>
+    raise SystemExit(main())
+                     ^^^^^^
+  File "/Users/phoenix/Documents/election-monitor/giridih-monitor/backend/scripts/load_supabase.py", line 124, in main
+    copy_local_news(py)
+  File "/Users/phoenix/Documents/election-monitor/giridih-monitor/backend/scripts/load_supabase.py", line 65, in copy_local_news
+    sc.execute("SELECT url, title, summary, published, source, feed, scope, relevance, "
+  File "/Users/phoenix/Documents/election-monitor/giridih-monitor/.venv/lib/python3.11/site-packages/psycopg/cursor.py", line 117, in execute
+    raise ex.with_traceback(None)
+psycopg.errors.UndefinedTable: relation "news_item" does not exist
+LINE 1: ...ched_terms, label_method, ac_ids, labelled_at FROM news_item
+                                                              ^

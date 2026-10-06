@@ -230,6 +230,10 @@ def api(real):
     from common.db import query_one
 
     os.environ.setdefault("JWT_SECRET", "contract-test-secret-at-least-32-bytes-long")
+    os.environ.setdefault("AUTH_MODE", "password")
+    os.environ.setdefault("APP_USERNAME", "form20-admin")
+    os.environ.setdefault("APP_PASSWORD", "form20-admin-password-12")
+    os.environ.setdefault("ALLOW_MULTI_USER", "1")
     get_settings.cache_clear()
     block = query_one("SELECT block_id FROM block WHERE name_en = 'PS list not loaded'")
     headers = {}
@@ -237,12 +241,14 @@ def api(real):
     for i, (role, block_id) in enumerate((("strategist", None),
                                           ("block", block["block_id"]))):
         phone = f"96000000{i:02d}"
-        query_one("INSERT INTO app_user (phone, name, role, block_id, password_hash, "
-                  "daily_token_budget) VALUES (%s, %s, %s, %s, %s, 1000) "
-                  "ON CONFLICT (phone) DO UPDATE SET role = EXCLUDED.role "
+        username = f"form20-{role}"
+        query_one("INSERT INTO app_user (phone, username, name, role, block_id, password_hash, "
+                  "daily_token_budget) VALUES (%s, %s, %s, %s, %s, %s, 1000) "
+                  "ON CONFLICT (phone) DO UPDATE SET role = EXCLUDED.role, "
+                  "username = EXCLUDED.username "
                   "RETURNING user_id",
-                  (phone, f"Form 20 {role}", role, block_id, hash_password("pw-" + role)))
-        token = client.post("/auth/login", json={"phone": phone, "password": "pw-" + role})
+                  (phone, username, f"Form 20 {role}", role, block_id, hash_password("pw-" + role)))
+        token = client.post("/auth/login", json={"username": username, "password": "pw-" + role})
         assert token.status_code == 200, token.text
         headers[role] = {"Authorization": f"Bearer {token.json()['access_token']}"}
     return client, headers

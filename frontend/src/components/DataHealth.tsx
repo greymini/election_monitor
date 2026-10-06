@@ -92,7 +92,7 @@ export default function DataHealthStrip({
       label: t('health.rolls'),
       state: state(health.roll_revisions > 0, health.roll_revisions < 2),
       detail: health.latest_roll
-        ? t('health.latestRoll', { date: health.latest_roll })
+        ? `${t('health.latestRoll', { date: health.latest_roll })}${health.roll_revisions > 0 ? ` · ${t('health.modelled')}` : ''}`
         : null,
       command: `python -m ingest.parse_roll <pdf> --revision 2026-07 --date 2026-07-01 --load`,
     },
@@ -103,7 +103,7 @@ export default function DataHealthStrip({
         health.booths_geocoded < health.booths,
       ),
       detail: health.booths > 0
-        ? t('health.geocoded', { done: health.booths_geocoded, total: health.booths })
+        ? `${t('health.geocoded', { done: health.booths_geocoded, total: health.booths })}${health.booths_geocoded > 0 ? ` · ${t('health.modelled')}` : ''}`
         : null,
       command: `python -m ingest.geocode`,
     },
@@ -111,7 +111,7 @@ export default function DataHealthStrip({
       label: t('health.caste'),
       state: state(health.caste_rows > 0),
       detail: health.caste_rows > 0
-        ? t('health.rows', { n: health.caste_rows })
+        ? `${t('health.rows', { n: health.caste_rows })} · ${t('health.modelled')}`
         : null,
       command: `python -m analytics.caste_estimate`,
     },

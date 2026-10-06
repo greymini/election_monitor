@@ -59,6 +59,11 @@ export default function Layout({ me, config, ac, onSignOut, children }: Props) {
       ],
     },
     {
+      id: 'nav-places',
+      key: 'groupPlaces',
+      items: [{ to: '/directory', key: 'directory' }],
+    },
+    {
       id: 'nav-politics',
       key: 'groupPolitics',
       items: [

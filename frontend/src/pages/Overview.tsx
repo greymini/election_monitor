@@ -9,7 +9,7 @@ import type { DataHealth } from '../components/DataHealth'
 import DataStatus from '../components/DataStatus'
 import OverviewInsights from '../components/OverviewInsights'
 import PartyChip from '../components/PartyChip'
-import { FixtureBanner, Missing, SourceLink, SyntheticBanner, Value } from '../components/Provenance'
+import { FixtureBanner, Missing, SourceLink, Value } from '../components/Provenance'
 import StatTile from '../components/StatTile'
 import { Empty, ErrorState, Loading } from '../components/States'
 import type { AcState } from '../lib/ac'
@@ -150,8 +150,6 @@ export default function Overview({ ac, isAdmin = false, seesCaste = false }: {
   return (
     <div className="space-y-4">
       <FixtureBanner note={data.fixture} />
-      {data.synthetic && !isFixtureMode() && <SyntheticBanner />}
-
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h1 className="text-lg font-semibold">
           {hi ? data.constituency.name_hi : data.constituency.name_en}

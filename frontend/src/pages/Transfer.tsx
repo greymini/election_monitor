@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 import DataTable, { type Column } from '../components/DataTable'
 import DivergingLegend from '../components/DivergingLegend'
 import PartyChip from '../components/PartyChip'
+import { ModelledChip } from '../components/Provenance'
 import { Empty, ErrorState, Loading } from '../components/States'
 import { api, downloadCsv } from '../lib/api'
 import { num, pct, signed } from '../lib/format'
@@ -25,7 +26,11 @@ export default function Transfer({ ac }: { ac: AcState }) {
   const hi = i18n.language === 'hi'
   const [party, setParty] = useState('')
 
-  const query = useQuery<{ rows: Row[]; note: string }>({
+  const query = useQuery<{
+    rows: Row[]
+    note: string
+    provenance?: { method_note?: string | null } | null
+  }>({
     queryKey: ['transfer', ac.acNumber],
     queryFn: () => api.get(ac.path('/transfer?year=2024')),
     enabled: ac.acNumber !== null,
@@ -62,6 +67,9 @@ export default function Transfer({ ac }: { ac: AcState }) {
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
         <h1 className="text-lg font-semibold">{t('transfer.heading')}</h1>
+        {query.data?.provenance?.method_note && (
+          <ModelledChip note={query.data.provenance.method_note} />
+        )}
         <select className="field ml-auto" value={party} onChange={(e) => setParty(e.target.value)}>
           <option value="">{t('common.all')}</option>
           {parties.map((p) => <option key={p} value={p}>{p}</option>)}

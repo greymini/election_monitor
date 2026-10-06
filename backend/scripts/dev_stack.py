@@ -408,7 +408,10 @@ def step_refresh(py: str) -> None:
 
 
 def step_users(py: str) -> None:
-    """One user per role, with generated passwords, written to .devstack."""
+    """Bootstrap login users: single APP_USERNAME when set, else one user per role."""
+    if (os.environ.get("APP_USERNAME") or "").strip():
+        run([py, "-m", "scripts.ensure_single_user"], "ensure_single_user")
+        return
     import psycopg
 
     blocks: list[dict] = []

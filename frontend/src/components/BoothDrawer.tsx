@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next'
 
 import { AreaNewsList } from './AreaNews'
 import PartyChip from './PartyChip'
-import { Estimate, FixtureBanner, Missing, SourceLink, Value } from './Provenance'
+import { Estimate, FixtureBanner, Missing, ModelledChip, SourceLink, Value } from './Provenance'
 import { ErrorState, Loading } from './States'
 import type { AcState } from '../lib/ac'
 import { api } from '../lib/api'
@@ -112,6 +112,11 @@ interface BoothCard {
   caste_note?: string
   caveats: string[]
   fixture?: string | null
+  provenance?: {
+    roll?: { method_note?: string | null } | null
+    caste?: { method_note?: string | null } | null
+    geo?: { method_note?: string | null } | null
+  }
 }
 
 type Tab = 'results' | 'voters' | 'community' | 'news' | 'ground' | 'sources'
@@ -224,6 +229,9 @@ export default function BoothDrawer(
         <div className="mb-2 flex items-start justify-between gap-2">
           <div>
             <h2 className="text-base font-semibold">{boothUid}</h2>
+            {card?.provenance?.geo?.method_note && (
+              <ModelledChip note={card.provenance.geo.method_note} compact />
+            )}
             {card && (
               <p className="text-2xs" style={{ color: 'var(--text-secondary)' }}>
                 {card.booth.building}

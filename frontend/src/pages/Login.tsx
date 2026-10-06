@@ -7,7 +7,7 @@ export default function Login(
   { onSignedIn, notice = null }: { onSignedIn: () => void; notice?: string | null },
 ) {
   const { t, i18n } = useTranslation()
-  const [phone, setPhone] = useState('')
+  const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -17,7 +17,7 @@ export default function Login(
     setBusy(true)
     setError(null)
     try {
-      await login(phone.trim(), password)
+      await login(username.trim(), password)
       onSignedIn()
     } catch (err) {
       setError(err instanceof Error ? err.message : t('login.failed'))
@@ -40,18 +40,17 @@ export default function Login(
           </p>
         )}
 
-        <label htmlFor="login-phone"
+        <label htmlFor="login-user"
                className="mt-5 block text-2xs font-medium uppercase tracking-wide"
                style={{ color: 'var(--text-secondary)' }}>
-          {t('login.phone')}
+          {t('login.userId')}
         </label>
         <input
-          id="login-phone"
+          id="login-user"
           className="field mt-1 w-full"
-          value={phone}
-          onChange={(e) => setPhone(e.target.value)}
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
           autoComplete="username"
-          inputMode="tel"
           required
         />
 

@@ -423,6 +423,16 @@ function summaryFor(acNumber: number) {
       ]
       : [],
     synthetic: false,
+    modelled_layers: loaded
+      ? [
+        { filename: 'modelled/geo_ac32.json', kind: 'other', method: 'modelled',
+          method_note: 'Approximate location within the panchayat; exact station site pending PS list',
+          source_label: 'Modelled estimate' },
+        { filename: 'modelled/roll_ac32.json', kind: 'roll_mother', method: 'modelled',
+          method_note: 'Electors apportioned from the published AC total of 3,04,898 in proportion to votes polled',
+          source_label: 'Modelled estimate' },
+      ]
+      : [],
     baseline: loaded
       ? { label: 'VS-2024', jmm: AC_TOTALS.jmm, bjp: AC_TOTALS.bjp, jlkm: AC_TOTALS.jlkm,
         nota: AC_TOTALS.nota, electors: AC_TOTALS.electors, votes: AC_TOTALS.votes_polled }
@@ -871,6 +881,51 @@ function getFixture(clean: string, params: URLSearchParams): unknown | undefined
         note:
           'Candidate profiles are transcribed from affidavit and MyNeta data and are '
           + 'seeded unverified. Assets and cases are as declared by the candidate.',
+        fixture: FIXTURE_BANNER,
+      }
+    case rest === '/directory/panchayats':
+      return {
+        source: 'Local Government Directory, 01 Oct 2026',
+        rows: acNumber !== 32 ? [] : [{
+          area_id: 101, name_en: 'Chatro', name_hi: 'चतरो', lgd_code: '100001',
+          block_en: 'Pirtand', has_boundary: true, village_count: 5,
+          official_count: 3, mukhiya_2022: 'Renu Devi',
+        }],
+        fixture: FIXTURE_BANNER,
+      }
+    case rest.startsWith('/directory/panchayats/') && rest.endsWith('/villages'):
+      return {
+        source: 'Local Government Directory, 01 Oct 2026',
+        rows: [{ alias: 'Chatro', script: 'deva', source: 'lgd' }],
+        fixture: FIXTURE_BANNER,
+      }
+    case rest === '/directory/polling-stations':
+      return {
+        source: 'BLO list, AC 32 parts 276–385',
+        note: 'Part numbers are from the current roll, not the 2024 Form 20 PS numbering.',
+        rows: acNumber !== 32 ? [] : [{
+          part_number: 276, building_hi: 'प्राथमिक विद्यालय', village_hi: 'चतरो',
+          block_en: 'Pirtand', panchayat_en: 'Chatro', match_status: 'matched',
+          match_score: 0.92, note: null,
+        }],
+        fixture: FIXTURE_BANNER,
+      }
+    case rest === '/directory/officials':
+      return {
+        source: 'grampanchayat.jharkhand.gov.in',
+        rows: acNumber !== 32 ? [] : [{
+          official_id: 1, area_id: 101, panchayat_en: 'Chatro',
+          portal_role: 'Up-Mukhiya', office: 'up_mukhiya', name: 'Sample Official',
+        }],
+        fixture: FIXTURE_BANNER,
+      }
+    case rest === '/directory/poll-calendar':
+      return {
+        source: 'poll_dates.csv (seed)',
+        rows: [
+          { label: 'VS-2024', type: 'VS', year: 2024, poll_date: '2024-11-13',
+            phase: '2', is_baseline: true, notes: null },
+        ],
         fixture: FIXTURE_BANNER,
       }
     case rest === '/local-politics':

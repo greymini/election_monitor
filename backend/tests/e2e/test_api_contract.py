@@ -47,8 +47,6 @@ PUBLIC = {
     ("GET", "/health"),      # a load balancer reads this
     ("GET", "/config"),      # the login screen needs it before anyone has a token
     ("POST", "/auth/login"),
-    ("POST", "/auth/otp"),
-    ("POST", "/auth/verify"),
 }
 
 # Path parameters, filled from the loaded dataset by the `ids` fixture.
@@ -64,9 +62,7 @@ PATH_PARAMS = {
 # about status and shape, and a POST that changes data is covered by
 # `test_a_review_item_can_be_resolved_and_the_change_is_visible` below.
 BODIES = {
-    ("POST", "/auth/login"): {"phone": "9000000001", "password": "wrong-on-purpose"},
-    ("POST", "/auth/otp"): {"phone": "9000000001"},
-    ("POST", "/auth/verify"): {"phone": "9000000001", "code": "000000"},
+    ("POST", "/auth/login"): {"username": "wrong-user", "password": "wrong-on-purpose"},
     ("POST", "/acs/{ac_number}/scenario"): {"turnout_multiplier": 1.0, "draws": 10},
     ("POST", "/acs/{ac_number}/ground-reports"): {
         "text": "Contract test report. Booth reachable, no issues raised.",
@@ -120,8 +116,6 @@ EXPECTED_OTHER = {
     # 201 Created, which is the right answer for a POST that creates a row.
     ("POST", "/acs/{ac_number}/ground-reports"): {201},
     ("POST", "/auth/login"): {400, 401, 429},
-    ("POST", "/auth/otp"): {200, 400, 501, 503},
-    ("POST", "/auth/verify"): {400, 401, 429},
 }
 
 

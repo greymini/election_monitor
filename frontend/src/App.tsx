@@ -25,6 +25,7 @@ const Booths = lazy(() => import('./pages/Booths'))
 const CasteScatter = lazy(() => import('./pages/CasteScatter'))
 const Candidates = lazy(() => import('./pages/Candidates'))
 const LocalPolitics = lazy(() => import('./pages/LocalPolitics'))
+const Directory = lazy(() => import('./pages/Directory'))
 
 export default function App() {
   const [authed, setAuthed] = useState<boolean>(() => Boolean(getToken()))
@@ -134,6 +135,7 @@ export default function App() {
         <Route path="/voters" element={<Voters ac={ac} />} />
         {me.data?.sees_caste && <Route path="/caste" element={<Caste ac={ac} />} />}
         {analyst && <Route path="/transfer" element={<Transfer ac={ac} />} />}
+        <Route path="/directory" element={<Directory ac={ac} />} />
         <Route path="/local" element={<LocalPolls ac={ac} />} />
         <Route path="/news" element={<News ac={ac} />} />
         <Route path="/factors" element={<Factors ac={ac} />} />

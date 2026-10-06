@@ -33,7 +33,7 @@ async function signIn(page: Page, role: DevUser['role']) {
   await page.addInitScript(() => localStorage.setItem('giridih.lang', 'en'))
   await page.goto('/')
   const u = user(role)
-  await page.getByLabel('Phone number').fill(u.phone)
+  await page.getByLabel('User ID').fill(u.username ?? u.phone)
   await page.getByLabel('Password').fill(u.password)
   await page.getByRole('button', { name: 'Sign in' }).click()
   await expect(page.getByRole('button', { name: 'Sign out' }).first()).toBeVisible()

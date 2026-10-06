@@ -6,6 +6,7 @@ get_booth_card tool - one implementation so all three agree.
 
 from __future__ import annotations
 
+from api.election_results import layer_provenance
 from common.db import query, query_one
 
 
@@ -146,6 +147,8 @@ def build_booth_card(booth_uid: str, include_caste: bool = True,
         (booth_uid,),
     )
 
+    ac_row = query_one("SELECT ac_id FROM booth WHERE booth_uid = %s", (booth_uid,))
+    ac_id_for_prov = ac_id if ac_id is not None else (ac_row["ac_id"] if ac_row else None)
     card = {
         "booth": booth,
         "results": results,
@@ -155,6 +158,14 @@ def build_booth_card(booth_uid: str, include_caste: bool = True,
         "priority": priority,
         "crosswalk": crosswalk,
         "caveats": _caveats(crosswalk),
+        "provenance": {
+            "roll": layer_provenance(ac_id_for_prov, "modelled/roll_ac32.json")
+            if ac_id_for_prov else None,
+            "caste": layer_provenance(ac_id_for_prov, "modelled/caste_ac32.json")
+            if ac_id_for_prov else None,
+            "geo": layer_provenance(ac_id_for_prov, "modelled/geo_ac32.json")
+            if ac_id_for_prov else None,
+        },
     }
 
     if include_caste:

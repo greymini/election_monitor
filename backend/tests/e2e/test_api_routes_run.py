@@ -43,6 +43,8 @@ def client(conn, db_url):
     # /auth/login refuses unless password mode is on; the default is OTP,
     # which would need an SMS provider.
     os.environ["AUTH_MODE"] = "password"
+    os.environ["APP_USERNAME"] = "e2e-route-admin"
+    os.environ["APP_PASSWORD"] = "e2e-route-check-password-12"
 
     from common.config import get_settings
 
@@ -72,28 +74,14 @@ def _token(client, role: str = "admin", block_id: int | None = None) -> dict[str
     exercises the auth path, and a token this test forged itself would not prove
     the routes accept real ones.
 
-    Login is by **phone**, not email - the first version of this helper assumed
-    email, skipped when it got a 401, and reported 14 passes that had checked
-    nothing at all.
+    Login is by **user id** (APP_USERNAME) when password mode is on.
     """
-    import uuid
+    import os
 
-    from api.deps import hash_password
-    from common.db import query_one
+    username = os.environ["APP_USERNAME"]
+    password = os.environ["APP_PASSWORD"]
 
-    phone = f"9{uuid.uuid4().int % 10**9:09d}"
-    password = "route-check-" + uuid.uuid4().hex
-
-    query_one(
-        "INSERT INTO app_user (phone, name, role, block_id, password_hash, "
-        "                      daily_token_budget) "
-        "VALUES (%s, %s, %s, %s, %s, 150000) "
-        "ON CONFLICT (phone) DO UPDATE SET password_hash = EXCLUDED.password_hash "
-        "RETURNING user_id",
-        (phone, f"Route check {role}", role, block_id, hash_password(password)),
-    )
-
-    response = client.post("/auth/login", json={"phone": phone, "password": password})
+    response = client.post("/auth/login", json={"username": username, "password": password})
     assert response.status_code == 200, (
         f"login failed with {response.status_code}: {response.text[:300]}"
     )

@@ -5,7 +5,11 @@ The synthetic build (`--synthetic`) fills the gaps below with generated data; th
 the real build only.
 
 Legend: **Real** = from a primary source listed below · **Secondary** = a real number from a
-secondary document, not yet checked against ECI · **Missing** = shown as "—" or empty.
+secondary document, not yet checked against ECI · **Modelled** = deterministic estimate (`source_doc.method = modelled`) · **Missing** = shown as "—" or empty.
+
+### Supabase modelled layers (`load_supabase.py` → `ingest.modelled_overlay`)
+
+Roll, booth geography, community blend and LS-2024 segment are modelled on the real 367 booths; Form 20 and directory seeds stay real. See `ingest/modelled_overlay.py` method notes.
 
 ## 1. Sources we have
 
@@ -94,3 +98,7 @@ Every check in `ingest/form20_tables.problems()` passes on S1 and S2:
 | Original Form 20 PDF pages | A hand check that the xlsx extraction matches print | ECI | — |
 
 The 2024 polling-station list unlocks the most: places, the map and block filters all depend on it.
+
+## Supabase `election_monitor` modelled layers
+
+After `python scripts/load_supabase.py`, `ingest.modelled_overlay` fills roll, booth geography, community blend and LS-2024 segment on the real 367 booths (`source_doc.method = modelled`, not synthetic). Form 20, gazette, office holders, directory seeds and news remain real.

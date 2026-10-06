@@ -74,6 +74,7 @@
   /* Short names the components use. They were never defined, so every
      unverified badge, warning chip and the fixture banner fell back to grey. */
   --status-ok: var(--status-good);
+  --status-ok-bg: color-mix(in srgb, var(--status-good) 16%, transparent);
   --status-warn: var(--status-warning);
   --status-warn-bg: color-mix(in srgb, var(--status-warning) 16%, transparent);
 }

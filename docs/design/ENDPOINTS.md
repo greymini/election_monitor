@@ -17,10 +17,10 @@ against.
 
 ## Summary
 
-- **43** live routes, **31** legacy redirects
-- **35** frontend call sites
+- **47** live routes, **31** legacy redirects
+- **41** frontend call sites
 - **5** routes with no explicit response model
-- **15** routes no page calls
+- **13** routes no page calls
 - **0** frontend calls to a route that does not exist
 - **0** calls sending a parameter the route does not accept
 
@@ -39,35 +39,39 @@ against.
 | GET | `/acs/{ac_number}/admin/surnames` | admin | `q`? | dict | **(none)** |
 | POST | `/acs/{ac_number}/admin/surnames` | admin | — | dict | **(none)** |
 | GET | `/acs/{ac_number}/admin/usage` | admin | `days`? | dict | `frontend/src/pages/Admin.tsx:46` |
-| GET | `/acs/{ac_number}/areas` | any signed-in | — | dict | `frontend/src/pages/Booths.tsx:126`<br>`frontend/src/pages/MapExplorer.tsx:174`<br>`frontend/src/pages/Results.tsx:38` |
+| GET | `/acs/{ac_number}/areas` | any signed-in | — | dict | `frontend/src/pages/Booths.tsx:126`<br>`frontend/src/pages/MapExplorer.tsx:175`<br>`frontend/src/pages/Results.tsx:38` |
 | GET | `/acs/{ac_number}/areas/{area_id}/news` | any signed-in | `election_label`?, `days_before`?, `days_after`?, `limit`? | dict | **(none)** |
-| GET | `/acs/{ac_number}/booths` | any signed-in | `election_label`?, `area_id`?, `block_id`?, `metric`? | dict | `frontend/src/pages/MapExplorer.tsx:184` |
-| GET | `/acs/{ac_number}/booths/{booth_uid}/card` | any signed-in | — | dict | `frontend/src/components/BoothDrawer.tsx:153` |
-| GET | `/acs/{ac_number}/boundaries` | any signed-in | — | dict | `frontend/src/pages/MapExplorer.tsx:200` |
+| GET | `/acs/{ac_number}/booths` | any signed-in | `election_label`?, `area_id`?, `block_id`?, `metric`? | dict | `frontend/src/pages/MapExplorer.tsx:185` |
+| GET | `/acs/{ac_number}/booths/{booth_uid}/card` | any signed-in | — | dict | `frontend/src/components/BoothDrawer.tsx:158` |
+| GET | `/acs/{ac_number}/boundaries` | any signed-in | — | dict | `frontend/src/pages/MapExplorer.tsx:201` |
 | GET | `/acs/{ac_number}/candidates` | any signed-in | `election_label`? | dict | `frontend/src/pages/Candidates.tsx:69` |
-| GET | `/acs/{ac_number}/caste` | admin, strategist | `area_id`?, `booth_uid`?, `min_conf`?, `source`? | dict | `frontend/src/components/OverviewInsights.tsx:132`<br>`frontend/src/pages/Caste.tsx:30` |
-| GET | `/acs/{ac_number}/caste/correlation` | admin, strategist | `community`?, `min_conf`? | dict | `frontend/src/pages/CasteScatter.tsx:91` |
+| GET | `/acs/{ac_number}/caste` | admin, strategist | `area_id`?, `booth_uid`?, `min_conf`?, `source`? | dict | `frontend/src/components/OverviewInsights.tsx:132`<br>`frontend/src/pages/Caste.tsx:35` |
+| GET | `/acs/{ac_number}/caste/correlation` | admin, strategist | `community`?, `min_conf`? | dict | `frontend/src/pages/CasteScatter.tsx:92` |
+| GET | `/acs/{ac_number}/directory/officials` | any signed-in | `area_id`? | dict | `frontend/src/pages/Directory.tsx:83` |
+| GET | `/acs/{ac_number}/directory/panchayats` | any signed-in | — | dict | `frontend/src/pages/Directory.tsx:68` |
+| GET | `/acs/{ac_number}/directory/panchayats/{area_id}/villages` | any signed-in | — | dict | `frontend/src/pages/Directory.tsx:73` |
+| GET | `/acs/{ac_number}/directory/poll-calendar` | any signed-in | — | dict | `frontend/src/pages/Directory.tsx:88` |
+| GET | `/acs/{ac_number}/directory/polling-stations` | any signed-in | — | dict | `frontend/src/pages/Directory.tsx:78` |
 | GET | `/acs/{ac_number}/elections/{election_label}/candidates` | any signed-in | — | dict | `frontend/src/lib/results.ts:129` |
 | GET | `/acs/{ac_number}/ground-reports` | any signed-in | `booth_uid`?, `limit`? | dict | **(none)** |
 | POST | `/acs/{ac_number}/ground-reports` | any signed-in | — | dict | **(none)** |
 | GET | `/acs/{ac_number}/knowledge-cards` | any signed-in | — | dict | `frontend/src/pages/Factors.tsx:47` |
+| GET | `/acs/{ac_number}/local-caste` | any signed-in | `area_id`? | dict | `frontend/src/pages/LocalPolls.tsx:74` |
 | GET | `/acs/{ac_number}/local-politics` | any signed-in | — | dict | `frontend/src/pages/LocalPolitics.tsx:70` |
-| GET | `/acs/{ac_number}/local-results` | any signed-in | `election_label`?, `seat_type`? | dict | `frontend/src/pages/LocalPolls.tsx:28` |
+| GET | `/acs/{ac_number}/local-results` | any signed-in | `election_label`?, `seat_type`? | dict | `frontend/src/pages/LocalPolls.tsx:224` |
 | GET | `/acs/{ac_number}/news` | any signed-in | `q`?, `date_from`?, `date_to`?, `days`?, `issue`?, `party`?, `area_id`?, `place`?, `scope`?, `sort`?, `include_unlabelled`?, `limit`? | dict | `frontend/src/components/OverviewInsights.tsx:141`<br>`frontend/src/pages/News.tsx:87` |
 | GET | `/acs/{ac_number}/news/issues` | any signed-in | `days`? | dict | **(none)** |
 | GET | `/acs/{ac_number}/news/summary` | any signed-in | `days`?, `scope`? | dict | `frontend/src/pages/News.tsx:75` |
 | GET | `/acs/{ac_number}/priority` | any signed-in | `limit`?, `format`? | **dict (untyped)** | **(none)** |
 | GET | `/acs/{ac_number}/results/{election_label}/areas` | any signed-in | `format`? | **dict (untyped)** | **(none)** |
 | GET | `/acs/{ac_number}/results/{election_label}/booths` | any signed-in | `area_id`?, `block_id`?, `format`? | **dict (untyped)** | `frontend/src/pages/Booths.tsx:133`<br>`frontend/src/pages/Results.tsx:50` |
-| GET | `/acs/{ac_number}/rolls/changes` | any signed-in | `revision_label`?, `area_id`?, `block_id`?, `format`? | **dict (untyped)** | `frontend/src/pages/Voters.tsx:40` |
-| GET | `/acs/{ac_number}/rolls/revisions` | any signed-in | — | dict | `frontend/src/pages/Voters.tsx:33` |
+| GET | `/acs/{ac_number}/rolls/changes` | any signed-in | `revision_label`?, `area_id`?, `block_id`?, `format`? | **dict (untyped)** | `frontend/src/pages/Voters.tsx:41` |
+| GET | `/acs/{ac_number}/rolls/revisions` | any signed-in | — | dict | `frontend/src/pages/Voters.tsx:34` |
 | POST | `/acs/{ac_number}/scenario` | admin, strategist | — | dict | `frontend/src/pages/Scenario.tsx:32` |
 | GET | `/acs/{ac_number}/summary` | any signed-in | — | dict | `frontend/src/pages/Admin.tsx:57`<br>`frontend/src/pages/Overview.tsx:79` |
-| GET | `/acs/{ac_number}/transfer` | admin, strategist | `year`?, `area_id`?, `format`? | **dict (untyped)** | `frontend/src/pages/Transfer.tsx:30`<br>`frontend/src/pages/Transfer.tsx:70` |
+| GET | `/acs/{ac_number}/transfer` | admin, strategist | `year`?, `area_id`?, `format`? | **dict (untyped)** | `frontend/src/pages/Transfer.tsx:35`<br>`frontend/src/pages/Transfer.tsx:78` |
 | POST | `/auth/login` | public | — | Token | `frontend/src/lib/api.ts:210` |
 | GET | `/auth/me` | any signed-in | — | dict | `frontend/src/lib/api.ts:228` |
-| POST | `/auth/otp` | public | — | dict | **(none)** |
-| POST | `/auth/verify` | public | — | Token | **(none)** |
 | GET | `/compare` | any signed-in | `metric`? | dict | `frontend/src/pages/Compare.tsx:81` |
 | GET | `/config` | public | — | dict | `frontend/src/lib/api.ts:253` |
 | GET | `/health` | public | — | dict | **(none)** |
@@ -133,8 +137,6 @@ Not necessarily wrong - some are for operators, scripts or a page not yet built 
 - `GET /acs/{ac_number}/news/issues` (`news.issue_clusters`)
 - `GET /acs/{ac_number}/priority` (`data.priority`)
 - `GET /acs/{ac_number}/results/{election_label}/areas` (`data.results_by_area`)
-- `POST /auth/otp` (`auth.request_otp`)
-- `POST /auth/verify` (`auth.verify_otp`)
 - `GET /health` (`main.health`)
 
 ### Parameters a page sends that the route does not accept

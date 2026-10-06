@@ -261,21 +261,30 @@ export function FixtureBanner({ note }: { note?: string | null }) {
  * loaded data (source_doc.is_synthetic). Distinct from FixtureBanner: this is
  * a live API serving mock Form 20s, which `dev_stack.py --synthetic` builds.
  */
-export function SyntheticBanner() {
+/** Chip for modelled (non-test) estimates; tooltip carries the method note. */
+export function ModelledChip({
+  note,
+  compact = false,
+}: {
+  note?: string | null
+  compact?: boolean
+}) {
   const { t } = useTranslation()
+  const label = t('prov.modelledEstimate')
   return (
-    <div
-      className="rounded px-3 py-2 text-2xs"
+    <span
+      className={compact ? 'text-3xs' : 'text-2xs'}
       style={{
-        background: 'var(--status-warn-bg, var(--surface-2))',
-        color: 'var(--status-warn, var(--text-secondary))',
-        border: '1px solid var(--status-warn, var(--text-muted))',
+        color: 'var(--text-secondary)',
+        border: '1px solid var(--text-muted)',
+        borderRadius: '4px',
+        padding: compact ? '0 4px' : '1px 6px',
       }}
-      role="status"
-      data-testid="synthetic-banner"
+      title={note || undefined}
+      data-testid="modelled-chip"
     >
-      {t('prov.syntheticBanner')}
-    </div>
+      {label}
+    </span>
   )
 }
 

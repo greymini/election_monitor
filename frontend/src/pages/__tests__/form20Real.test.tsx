@@ -44,12 +44,6 @@ describe('Overview on the real Form 20', () => {
     expect(row).toHaveTextContent('9,933')
   })
 
-  it('warns when the server reports synthetic documents', async () => {
-    mockServer({ '/acs/32/summary': { body: { ...liveSummary, synthetic: true } } })
-    renderWithProviders(<Overview ac={fakeAc(32)} />)
-    expect(await screen.findByTestId('synthetic-banner')).toBeInTheDocument()
-  })
-
   it('has no synthetic banner on the real load', async () => {
     mockServer({ '/acs/32/summary': { body: liveSummary } })
     renderWithProviders(<Overview ac={fakeAc(32)} />)

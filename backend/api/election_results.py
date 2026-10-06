@@ -142,13 +142,24 @@ def _notes(has_booths: bool, candidates: list[dict]) -> list[str]:
     return notes
 
 
+def source_label(method: str | None, synthetic: bool, kind: str | None) -> str:
+    if synthetic:
+        return "Synthetic"
+    if method == "modelled":
+        return "Modelled estimate"
+    if kind == "form20":
+        return "ECI Form 20"
+    return "Published source"
+
+
 def election_sources(ac_id: int) -> dict[str, list[dict]]:
     """Per election label: the documents its booth rows were read from."""
     rows = query(
         "SELECT e.label, m.source_doc, COUNT(*)::INT AS booth_rows,"
         "       MIN(m.source_page) AS first_page, MAX(m.source_page) AS last_page,"
         "       s.sha256, s.kind, s.storage_key, s.parse_status,"
-        "       COALESCE(s.is_synthetic, false) AS synthetic "
+        "       COALESCE(s.is_synthetic, false) AS synthetic,"
+        "       s.method, s.method_note "
         "FROM result_booth_meta m "
         "JOIN election e ON e.election_id = m.election_id "
         "LEFT JOIN LATERAL ("
@@ -158,14 +169,42 @@ def election_sources(ac_id: int) -> dict[str, list[dict]]:
         ") s ON true "
         "WHERE m.ac_id = %s "
         "GROUP BY e.label, m.source_doc, s.sha256, s.kind, s.storage_key, s.parse_status,"
-        "         s.is_synthetic "
+        "         s.is_synthetic, s.method, s.method_note "
         "ORDER BY e.label, m.source_doc",
         (ac_id,),
     )
     out: dict[str, list[dict]] = {}
     for r in rows:
+        r["source_label"] = source_label(r.get("method"), r["synthetic"], r.get("kind"))
         out.setdefault(r.pop("label"), []).append(r)
     return out
+
+
+def modelled_layers(ac_id: int) -> list[dict]:
+    """Non-test modelled source_docs for this AC (roll, geo, caste, LS segment)."""
+    rows = query(
+        "SELECT filename, kind, method, method_note "
+        "FROM source_doc WHERE ac_id = %s AND method = 'modelled' "
+        "ORDER BY filename",
+        (ac_id,),
+    )
+    for r in rows:
+        r["source_label"] = source_label(r.get("method"), False, r.get("kind"))
+    return rows
+
+
+def layer_provenance(ac_id: int, filename: str) -> dict | None:
+    row = query_one(
+        "SELECT method, method_note FROM source_doc WHERE ac_id = %s AND filename = %s",
+        (ac_id, filename),
+    )
+    if row is None:
+        return None
+    return {
+        "method": row["method"],
+        "method_note": row["method_note"],
+        "source_label": source_label(row.get("method"), False, None),
+    }
 
 
 def booths_led(ac_id: int) -> dict[str, list[dict]]:

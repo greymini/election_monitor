@@ -109,11 +109,15 @@ COMMENT ON FUNCTION metric_margin_votes(BIGINT, BIGINT, BIGINT) IS
     'tightest contest in the constituency.';
 
 CREATE OR REPLACE FUNCTION metric_margin_pct(winner_votes BIGINT, runner_votes BIGINT, contestants BIGINT, valid_votes BIGINT)
-RETURNS NUMERIC AS $fn$
-SELECT ROUND((100.0 * metric_margin_votes(winner_votes, runner_votes,
-                                          contestants)
-              / NULLIF(valid_votes, 0))::NUMERIC, 2)
-$fn$ LANGUAGE sql IMMUTABLE;
+RETURNS NUMERIC
+LANGUAGE plpgsql
+IMMUTABLE
+AS $fn$
+BEGIN
+  RETURN ROUND((100.0 * metric_margin_votes(winner_votes, runner_votes, contestants)
+                / NULLIF(valid_votes, 0))::NUMERIC, 2);
+END;
+$fn$;
 
 COMMENT ON FUNCTION metric_margin_pct(BIGINT, BIGINT, BIGINT, BIGINT) IS
     'margin_votes / valid_votes * 100. Audit D1: the old views divided '
@@ -125,17 +129,20 @@ COMMENT ON FUNCTION metric_margin_pct(BIGINT, BIGINT, BIGINT, BIGINT) IS
     'place and missed in another.';
 
 CREATE OR REPLACE FUNCTION metric_signed_margin_pct(winner_party TEXT, winner_votes BIGINT, runner_votes BIGINT, contestants BIGINT, valid_votes BIGINT, party_a TEXT, party_b TEXT)
-RETURNS NUMERIC AS $fn$
-SELECT CASE
-    WHEN winner_party IS NULL THEN NULL
-    WHEN winner_party = party_a
-        THEN metric_margin_pct(winner_votes, runner_votes,
-                               contestants, valid_votes)
-    WHEN winner_party = party_b
-        THEN -metric_margin_pct(winner_votes, runner_votes,
-                                contestants, valid_votes)
-END
-$fn$ LANGUAGE sql IMMUTABLE;
+RETURNS NUMERIC
+LANGUAGE plpgsql
+IMMUTABLE
+AS $fn$
+BEGIN
+  IF winner_party IS NULL THEN RETURN NULL;
+  ELSIF winner_party = party_a THEN
+    RETURN metric_margin_pct(winner_votes, runner_votes, contestants, valid_votes);
+  ELSIF winner_party = party_b THEN
+    RETURN -metric_margin_pct(winner_votes, runner_votes, contestants, valid_votes);
+  END IF;
+  RETURN NULL;
+END;
+$fn$;
 
 COMMENT ON FUNCTION metric_signed_margin_pct(TEXT, BIGINT, BIGINT, BIGINT, BIGINT, TEXT, TEXT) IS
     'Plus margin_pct if the contest pair first party won, minus if the '
@@ -175,16 +182,20 @@ COMMENT ON FUNCTION metric_comparison_allowed(REAL, BOOLEAN, TEXT, BOOLEAN) IS
     'different threshold from the others.';
 
 CREATE OR REPLACE FUNCTION metric_swing_pct(share_now NUMERIC, share_prev NUMERIC, crosswalk_confidence REAL, crosswalk_reviewed BOOLEAN, lineage_kind TEXT, lineage_aggregated BOOLEAN)
-RETURNS NUMERIC AS $fn$
-SELECT CASE
-    WHEN share_now IS NULL OR share_prev IS NULL THEN NULL
-    WHEN NOT metric_comparison_allowed(crosswalk_confidence,
-                                       crosswalk_reviewed,
-                                       lineage_kind,
-                                       lineage_aggregated) THEN NULL
-    ELSE ROUND((share_now - share_prev)::NUMERIC, 2)
-END
-$fn$ LANGUAGE sql IMMUTABLE;
+RETURNS NUMERIC
+LANGUAGE plpgsql
+IMMUTABLE
+AS $fn$
+BEGIN
+  IF share_now IS NULL OR share_prev IS NULL THEN RETURN NULL;
+  END IF;
+  IF NOT metric_comparison_allowed(crosswalk_confidence, crosswalk_reviewed,
+                                  lineage_kind, lineage_aggregated) THEN
+    RETURN NULL;
+  END IF;
+  RETURN ROUND((share_now - share_prev)::NUMERIC, 2);
+END;
+$fn$;
 
 COMMENT ON FUNCTION metric_swing_pct(NUMERIC, NUMERIC, REAL, BOOLEAN, TEXT, BOOLEAN) IS
     'share_now - share_prev for the same election type and the same '
@@ -292,19 +303,21 @@ COMMENT ON FUNCTION metric_priority_weight(DOUBLE PRECISION, DOUBLE PRECISION, D
     'was really a two-factor one with nothing on the page to say so.';
 
 CREATE OR REPLACE FUNCTION metric_priority_score(closeness DOUBLE PRECISION, new_voter DOUBLE PRECISION, floating DOUBLE PRECISION, volatility DOUBLE PRECISION)
-RETURNS NUMERIC AS $fn$
-SELECT CASE
-    WHEN metric_priority_weight(closeness, new_voter, floating,
-                                volatility) > 0
-    THEN ROUND(((COALESCE(0.35 * closeness, 0)
+RETURNS NUMERIC
+LANGUAGE plpgsql
+IMMUTABLE
+AS $fn$
+DECLARE w NUMERIC;
+BEGIN
+  w := metric_priority_weight(closeness, new_voter, floating, volatility);
+  IF w IS NULL OR w <= 0 THEN RETURN NULL;
+  END IF;
+  RETURN ROUND(((COALESCE(0.35 * closeness, 0)
                  + COALESCE(0.25 * new_voter, 0)
                  + COALESCE(0.20 * floating, 0)
-                 + COALESCE(0.20 * volatility, 0))
-                / metric_priority_weight(closeness, new_voter,
-                                         floating, volatility)
-               )::NUMERIC, 4)
-END
-$fn$ LANGUAGE sql IMMUTABLE;
+                 + COALESCE(0.20 * volatility, 0)) / w)::NUMERIC, 4);
+END;
+$fn$;
 
 COMMENT ON FUNCTION metric_priority_score(DOUBLE PRECISION, DOUBLE PRECISION, DOUBLE PRECISION, DOUBLE PRECISION) IS
     'Weighted percentile ranks: 0.35 closeness, 0.25 new voters, 0.20 '

@@ -25,7 +25,7 @@ describe('App', () => {
     localStorage.removeItem('giridih.token')   // start signed out
     renderWithProviders(<App />)
 
-    await userEvent.type(await screen.findByLabelText('Phone number'), '9000000001')
+    await userEvent.type(await screen.findByLabelText('User ID'), '9000000001')
     await userEvent.type(screen.getByLabelText('Password'), 'pw-123456')
     await userEvent.click(screen.getByRole('button', { name: 'Sign in' }))
 
@@ -40,7 +40,7 @@ describe('App', () => {
 
     await userEvent.click(await screen.findByRole('button', { name: 'Sign out' }))
 
-    expect(await screen.findByLabelText('Phone number')).toBeInTheDocument()
+    expect(await screen.findByLabelText('User ID')).toBeInTheDocument()
     expect(localStorage.getItem('giridih.token')).toBeNull()
     // The next user must not be shown this user's role or data.
     expect(client.getQueryData(['me'])).toBeUndefined()
@@ -52,21 +52,21 @@ describe('App', () => {
     server.on('/acs/32/summary', { status: 401, body: { detail: 'expired' } })
     renderWithProviders(<App />)
 
-    expect(await screen.findByLabelText('Phone number')).toBeInTheDocument()
+    expect(await screen.findByLabelText('User ID')).toBeInTheDocument()
     expect(screen.getByText(/session expired/i)).toBeInTheDocument()
   })
 
   it('says the password is wrong instead of "session expired" on a failed login', async () => {
     mockServer({
-      'POST /auth/login': { status: 401, body: { detail: 'Incorrect phone or password' } },
+      'POST /auth/login': { status: 401, body: { detail: 'Incorrect user id or password' } },
     })
     renderWithProviders(<App />)
 
-    await userEvent.type(await screen.findByLabelText('Phone number'), '9000000001')
+    await userEvent.type(await screen.findByLabelText('User ID'), '9000000001')
     await userEvent.type(screen.getByLabelText('Password'), 'wrong-pw')
     await userEvent.click(screen.getByRole('button', { name: 'Sign in' }))
 
-    expect(await screen.findByText(/incorrect phone or password/i)).toBeInTheDocument()
+    expect(await screen.findByText(/incorrect user id or password/i)).toBeInTheDocument()
     expect(screen.queryByText(/session expired/i)).not.toBeInTheDocument()
   })
 
@@ -79,7 +79,7 @@ describe('App', () => {
     })
     renderWithProviders(<App />)
 
-    await userEvent.type(await screen.findByLabelText('Phone number'), '9000000001')
+    await userEvent.type(await screen.findByLabelText('User ID'), '9000000001')
     await userEvent.type(screen.getByLabelText('Password'), 'x')
     await userEvent.click(screen.getByRole('button', { name: 'Sign in' }))
 

@@ -13,7 +13,7 @@ import type { Boundaries, BoundaryProps, LayerVisibility } from '../components/B
 import DivergingLegend from '../components/DivergingLegend'
 import FitBounds from '../components/FitBounds'
 import SequentialLegend from '../components/SequentialLegend'
-import { FixtureBanner } from '../components/Provenance'
+import { FixtureBanner, ModelledChip } from '../components/Provenance'
 import { ErrorState, Loading } from '../components/States'
 import type { AcState } from '../lib/ac'
 import { api } from '../lib/api'
@@ -88,6 +88,7 @@ interface Collection {
     metric: string
     ac_number: number
     contest?: { party_a: string; party_b: string } | null
+    provenance?: { method_note?: string | null } | null
   }
   fixture?: string | null
 }
@@ -259,6 +260,9 @@ export default function MapExplorer({ ac }: Props) {
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-lg font-semibold">{t('nav.map')}</h1>
+        {query.data?.meta?.provenance?.method_note && (
+          <ModelledChip note={query.data.meta.provenance.method_note} compact />
+        )}
         <div className="flex flex-wrap items-center gap-1.5">
           <select className="select text-2xs" value={metric}
                   onChange={(e) => setMetric(e.target.value as MetricKey)}
@@ -495,6 +499,11 @@ export default function MapExplorer({ ac }: Props) {
                 known: query.data.meta.electors_known,
                 total: query.data.meta.count,
               })}
+            </li>
+          )}
+          {query.data?.meta?.provenance?.method_note && (
+            <li className="flex items-center gap-1">
+              <ModelledChip note={query.data.meta.provenance.method_note} compact />
             </li>
           )}
         </ul>

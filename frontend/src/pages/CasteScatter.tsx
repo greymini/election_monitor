@@ -6,7 +6,7 @@ import {
   Tooltip, XAxis, YAxis, ZAxis,
 } from 'recharts'
 
-import { ConfidenceDot, FixtureBanner } from '../components/Provenance'
+import { ConfidenceDot, FixtureBanner, ModelledChip } from '../components/Provenance'
 import { Empty, ErrorState, Loading } from '../components/States'
 import type { AcState } from '../lib/ac'
 import { api } from '../lib/api'
@@ -50,6 +50,7 @@ interface Response {
   community: string
   party: string
   caveat: string
+  provenance?: { method_note?: string | null } | null
   fixture?: string | null
 }
 
@@ -126,6 +127,9 @@ export default function CasteScatter({ ac }: { ac: AcState }) {
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-lg font-semibold">{t('casteScatter.heading')}</h1>
+        {query.data?.provenance?.method_note && (
+          <ModelledChip note={query.data.provenance.method_note} />
+        )}
         <select className="select text-2xs" value={party}
                 onChange={(e) => setParty(e.target.value as Party)}
                 aria-label={t('casteScatter.party')}>

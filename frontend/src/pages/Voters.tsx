@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 
 import DataTable, { type Column } from '../components/DataTable'
+import { ModelledChip } from '../components/Provenance'
 import { Empty, ErrorState, Loading } from '../components/States'
 import { api, downloadCsv } from '../lib/api'
 import { num, pct, signedNum } from '../lib/format'
@@ -33,7 +34,7 @@ export default function Voters({ ac }: { ac: AcState }) {
     queryFn: () => api.get(ac.path('/rolls/revisions')),
     enabled: ac.acNumber !== null,
   })
-  const query = useQuery<{ rows: Row[] }>({
+  const query = useQuery<{ rows: Row[]; provenance?: { method_note?: string | null } | null }>({
     queryKey: ['roll-changes', ac.acNumber, revision],
     enabled: ac.acNumber !== null,
     queryFn: () =>
@@ -86,6 +87,9 @@ export default function Voters({ ac }: { ac: AcState }) {
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
         <h1 className="text-lg font-semibold">{t('voters.heading')}</h1>
+        {query.data?.provenance?.method_note && (
+          <ModelledChip note={query.data.provenance.method_note} />
+        )}
         <select className="field ml-auto" value={revision}
                 onChange={(e) => setRevision(e.target.value)}>
           <option value="">{t('common.all')}</option>

@@ -44,8 +44,14 @@ def get_pool() -> ConnectionPool:
         s = get_settings()
         if not s.database_url:
             raise RuntimeError("DATABASE_URL is not set")
-        _pool = ConnectionPool(s.database_url, min_size=1, max_size=8,
-                               kwargs={"row_factory": dict_row}, configure=_configure)
+        _pool = ConnectionPool(
+            s.database_url,
+            min_size=1,
+            max_size=4,
+            timeout=120,
+            kwargs={"row_factory": dict_row, "connect_timeout": 30},
+            configure=_configure,
+        )
     return _pool
 
 

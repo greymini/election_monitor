@@ -1,0 +1,55 @@
+[load_supabase] $ -m db.seed.load_seed
+2026-10-06 20:17:56 WARNING psycopg.pool             error connecting in 'pool-1': missing "=" after "[dev_stack]" in connection info string
+
+2026-10-06 20:17:56 WARNING psycopg.pool             error connecting in 'pool-1': missing "=" after "[dev_stack]" in connection info string
+
+2026-10-06 20:17:57 WARNING psycopg.pool             error connecting in 'pool-1': missing "=" after "[dev_stack]" in connection info string
+
+2026-10-06 20:17:57 WARNING psycopg.pool             error connecting in 'pool-1': missing "=" after "[dev_stack]" in connection info string
+
+2026-10-06 20:17:58 WARNING psycopg.pool             error connecting in 'pool-1': missing "=" after "[dev_stack]" in connection info string
+
+2026-10-06 20:17:59 WARNING psycopg.pool             error connecting in 'pool-1': missing "=" after "[dev_stack]" in connection info string
+
+2026-10-06 20:18:02 WARNING psycopg.pool             error connecting in 'pool-1': missing "=" after "[dev_stack]" in connection info string
+
+2026-10-06 20:18:03 WARNING psycopg.pool             error connecting in 'pool-1': missing "=" after "[dev_stack]" in connection info string
+
+2026-10-06 20:18:09 WARNING psycopg.pool             error connecting in 'pool-1': missing "=" after "[dev_stack]" in connection info string
+
+2026-10-06 20:18:11 WARNING psycopg.pool             error connecting in 'pool-1': missing "=" after "[dev_stack]" in connection info string
+
+2026-10-06 20:18:24 WARNING psycopg.pool             error connecting in 'pool-1': missing "=" after "[dev_stack]" in connection info string
+
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/phoenix/Documents/election-monitor/giridih-monitor/backend/db/seed/load_seed.py", line 846, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/Users/phoenix/Documents/election-monitor/giridih-monitor/backend/db/seed/load_seed.py", line 840, in main
+    n = fn()
+        ^^^^
+  File "/Users/phoenix/Documents/election-monitor/giridih-monitor/backend/db/seed/load_seed.py", line 76, in load_acs
+    with cursor() as cur:
+  File "/Users/phoenix/.pyenv/versions/3.11.11/lib/python3.11/contextlib.py", line 137, in __enter__
+    return next(self.gen)
+           ^^^^^^^^^^^^^^
+  File "/Users/phoenix/Documents/election-monitor/giridih-monitor/backend/common/db.py", line 83, in cursor
+    with connection(readonly=readonly) as conn, conn.cursor() as cur:
+  File "/Users/phoenix/.pyenv/versions/3.11.11/lib/python3.11/contextlib.py", line 137, in __enter__
+    return next(self.gen)
+           ^^^^^^^^^^^^^^
+  File "/Users/phoenix/Documents/election-monitor/giridih-monitor/backend/common/db.py", line 77, in connection
+    with pool.connection() as conn:
+  File "/Users/phoenix/.pyenv/versions/3.11.11/lib/python3.11/contextlib.py", line 137, in __enter__
+    return next(self.gen)
+           ^^^^^^^^^^^^^^
+  File "/Users/phoenix/Documents/election-monitor/giridih-monitor/.venv/lib/python3.11/site-packages/psycopg_pool/pool.py", line 184, in connection
+    conn = self.getconn(timeout=timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/phoenix/Documents/election-monitor/giridih-monitor/.venv/lib/python3.11/site-packages/psycopg_pool/pool.py", line 218, in getconn
+    raise PoolTimeout(
+psycopg_pool.PoolTimeout: couldn't get a connection after 30.00 sec
+[load_supabase] ERROR seed failed (exit 1)
+[load_supabase] $ -m db.seed.load_seed

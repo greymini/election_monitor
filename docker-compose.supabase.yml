@@ -1,0 +1,32 @@
+# Hosted Postgres (Supabase). Disables the bundled `db` service; point `.env` at the pooler URL.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.supabase.yml up api web worker
+#
+# Copy `.env.supabase.example` → `.env` and set DATABASE_URL, JWT_SECRET, APP_USERNAME, APP_PASSWORD.
+# For a split frontend build, set VITE_API_BASE and API_CORS_ORIGINS.
+
+name: giridih-monitor
+
+services:
+  db:
+    profiles: ["bundled-db"]
+
+  api:
+    depends_on: {}
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      READONLY_DB_URL: ${READONLY_DB_URL:-}
+      JWT_SECRET: ${JWT_SECRET}
+      APP_USERNAME: ${APP_USERNAME}
+      APP_PASSWORD: ${APP_PASSWORD}
+      API_CORS_ORIGINS: ${API_CORS_ORIGINS:-http://localhost:5173}
+
+  worker:
+    depends_on: {}
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+
+  web:
+    build:
+      args:
+        VITE_API_BASE: ${VITE_API_BASE:-}

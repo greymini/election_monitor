@@ -114,6 +114,8 @@ class Settings:
     jwt_algorithm: str = "HS256"
     jwt_ttl_minutes: int = 720
     auth_mode: str = "password"
+    app_username: str = ""
+    app_password: str = ""
     cors_origins: list[str] = field(default_factory=list)
 
     # Feature flags. The chatbot is parked (A5): with this false, api/main.py
@@ -194,6 +196,8 @@ def get_settings() -> Settings:
         jwt_algorithm=_env("JWT_ALGORITHM", "HS256"),
         jwt_ttl_minutes=_env_int("JWT_TTL_MINUTES", 720),
         auth_mode=_env("AUTH_MODE", "password"),
+        app_username=_env("APP_USERNAME"),
+        app_password=_env("APP_PASSWORD"),
         cors_origins=_env_list("API_CORS_ORIGINS", "http://localhost:5173"),
         chat_enabled=_env_bool("CHAT_ENABLED", False),
         anthropic_api_key=_env("ANTHROPIC_API_KEY"),

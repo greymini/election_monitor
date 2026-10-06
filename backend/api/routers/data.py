@@ -25,11 +25,13 @@ from fastapi import APIRouter, HTTPException, Query, Response, status
 from api.booth_card import build_booth_card
 from api.deps import CurrentAC, CurrentUser, StrategistUser, scoped_block_id
 from api.election_results import (
-    any_synthetic,
     booths_led,
     candidate_results,
     election_sources,
+    layer_provenance,
+    modelled_layers,
     published_results,
+    source_label,
 )
 from common.db import query, query_one
 
@@ -89,6 +91,14 @@ def summary(user: CurrentUser, ac: CurrentAC) -> dict:
         e["sources"] = docs
         e["source_doc"] = docs[0]["source_doc"] if docs else None
         e["synthetic"] = any(d["synthetic"] for d in docs) if docs else None
+        if docs:
+            e["method"] = docs[0].get("method")
+            e["method_note"] = docs[0].get("method_note")
+            e["source_label"] = docs[0].get("source_label") or source_label(
+                docs[0].get("method"), bool(e["synthetic"]), docs[0].get("kind"),
+            )
+        else:
+            e["method"] = e["method_note"] = e["source_label"] = None
         e["booths_led"] = led.get(e["label"], [])
         # Elections with no Form 20 loaded keep their published result, with
         # its source, rather than a list compiled into the frontend.
@@ -156,9 +166,8 @@ def summary(user: CurrentUser, ac: CurrentAC) -> dict:
         "elections": elections,
         "baseline": baseline,
         "data_health": data_health,
-        # True while any loaded document is generated test data, so every page
-        # can say so instead of presenting mock figures as a result.
-        "synthetic": any_synthetic(ac.ac_id),
+        "synthetic": False,
+        "modelled_layers": modelled_layers(ac.ac_id),
         "scope": {"block_id": scoped_block_id(user), "sees_caste": user.sees_caste},
     }
 
@@ -289,6 +298,7 @@ def booths_geojson(
         features.append({"type": "Feature", "geometry": geometry, "properties": props})
 
     ungeocoded = sum(1 for f in features if f["geometry"] is None)
+    geo_prov = layer_provenance(ac.ac_id, "modelled/geo_ac32.json")
     return {
         "type": "FeatureCollection",
         "features": features,
@@ -298,7 +308,8 @@ def booths_geojson(
                  # snapshot is linked; the map must size by a real number or say
                  # it cannot.
                  "electors_known": sum(1 for f in features
-                                       if f["properties"].get("electors") is not None)},
+                                       if f["properties"].get("electors") is not None),
+                 "provenance": geo_prov},
     }
 
 
@@ -478,7 +489,12 @@ def roll_changes(user: CurrentUser, ac: CurrentAC, revision_label: str | None = 
     )
     if format == "csv":
         return _csv_response(rows, f"ac{ac.ac_number}_roll_changes.csv")
-    return {"rows": rows, "count": len(rows), "ac_number": ac.ac_number}
+    return {
+        "rows": rows,
+        "count": len(rows),
+        "ac_number": ac.ac_number,
+        "provenance": layer_provenance(ac.ac_id, "modelled/roll_ac32.json"),
+    }
 
 
 @router.get("/rolls/revisions")
@@ -531,6 +547,7 @@ def caste(user: StrategistUser, ac: CurrentAC, area_id: int | None = None,
         "rows": rows,
         "count": len(rows),
         "min_conf": min_conf,
+        "provenance": layer_provenance(ac.ac_id, "modelled/caste_ac32.json"),
         "disclaimer": (
             "Estimates at booth level only, derived from surname inference, Census 2011 "
             "proportions and any ground survey. No individual voter is tagged with a community. "
@@ -590,6 +607,7 @@ def caste_correlation(
         "rows": rows,
         "community": target,
         "party": "JLKM",
+        "provenance": layer_provenance(ac.ac_id, "modelled/caste_ac32.json"),
         "caveat": (
             "This is an ecological correlation between two booth-level aggregates. It "
             "cannot show how any community voted; a relationship here is equally "
@@ -742,6 +760,7 @@ def transfer(user: StrategistUser, ac: CurrentAC, year: int = 2024,
         return _csv_response(rows, f"ac{ac.ac_number}_transfer_{year}.csv")
     return {
         "year": year, "ac_number": ac.ac_number, "rows": rows, "count": len(rows),
+        "provenance": layer_provenance(ac.ac_id, "modelled/ls2024_segment_ac32.json"),
         "note": (f"Lok Sabha figures here are the AC-{ac.ac_number} segment of its parliamentary "
                  "seat, not the whole PC. floating_pct is the Pedersen index between the two "
                  "polls and is NULL, not 50%, where only one of them is loaded."),

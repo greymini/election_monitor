@@ -311,6 +311,31 @@ The worker's schedule (Asia/Kolkata):
 
 Job status is under **Admin → jobs**.
 
+## 6B. Supabase (`election_monitor`)
+
+Use the **session pooler** URL (`sslmode=require`, port 5432). Apply migrations once:
+
+```bash
+cd backend
+export $(grep -v '^#' ../.env | xargs)   # DATABASE_URL, JWT_SECRET, APP_USERNAME, APP_PASSWORD
+python -m db.apply_migrations
+python scripts/load_supabase.py          # seed, Form 20, gazette, overlay, refresh
+```
+
+Run the API against that `.env`:
+
+```bash
+uvicorn api.main:app --host 0.0.0.0 --port 8000
+```
+
+Frontend: `VITE_API_BASE=http://localhost:8000 npm run dev` in `frontend/`.
+
+Docker without a local Postgres:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.supabase.yml up api web worker
+```
+
 ## 7. Tests
 
 ```bash
