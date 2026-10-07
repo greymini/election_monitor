@@ -105,16 +105,18 @@ def main(argv: list[str] | None = None) -> int:
         run([py, "-m", "db.seed.load_seed"], "seed")
     else:
         run([py, "-m", "db.seed.load_seed", "--only", "gp_officials"], "gp officials")
-    folder = APP_ROOT / "db" / "seed" / "form20"
-    for label, name, anchor in [
-        ("VS-2024", "giridih_vs2024_form20.xlsx", True),
-        ("VS-2019", "giridih_vs2019_form20.xlsx", False),
-    ]:
-        argv_f = [py, "-m", "ingest.load_form20_tables", str(folder / name),
-                  "--ac", str(args.ac), "--election", label]
-        if anchor:
-            argv_f.append("--create-booths")
-        run(argv_f, f"form20 {label}")
+    # The real LS-2024 Form 20 replaces the old modelled segment and its placeholder candidates.
+    run([py, "-m", "ingest.modelled_overlay", "--ac", str(args.ac), "--cleanup-only"],
+        "remove modelled LS segment")
+    run([py, "-m", "ingest.load_form20_tables", "--all-seed"], "form20 (all seed workbooks)")
+    run([py, "-m", "ingest.load_ps_list"], "polling-station list 2024")
+    for ac in (32, 31):
+        run([py, "-m", "ingest.load_csv", "demography",
+             str(APP_ROOT / "db" / "seed" / "census" / f"demography_ac{ac}.csv"), "--ac", str(ac)],
+            f"census demography AC {ac}")
+    run([py, "-m", "ingest.load_csv", "candidate_profile",
+         str(APP_ROOT / "db" / "seed" / "candidates" / "candidate_profiles_ac32.csv"), "--ac", "32"],
+        "candidate profiles")
 
     gazette = REPO_ROOT / "data_giridih" / "gazette_results_ac32.csv"
     if gazette.is_file():

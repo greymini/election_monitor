@@ -398,3 +398,42 @@ LGD has no Hindi panchayat names, and machine transliteration got none of eight
 known names right, so `name_hi` repeats the English name rather than show a
 wrong Hindi spelling.
 
+
+## D-013 · The 2024 polling-station list decides AC-32's panchayats; modelled layers are fitted to published totals
+
+**Date:** 7 Oct 2026. **Status:** adopted. Supersedes the membership rule of D-012 for
+Giridih and Pirtand blocks.
+
+**Polling-station list.** CEO Jharkhand's register (`ceojh.jharkhand.gov.in/PSdetails`)
+lists all 367 AC-32 stations, numbered as in the VS-2024 and LS-2024 Form 20s.
+`scripts/build_ps_list_2024.py` matches each station's locality to an LGD village,
+panchayat or municipal ward (`db/seed/ps_list/giridih_ps2024.csv`, with a
+`locate_method` and `locate_conf` per row). The register shows the villages' `ac_no`
+had Giridih block backwards: 18 of its 30 panchayats have AC-32 stations and
+exactly 12 have none - the twelve the ECI order puts in Gandey. So a Giridih-block
+panchayat with a station is AC-32 and one without is Gandey. `load_areas` moves a
+panchayat whose AC changed instead of duplicating it, so its `area_id` survives.
+
+It also shows that about 40 stations in the "rural" stretch of the list are in
+villages the Municipal Corporation absorbed in 2016 (LGD lists them under no
+panchayat; their polygons lie inside the 2021 wards). Those are urban: 158 urban and
+209 rural stations. Town stations are placed from OpenStreetMap localities or
+absorbed-village polygons where the name allows, otherwise interpolated along the
+numbering; their points are approximate (confidence 0.15-0.5).
+
+**Modelled layers** (`ingest/modelled_overlay.py`) keep only what no public source
+gives booth by booth, and each is fitted to published numbers:
+
+| Layer | Published inputs | Estimated |
+|---|---|---|
+| Roll | AC general electors, men, women, third gender, 18-19 (CEO Jharkhand, VS-2019 / LS-2024 / VS-2024); ECI state age bands | Each booth's share, from its votes polled and an urban/rural turnout chosen so both settings have the same mean roll |
+| Community | Booth VS-2024 and LS-2024 votes; Lokniti-CSDS and Axis 2024 vote by community; Census 2011 village SC/ST and unit religion | Each booth's mix of Muslim, ST, SC, Kurmi and "upper caste & other OBC" |
+
+Upper castes and other OBCs vote too alike (NDA 66 vs 57, Axis/Lokniti) for booth
+results to tell apart, so they are one group rather than a split nobody can check.
+The age bands 30-39, 40-49 and 50-59 stay empty: ECI publishes 30-59 as one band.
+
+The LS-2024 segment is no longer modelled: CEO Jharkhand publishes the segment's
+booth-wise Form 20, and it is loaded like the VS ones (as are LS-2019 for AC-32 and
+VS-2024 / LS-2024 for the other five ACs). Sources and what is still missing:
+`docs/status/DATA_COVERAGE.md`.

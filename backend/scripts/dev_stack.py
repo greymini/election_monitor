@@ -94,8 +94,6 @@ STEPS_REAL = ["migrate", "seed", "form20_real", "news", "refresh", "users"]
 STEPS_SYNTHETIC = ["migrate", "seed", "generate", "ps_list", "form20", "crosswalk", "roll",
                    "caste", "geo", "news", "refresh", "users"]
 STEPS = STEPS_SYNTHETIC + ["form20_real"]          # every step name, for --from-step
-FORM20_FILES = [("VS-2024", "giridih_vs2024_form20.xlsx", True),
-                ("VS-2019", "giridih_vs2019_form20.xlsx", False)]
 
 
 # ---------------------------------------------------------------------------
@@ -386,17 +384,21 @@ def step_news(py: str) -> None:
 
 
 def step_form20_real(py: str, args) -> None:
-    """The real Form 20: the anchor election first (it creates the booths), then
-    the older one onto the same booths if its station numbering is stable."""
-    if args.ac != 32:
-        fail("real Form 20 files exist for AC 32 only; use --synthetic for another AC")
-    folder = APP_ROOT / "db" / "seed" / "form20"
-    for label, name, anchor in FORM20_FILES:
-        argv = [py, "-m", "ingest.load_form20_tables", str(folder / name),
-                "--ac", str(args.ac), "--election", label]
-        if anchor:
-            argv.append("--create-booths")
-        run(argv, f"ingest.load_form20_tables {label}")
+    """Every real Form 20 in db/seed/form20/ (ingest.load_form20_tables.seed_loads):
+    per AC the VS-2024 file first (it creates the booths), then the others onto
+    the same booths if their station numbering is stable. Then the 2024
+    polling-station list names and places AC-32's booths, and the modelled
+    layers (roll, community) are fitted to what was loaded."""
+    run([py, "-m", "ingest.load_form20_tables", "--all-seed"], "ingest.load_form20_tables --all-seed")
+    run([py, "-m", "ingest.load_ps_list"], "ingest.load_ps_list")
+    for ac, csv_name in ((32, "demography_ac32.csv"), (31, "demography_ac31.csv")):
+        run([py, "-m", "ingest.load_csv", "demography",
+             str(APP_ROOT / "db" / "seed" / "census" / csv_name), "--ac", str(ac)],
+            f"ingest.load_csv demography AC {ac}")
+    run([py, "-m", "ingest.load_csv", "candidate_profile",
+         str(APP_ROOT / "db" / "seed" / "candidates" / "candidate_profiles_ac32.csv"), "--ac", "32"],
+        "ingest.load_csv candidate_profile")
+    run([py, "-m", "ingest.modelled_overlay", "--ac", "32"], "ingest.modelled_overlay")
 
 
 def step_refresh(py: str) -> None:
@@ -568,9 +570,10 @@ def print_report(url: str, counts: dict, mode: str = "real") -> None:
         print("  Every booth-level figure above is SYNTHETIC. Only the published AC")
         print("  totals come from the seed; check them against ECI before use.")
     else:
-        print("  Booth results are the real ECI Form 20 (db/seed/form20/). Party is")
-        print("  recorded for 3 of 26 candidates; electors are a secondary figure.")
-        print("  No polling-station list, roll or locations are loaded yet.")
+        print("  Booth results are the real CEO Jharkhand Form 20s (db/seed/form20/), every")
+        print("  candidate with a party. AC-32 booths are named and placed from the 2024")
+        print("  polling-station list; booth electors and community mix are modelled to")
+        print("  published totals (ingest/modelled_overlay.py, docs/status/DATA_COVERAGE.md).")
     print("=" * 78)
     print()
 

@@ -149,8 +149,11 @@ def config() -> dict:
         # The first AC with booths loaded, else the first listed. It used to be
         # the first by number - 31, Gandey, which has no booth data - so a
         # first-time visitor landed on an empty dashboard.
-        "default_ac": next((a["ac_number"] for a in acs_list if a["has_booths"]),
-                           acs_list[0]["ac_number"] if acs_list else None),
+        # Now that every AC has booth results, the verified one (Giridih, the
+        # by-election seat) comes first.
+        "default_ac": next((a["ac_number"] for a in acs_list if a["has_booths"] and a["verified"]),
+                           next((a["ac_number"] for a in acs_list if a["has_booths"]),
+                                acs_list[0]["ac_number"] if acs_list else None)),
         "version": app.version,
         "build_time": BUILD_TIME,
     }
