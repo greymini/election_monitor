@@ -43,7 +43,14 @@ sub-district, while the ECI 2008 order and the villages' own `ac_no` put twelve
 Giridih-block panchayats in Gandey (AC-31). This uses the villages' `ac_no`,
 the finest-grained of the three, and writes the evidence into the `membership`
 column of every row; a panchayat whose villages span two constituencies says
-so. The polling-station list settles it when it is loaded (DECISIONS D-012).
+so (DECISIONS D-012).
+
+**The 2024 polling-station list overrides that** for Giridih and Pirtand blocks
+(D-013): `db/seed/ps_list/giridih_ps2024.csv` places all 367 AC-32 stations,
+so a panchayat with a station there is in AC-32 and a Giridih-block panchayat
+without one is in Gandey. It shows the villages' `ac_no` swapped for most of
+Giridih block: 13 panchayats with no AC-32 station, close to the 12 the ECI
+order puts in Gandey.
 """
 
 from __future__ import annotations
@@ -60,6 +67,9 @@ SEED = ROOT / "db" / "seed"
 
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
+
+# Blocks the 2024 AC-32 polling-station list covers (scripts/build_ps_list_2024.py).
+PS2024_BLOCKS = {"Giridih", "Pirtand"}
 
 # Constituencies this project tracks.
 OUR_ACS = {31, 32, 33, 42, 61, 65}
@@ -101,6 +111,10 @@ def build() -> dict:
     from common.textnorm import fold
 
     seed_blocks = _seed_blocks()
+    ps2024: Counter = Counter()
+    ps2024_path = SEED / "ps_list" / "giridih_ps2024.csv"
+    if ps2024_path.exists():
+        ps2024 = Counter(r["panchayat_lgd_code"] for r in _rows(ps2024_path) if r["panchayat_lgd_code"])
     gps = _rows(SRC / "lgd_01Oct2026_giridih_district_gps.csv")
     covered = {g["block_en"] for g in gps if _block_ac(g["block_en"], seed_blocks)}
 
@@ -131,6 +145,15 @@ def build() -> dict:
             ac = _block_ac(g["block_en"], seed_blocks)
             acs = [ac]
             membership = "no village data; constituency of its block in ac_blocks.csv"
+        stations = ps2024.get(str(code), 0)
+        if g["block_en"] in PS2024_BLOCKS and ps2024:
+            # The 2024 polling-station list is complete for AC-32, so it decides:
+            # a panchayat with an AC-32 station is in AC-32, one without is not.
+            if stations:
+                ac, membership = 32, f"{stations} polling stations in the 2024 AC-32 list"
+            elif g["block_en"] == "Giridih":
+                ac, membership = 31, ("no polling station in the 2024 AC-32 list, so the Gandey part "
+                                      "of Giridih block")
         if ac not in OUR_ACS:
             skipped.append(f"{g['gp_en']} ({g['block_en']}): villages in AC {ac}")
             continue

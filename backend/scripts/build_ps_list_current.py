@@ -78,10 +78,11 @@ def key(text: str) -> str:
     return re.sub(r"(.)\1+", r"\1", s)
 
 
-def match(village_hi: str, villages: list[dict]) -> dict:
+def match(village_hi: str, villages: list[dict], latin_input: bool = False) -> dict:
+    """Best LGD village for a name; `latin_input` when the name is already in Latin script."""
     import jellyfish
 
-    lat = latin(village_hi)
+    lat = village_hi.lower() if latin_input else latin(village_hi)
     scored = sorted(
         ((jellyfish.jaro_winkler_similarity(key(lat), key(v["name"])),
           jellyfish.jaro_winkler_similarity(lat, v["name"].lower()), v) for v in villages),
@@ -94,7 +95,8 @@ def match(village_hi: str, villages: list[dict]) -> dict:
               "not close enough" if k1 < KEY_MIN or f1 < FULL_MIN else
               f"too close to {second['name']}")
     return {"village_lgd": best["name"], "village_code": best["code"], "panchayat": best["gp"],
-            "panchayat_code": best["gp_code"], "score": round(k1, 2),
+            "panchayat_code": best["gp_code"], "score": round(k1, 2), "full": round(f1, 2),
+            "census": best.get("census", ""), "block": best.get("block", ""),
             "status": "matched" if ok else "unmatched", "note": reason}
 
 
@@ -118,7 +120,8 @@ def build() -> list[dict]:
             "village_lgd": "", "village_code": "", "panchayat": "", "panchayat_code": "",
             "score": "", "status": "unmatched", "note": "no village in the building name"}
         rows.append({"ac_number": 32, "part_number": int(r[3]), "building_hi": building,
-                     "village_hi": village_hi, "block_name_en": f"{BLOCK} Block", **m,
+                     "village_hi": village_hi, "block_name_en": f"{BLOCK} Block",
+                     **{k: v for k, v in m.items() if k not in ("full", "census", "block")},
                      "source": SOURCE})
     rows.sort(key=lambda r: r["part_number"])
     return rows
