@@ -102,21 +102,24 @@ def test_the_unverified_acs_say_what_needs_checking():
 # --------------------------------------------------------------------------
 
 
-def test_no_totals_are_seeded_for_acs_whose_published_figures_are_margin_only():
-    """Spec 1 gives Gandey (17,142), Tundi (unstated) and Silli (23,867) as
-    margins, with no vote totals. There must be no result_ac_total row for them:
-    it would be a fabricated validation target, and a Form 20 load would then be
-    reconciled against a number nobody published."""
-    seeded = {int(r["ac_number"]) for r in rows("ac_totals.csv")}
-    for number in (31, 42, 61):
-        assert number not in seeded, (
-            f"AC {number} has seeded totals, but the spec gives only a margin for it"
-        )
+def test_every_seeded_total_is_published():
+    """No invented numbers: every vote row in ac_totals.csv comes from a Form 20
+    workbook (scripts/build_form20_seeds.py) and every electors row names its CEO
+    Jharkhand document. Before the Form 20s of the other five ACs were found,
+    this asserted that Gandey, Tundi and Silli had no totals at all, because the
+    spec gave only their margins."""
+    for r in rows("ac_totals.csv"):
+        if r["metric"] == "electors":
+            assert "CEO Jharkhand" in r["source"] or "Form 20" in r["source"], r
+        elif r["election_label"] != "VS-2014":
+            assert r["source"].startswith("ECI Form 20"), r
 
 
-def test_totals_are_seeded_only_where_the_spec_gives_real_numbers():
-    seeded = {int(r["ac_number"]) for r in rows("ac_totals.csv")}
-    assert seeded == {32, 33, 65}
+def test_every_ac_has_its_vs2024_form20_totals():
+    seeded = {(int(r["ac_number"]), r["election_label"]) for r in rows("ac_totals.csv")}
+    for ac in (31, 32, 33, 42, 61, 65):
+        assert (ac, "VS-2024") in seeded
+        assert (ac, "LS-2024") in seeded
 
 
 def test_the_known_giridih_figures_are_exact():
@@ -130,7 +133,9 @@ def test_the_known_giridih_figures_are_exact():
     assert got[("VS-2024", "BJP", "votes")] == 90204
     assert got[("VS-2024", "JLKM", "votes")] == 10787
     assert got[("VS-2024", "", "nota")] == 2004
-    assert got[("VS-2024", "", "electors")] == 304898
+    # Electors incl. 274 service voters, as printed in the Form 20 header: the
+    # denominator that matches votes polled incl. postal ballots.
+    assert got[("VS-2024", "", "electors")] == 305172
 
     # Published margin and the share it implies, as the audit reconstructed it:
     # 3,838 / 207,598 total valid votes including NOTA = 1.849%.
@@ -154,12 +159,6 @@ def test_dumri_margin_from_the_seeded_totals_matches_the_spec():
     got = {(r["party_abbr"], r["metric"]): int(r["value"])
            for r in rows("ac_totals.csv") if r["ac_number"] == "33"}
     assert got[("JLKM", "votes")] - got[("JMM", "votes")] == 10945
-
-
-def test_unverified_totals_are_sourced_as_such():
-    for r in rows("ac_totals.csv"):
-        if r["ac_number"] != "32":
-            assert "unverified" in r["source"], r
 
 
 # --------------------------------------------------------------------------
@@ -374,8 +373,9 @@ def test_giridih_has_both_its_blocks_panchayats():
     for r in rows("areas_panchayats.csv"):
         if r["ac_number"] == "32":
             by_block[r["block_name_en"]] = by_block.get(r["block_name_en"], 0) + 1
-    # LGD: 30 Giridih-block panchayats, 13 of whose villages are in Gandey (31).
-    assert by_block == {"Giridih Block": 17, "Pirtand Block": 17}
+    # LGD: 30 Giridih-block panchayats; the 2024 polling-station list has
+    # stations in 18 of them, so the other 12 are in Gandey (31) - D-013.
+    assert by_block == {"Giridih Block": 18, "Pirtand Block": 17}
 
 
 def test_village_aliases_point_at_seeded_panchayats():

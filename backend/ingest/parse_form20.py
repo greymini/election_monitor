@@ -547,38 +547,38 @@ def _write_rows(cur, doc: Form20Document, election_id: int, ac_id: int,
         cur.execute("DELETE FROM result_booth WHERE election_id = %s", (election_id,))
         cur.execute("DELETE FROM result_booth_meta WHERE election_id = %s", (election_id,))
 
+    # Collected first and written with executemany: psycopg pipelines it, so a
+    # remote database (Supabase through its pooler) takes one round trip per
+    # batch instead of one per cell - ~6,000 rows a Form 20.
+    votes_rows, meta_rows = [], []
     for r in doc.rows:
         # strict=True: every candidate column must get a value. Rows are
         # padded at parse time, so a mismatch here means a real defect.
         for cid, votes in zip(candidate_ids, r.votes, strict=True):
-            cur.execute(
-                "INSERT INTO result_booth (election_id, ac_id, ps_number, candidate_id, votes) "
-                "VALUES (%s, %s, %s, %s, %s) "
-                "ON CONFLICT (election_id, ps_number, candidate_id) DO UPDATE "
-                "SET votes = EXCLUDED.votes",
-                (election_id, ac_id, r.ps_number, cid, votes),
-            )
+            votes_rows.append((election_id, ac_id, r.ps_number, cid, votes))
         # NOTA as a candidate row, so it is inside valid_votes (D1/N7).
         if nota_id is not None and r.nota is not None:
-            cur.execute(
-                "INSERT INTO result_booth (election_id, ac_id, ps_number, candidate_id, votes) "
-                "VALUES (%s, %s, %s, %s, %s) "
-                "ON CONFLICT (election_id, ps_number, candidate_id) DO UPDATE "
-                "SET votes = EXCLUDED.votes",
-                (election_id, ac_id, r.ps_number, nota_id, r.nota),
-            )
-        cur.execute(
-            "INSERT INTO result_booth_meta (election_id, ac_id, ps_number, total_valid, "
-            "nota, rejected, tendered, source_doc, source_page) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) "
-            "ON CONFLICT (election_id, ps_number) DO UPDATE SET "
-            "total_valid = EXCLUDED.total_valid, nota = EXCLUDED.nota, "
-            "rejected = EXCLUDED.rejected, tendered = EXCLUDED.tendered, "
-            "source_doc = EXCLUDED.source_doc, source_page = EXCLUDED.source_page, "
-            "loaded_at = now()",
-            (election_id, ac_id, r.ps_number, r.total_valid, r.nota, r.rejected,
-             r.tendered, doc.source_doc, r.page_no),
-        )
+            votes_rows.append((election_id, ac_id, r.ps_number, nota_id, r.nota))
+        meta_rows.append((election_id, ac_id, r.ps_number, r.total_valid, r.nota, r.rejected,
+                          r.tendered, doc.source_doc, r.page_no))
+    cur.executemany(
+        "INSERT INTO result_booth (election_id, ac_id, ps_number, candidate_id, votes) "
+        "VALUES (%s, %s, %s, %s, %s) "
+        "ON CONFLICT (election_id, ps_number, candidate_id) DO UPDATE "
+        "SET votes = EXCLUDED.votes",
+        votes_rows,
+    )
+    cur.executemany(
+        "INSERT INTO result_booth_meta (election_id, ac_id, ps_number, total_valid, "
+        "nota, rejected, tendered, source_doc, source_page) "
+        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) "
+        "ON CONFLICT (election_id, ps_number) DO UPDATE SET "
+        "total_valid = EXCLUDED.total_valid, nota = EXCLUDED.nota, "
+        "rejected = EXCLUDED.rejected, tendered = EXCLUDED.tendered, "
+        "source_doc = EXCLUDED.source_doc, source_page = EXCLUDED.source_page, "
+        "loaded_at = now()",
+        meta_rows,
+    )
     return len(doc.rows)
 
 

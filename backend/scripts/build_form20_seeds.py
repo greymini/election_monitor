@@ -1,4 +1,4 @@
-"""Regenerate AC 32's VS-2019 and VS-2024 rows in db/seed/ac_totals.csv from Form 20.
+"""Regenerate db/seed/ac_totals.csv rows from every Form 20 workbook in db/seed/form20/.
 
     python scripts/build_form20_seeds.py            # rewrite the rows
     python scripts/build_form20_seeds.py --check    # exit 1 if they are stale
@@ -10,8 +10,14 @@ including postal ballots, postal votes per candidate, NOTA, valid votes
 come from db/seed/form20/candidate_parties.csv; a candidate it does not list is
 seeded under UNK ("party not recorded in source") rather than guessed.
 
-Rows for other ACs and other elections (VS-2014, LS-2024) and the `electors`
-rows (which Form 20 does not print) are left exactly as they are.
+Workbooks are named `<ac name>_<vs|ls><year>_form20.xlsx` (giridih_vs2024,
+gandey_vs2024, tundi_ls2024, ...); the AC number comes from db/seed/ac.csv.
+A Lok Sabha workbook is the assembly segment's own Form 20: its postal ballots
+are counted for the whole PC, so its postal rows are 0 and its totals are the
+segment's EVM votes.
+
+Rows for elections without a workbook (VS-2014, ...) and the `electors` rows
+(which Form 20 does not print) are left exactly as they are.
 """
 
 from __future__ import annotations
@@ -28,39 +34,48 @@ from ingest import form20_tables  # noqa: E402
 
 SEED = Path(__file__).resolve().parents[1] / "db" / "seed"
 FORM20 = SEED / "form20"
-AC = "32"
-FILES = {"VS-2019": FORM20 / "giridih_vs2019_form20.xlsx",
-         "VS-2024": FORM20 / "giridih_vs2024_form20.xlsx"}
 HEADER = ["ac_number", "election_label", "candidate_name", "party_abbr", "metric", "value", "source"]
 
 
-def parties() -> dict[tuple[str, str], str]:
+def files() -> list[tuple[str, str, str, Path]]:
+    """(ac_number, AC name, election label, workbook) for every Form 20 workbook."""
+    with (SEED / "ac.csv").open(encoding="utf-8") as fh:
+        acs = {r["name_en"].lower(): (r["ac_number"], r["name_en"]) for r in csv.DictReader(fh)}
+    out = []
+    for path in sorted(FORM20.glob("*_form20.xlsx")):
+        name, kind = path.stem.removesuffix("_form20").rsplit("_", 1)
+        ac, ac_name = acs[name]
+        out.append((ac, ac_name, f"{kind[:2].upper()}-{kind[2:]}", path))
+    return out
+
+
+def parties() -> dict[tuple[str, str, str], str]:
     with (FORM20 / "candidate_parties.csv").open(encoding="utf-8") as fh:
-        return {(r["election"], form20_tables.name_key(r["candidate"])): r["party_abbr"]
-                for r in csv.DictReader(fh)}
+        return {(r.get("ac_number") or "32", r["election"], form20_tables.name_key(r["candidate"])):
+                r["party_abbr"] for r in csv.DictReader(fh)}
 
 
 def form20_rows() -> list[dict]:
     known = parties()
     out = []
-    for label, path in FILES.items():
+    for ac, ac_name, label, path in files():
         table = form20_tables.read(path)
         bad = form20_tables.problems(table)
         if bad:
             raise SystemExit(f"{path.name} fails its integrity checks: {bad[:5]}")
-        source = f"ECI Form 20, Giridih {label} ({path.name}, Total Votes Polled row)"
+        source = f"ECI Form 20, {ac_name} {label} ({path.name}, Total Votes Polled row)"
         polled, postal = table.polled, table.postal
         for name, total, by_post in zip(table.candidates, polled.votes, postal.votes, strict=True):
-            party = known.get((label, form20_tables.name_key(name)), "UNK")
+            party = known.get((ac, label, form20_tables.name_key(name)), "UNK")
             display = form20_tables.display_name(name)
-            out.append(dict(ac_number=AC, election_label=label, candidate_name=display,
+            out.append(dict(ac_number=ac, election_label=label, candidate_name=display,
                             party_abbr=party, metric="votes", value=total, source=source))
-            out.append(dict(ac_number=AC, election_label=label, candidate_name=display,
+            out.append(dict(ac_number=ac, election_label=label, candidate_name=display,
                             party_abbr=party, metric="postal", value=by_post, source=source))
         # NOTA's postal ballots, against the same NOTA candidate row the booth
         # loader uses (ingest.parse_form20.NOTA_CANDIDATE_NAME), so the AC total
         # can add them (0023).
-        out.append(dict(ac_number=AC, election_label=label, candidate_name="NOTA",
+        out.append(dict(ac_number=ac, election_label=label, candidate_name="NOTA",
                         party_abbr="NOTA", metric="postal", value=postal.nota, source=source))
         for metric, value in (("nota", polled.nota),
                               ("total_valid", polled.valid + polled.nota),
@@ -68,18 +83,19 @@ def form20_rows() -> list[dict]:
                               ("postal", postal.valid + postal.nota),
                               ("postal_rejected", postal.rejected),
                               ("votes_polled", polled.total)):
-            out.append(dict(ac_number=AC, election_label=label, candidate_name="",
+            out.append(dict(ac_number=ac, election_label=label, candidate_name="",
                             party_abbr="", metric=metric, value=value, source=source))
     return out
 
 
 def rebuilt(text: str) -> str:
     rows = list(csv.DictReader(io.StringIO(text)))
-    replaced = [r for r in rows if not (r["ac_number"] == AC and r["election_label"] in FILES
+    covered = {(ac, label) for ac, _name, label, _path in files()}
+    replaced = [r for r in rows if not ((r["ac_number"], r["election_label"]) in covered
                                         and r["metric"] != "electors")]
-    # Insert the Form 20 rows where the old AC 32 rows for those elections were.
+    # Insert the Form 20 rows where the first replaced row was.
     position = next((i for i, r in enumerate(rows)
-                     if r["ac_number"] == AC and r["election_label"] in FILES), len(rows))
+                     if (r["ac_number"], r["election_label"]) in covered), len(rows))
     keep_before = [r for r in rows[:position] if r in replaced]
     keep_after = [r for r in rows[position:] if r in replaced]
     buf = io.StringIO()

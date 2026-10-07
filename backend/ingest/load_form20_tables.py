@@ -242,20 +242,21 @@ def load_table(path: Path, ac_number: int, election: str, dry_run: bool = False,
                     f"{evidence['same_ps_r']} at the same number, {evidence['best_offset_r']} "
                     f"at the best +-1/2 offset ({evidence['stations_compared']} stations). "
                     f"Mapped by number by ingest/load_form20_tables.py.")
-            for ps in stations:
-                cur.execute(
-                    "INSERT INTO booth_crosswalk (election_id, ac_id, ps_number, booth_uid, "
-                    "match_method, confidence, reviewed) VALUES (%s, %s, %s, %s, 'exact', %s, false)",
-                    (scope.election_id, scope.ac_id, ps, anchor_uid[ps], SAME_PS_CONFIDENCE))
-                cur.execute(
-                    "INSERT INTO crosswalk_audit (ac_id, election_id, ps_number, action, "
-                    "new_booth_uid, confidence, note) VALUES (%s, %s, %s, 'accept', %s, %s, %s)",
-                    (scope.ac_id, scope.election_id, ps, anchor_uid[ps], SAME_PS_CONFIDENCE, note))
+            cur.executemany(
+                "INSERT INTO booth_crosswalk (election_id, ac_id, ps_number, booth_uid, "
+                "match_method, confidence, reviewed) VALUES (%s, %s, %s, %s, 'exact', %s, false)",
+                [(scope.election_id, scope.ac_id, ps, anchor_uid[ps], SAME_PS_CONFIDENCE)
+                 for ps in stations])
+            cur.executemany(
+                "INSERT INTO crosswalk_audit (ac_id, election_id, ps_number, action, "
+                "new_booth_uid, confidence, note) VALUES (%s, %s, %s, 'accept', %s, %s, %s)",
+                [(scope.ac_id, scope.election_id, ps, anchor_uid[ps], SAME_PS_CONFIDENCE, note)
+                 for ps in stations])
 
         cur.execute("DELETE FROM ps_list_entry WHERE election_id = %s", (scope.election_id,))
-        for ps in stations:
-            cur.execute("INSERT INTO ps_list_entry (election_id, ac_id, ps_number, source_doc) "
-                        "VALUES (%s, %s, %s, %s)", (scope.election_id, scope.ac_id, ps, path.name))
+        cur.executemany("INSERT INTO ps_list_entry (election_id, ac_id, ps_number, source_doc) "
+                        "VALUES (%s, %s, %s, %s)",
+                        [(scope.election_id, scope.ac_id, ps, path.name) for ps in stations])
 
         year = scope.label.split("-")[-1]
         cur.execute(
@@ -294,16 +295,53 @@ def load_table(path: Path, ac_number: int, election: str, dry_run: bool = False,
     return summary
 
 
+def seed_loads() -> list[tuple[Path, int, str, bool]]:
+    """Every Form 20 workbook in db/seed/form20/, in load order.
+
+    (workbook, AC number, election, create booths). Per AC the VS-2024 file
+    comes first and creates the booths; the others map onto them by station
+    number (checked by `numbering_evidence`).
+    """
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+    from build_form20_seeds import files
+
+    order = []
+    for ac, _name, label, path in files():
+        order.append((path, int(ac), label, label == "VS-2024"))
+    return sorted(order, key=lambda t: (t[1], not t[3], t[2]))
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Load a Form 20 delivered as extracted tables (xlsx)")
-    ap.add_argument("xlsx", help="workbook, one sheet per Form 20 page")
-    ap.add_argument("--ac", type=int, required=True, help="AC number, e.g. 32")
-    ap.add_argument("--election", required=True, help="election label, e.g. VS-2024")
+    ap.add_argument("xlsx", nargs="?", help="workbook, one sheet per Form 20 page")
+    ap.add_argument("--all-seed", action="store_true",
+                    help="load every workbook in db/seed/form20/ (seed_loads order); a refused "
+                         "file is reported and skipped, and fails the run only with --strict")
+    ap.add_argument("--strict", action="store_true", help="with --all-seed: exit 1 on any refusal")
+    ap.add_argument("--ac", type=int, help="AC number, e.g. 32")
+    ap.add_argument("--election", help="election label, e.g. VS-2024")
     ap.add_argument("--create-booths", action="store_true",
                     help="create placeholder booths from station numbers (AC with no booths)")
     ap.add_argument("--dry-run", action="store_true", help="check everything, write nothing")
     args = ap.parse_args(argv)
     setup_logging()
+    if args.all_seed:
+        failed = 0
+        for path, ac, label, create in seed_loads():
+            if args.ac and ac != args.ac:
+                continue
+            try:
+                summary = load_table(path, ac, label, args.dry_run, create)
+                log.info("%s AC %s %s: %s stations, crosswalk %s", path.name, ac, label,
+                         summary["stations"], summary["crosswalk"])
+            except LoadRefused as exc:
+                # e.g. Silli LS-2024: a station was added between the LS and VS
+                # polls, so its numbers do not line up with the VS-2024 booths.
+                log.warning("not loaded %s: %s", path.name, exc)
+                failed += 1
+        return 1 if failed and args.strict else 0
+    if not (args.xlsx and args.ac and args.election):
+        ap.error("give a workbook with --ac and --election, or --all-seed")
     try:
         summary = load_table(Path(args.xlsx), args.ac, args.election, args.dry_run,
                              args.create_booths)

@@ -1,7 +1,7 @@
 ac_number,name_en,name_hi,reservation,pc_number,districts,bypoll_due,vacancy_date,verified,notes
-32,Giridih,गिरिडीह,GEN,11,Giridih,2027-03-06,2026-09-06,true,Sitting MLA died 6 Sep 2026; ECI must poll within six months
-31,Gandey,गांडेय,GEN,4,Giridih,,,false,"Spec 1: AC number is from the 2008 delimitation and must be confirmed against the CEO PS list header"
-33,Dumri,डुमरी,GEN,11,Giridih|Bokaro,,,false,"Spec 1: spans two districts; confirm AC number and block list from the PS list"
-42,Tundi,टुंडी,GEN,11,Dhanbad,,,false,"Spec 1: confirm AC number and parent PC from the PS list"
-61,Silli,सिल्ली,GEN,7,Ranchi,,,false,"Spec 1: confirm AC number from the PS list"
-65,Kanke,कांके,SC,7,Ranchi,,,false,"Spec 1: reserved seat; confirm AC number and ward list from the PS list"
+32,Giridih,गिरिडीह,GEN,6,Giridih,2027-03-06,2026-09-06,true,Sitting MLA died 6 Sep 2026; ECI must poll within six months
+31,Gandey,गांडेय,GEN,5,Giridih,,,false,"AC number and name confirmed by the CEO Jharkhand Form 20 (VS-2024, LS-2024); PC number from ceo.jharkhand.gov.in/ACPCList.html"
+33,Dumri,डुमरी,GEN,6,Giridih|Bokaro,,,false,"AC number and name confirmed by the CEO Jharkhand Form 20 (VS-2024, LS-2024); PC number from ceo.jharkhand.gov.in/ACPCList.html"
+42,Tundi,टुंडी,GEN,6,Dhanbad,,,false,"AC number and name confirmed by the CEO Jharkhand Form 20 (VS-2024, LS-2024); PC number from ceo.jharkhand.gov.in/ACPCList.html"
+61,Silli,सिल्ली,GEN,8,Ranchi,,,false,"AC number and name confirmed by the CEO Jharkhand Form 20 (VS-2024, LS-2024); PC number from ceo.jharkhand.gov.in/ACPCList.html"
+65,Kanke,कांके,SC,8,Ranchi,,,false,"AC number and name confirmed by the CEO Jharkhand Form 20 (VS-2024, LS-2024); PC number from ceo.jharkhand.gov.in/ACPCList.html"

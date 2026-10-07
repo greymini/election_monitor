@@ -181,6 +181,19 @@ def load_areas() -> int:
             if block is None:
                 log.warning("areas: AC %s has no block named %r", ac_number, r["block_name_en"])
                 continue
+            # A panchayat whose constituency changed (D-013: the 2024 polling-
+            # station list moved Giridih-block panchayats between AC 31 and 32)
+            # is moved, not duplicated: office holders, local results and news
+            # tags hang off its area_id.
+            if r.get("code"):
+                cur.execute(
+                    "UPDATE area SET block_id = %s, ac_id = %s, name_en = %s, name_hi = %s "
+                    "WHERE kind = %s AND code = %s AND block_id <> %s "
+                    "AND NOT EXISTS (SELECT 1 FROM area x WHERE x.block_id = %s "
+                    "                AND x.kind = %s AND x.name_en = %s)",
+                    (block["block_id"], ac_id, r["name_en"], r["name_hi"], r["kind"], r["code"],
+                     block["block_id"], block["block_id"], r["kind"], r["name_en"]),
+                )
             cur.execute(
                 "INSERT INTO area (block_id, ac_id, kind, name_en, name_hi, code, census_code) "
                 "VALUES (%s, %s, %s, %s, %s, %s, %s) "
@@ -491,6 +504,15 @@ def load_ac_totals() -> int:
             abbr = (r.get("party_abbr") or "").strip()
             if name:
                 pid = parties.get(abbr)
+                # A candidate whose party became known (UNK -> BSP) keeps its row:
+                # re-party it instead of inserting a second candidate of the same name.
+                cur.execute(
+                    "UPDATE candidate c SET party_id = %s WHERE c.election_id = %s AND c.name_en = %s "
+                    "AND c.party_id IS DISTINCT FROM %s AND NOT EXISTS (SELECT 1 FROM candidate x "
+                    "  WHERE x.election_id = c.election_id AND x.name_en = c.name_en "
+                    "  AND x.party_id IS NOT DISTINCT FROM %s)",
+                    (pid, eid, name, pid, pid),
+                )
                 cur.execute(
                     "INSERT INTO candidate (election_id, ac_id, name_en, party_id) "
                     "VALUES (%s, %s, %s, %s) "
@@ -500,6 +522,20 @@ def load_ac_totals() -> int:
                     (eid, ac_id, name, pid),
                 )
                 cand_id = cur.fetchone()["candidate_id"]
+                # Twins left by an older load under another party: drop them
+                # (and their totals) when no booth votes hang off them.
+                cur.execute(
+                    "DELETE FROM result_ac_total t USING candidate c WHERE t.candidate_id = c.candidate_id "
+                    "AND c.election_id = %s AND c.name_en = %s AND c.candidate_id <> %s "
+                    "AND NOT EXISTS (SELECT 1 FROM result_booth rb WHERE rb.candidate_id = c.candidate_id)",
+                    (eid, name, cand_id),
+                )
+                cur.execute(
+                    "DELETE FROM candidate c WHERE c.election_id = %s AND c.name_en = %s "
+                    "AND c.candidate_id <> %s "
+                    "AND NOT EXISTS (SELECT 1 FROM result_booth rb WHERE rb.candidate_id = c.candidate_id)",
+                    (eid, name, cand_id),
+                )
             elif abbr and r["metric"] == "votes":
                 # Kanke's JLKM total is published without a candidate name. The
                 # party total is still a real published figure, so it is kept

@@ -1,6 +1,234 @@
-election,candidate,party_abbr,source
-VS-2024,SUDIVYA KUMAR,JMM,"Repo seed ac_totals.csv (HLD 1.1, secondary); vote total confirmed by Form 20"
-VS-2024,NIRBHAY KUMAR SHAHABADI,BJP,"Repo seed ac_totals.csv (HLD 1.1, secondary); vote total confirmed by Form 20"
-VS-2024,NAVIN ANAND,JLKM,"Repo seed ac_totals.csv (HLD 1.1, secondary); vote total confirmed by Form 20"
-VS-2019,SUDIVYA KUMAR,JMM,"Repo seed ac_totals.csv (HLD 1.1, secondary); vote total confirmed by Form 20"
-VS-2019,NIRBHAY KUMAR SHAHABADI,BJP,"Repo seed ac_totals.csv (HLD 1.1, secondary); vote total confirmed by Form 20"
+ac_number,election,candidate,party_abbr,party_name,source
+31,LS-2024,AJAY KRISHNA,OTH,Moolniwasi Samaj Party,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/kodarma/
+31,LS-2024,AKLESHWAR SAW,OTH,Lokhit Adhikar Party,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/kodarma/
+31,LS-2024,ANNPURNA DEVI,BJP,,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/kodarma/
+31,LS-2024,ASHISH KUMAR,OTH,Right to Recall Party,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/kodarma/
+31,LS-2024,JAI PRAKASH VERMA,IND,,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/kodarma/
+31,LS-2024,JAYNARAYAN DAS,OTH,Bahujan Mukti Party,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/kodarma/
+31,LS-2024,JITLAL KISKU,IND,,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/kodarma/
+31,LS-2024,MANOJ KUMAR,IND,,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/kodarma/
+31,LS-2024,MD. SAGIR,IND,,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/kodarma/
+31,LS-2024,RAJESH,IND,,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/kodarma/
+31,LS-2024,RAMESHWAR PRASAD YADAV,IND,,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/kodarma/
+31,LS-2024,SAHADAT ANSARI,IND,,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/kodarma/
+31,LS-2024,SITAN RABIDAS,BSP,,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/kodarma/
+31,LS-2024,SURENDRA KUMAR AGRAWAL,IND,,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/kodarma/
+31,LS-2024,VINOD KUMAR SINGH,CPIML,,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/kodarma/
+31,VS-2024,ARJUN BAITHA,OTH,Aazad Samaj Party (Kanshi Ram),IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/gandey/
+31,VS-2024,BASANT DEV HANSDA,IND,,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/gandey/
+31,VS-2024,BIRENDRA KU. VISHWAKARMA,IND,,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/gandey/
+31,VS-2024,DINESH PRASAD VERMA,IND,,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/gandey/
+31,VS-2024,KALPANA MURMU SOREN,JMM,,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/gandey/
+31,VS-2024,KAMESHWAR PRASAD SAW,OTH,Lokhit Adhikar Party,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/gandey/
+31,VS-2024,LALITA ROY,IND,,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/gandey/
+31,VS-2024,MD KAUSAR AZAD,BSP,,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/gandey/
+31,VS-2024,MD. ARIF UDDIN,OTH,Aapki Vikas Party,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/gandey/
+31,VS-2024,MOHAMMAD KUDUS ANSARI,OTH,Rashtriya Samanta Dal,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/gandey/
+31,VS-2024,MUNIYA DEVI,BJP,,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/gandey/
+31,VS-2024,PRITEE KUMARI,IND,,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/gandey/
+31,VS-2024,RAJESH KUMAR,OTH,All India Forward Bloc,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/gandey/
+31,VS-2024,RAMESHWAR DUSADH,IND,,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/gandey/
+31,VS-2024,SAMIM AKHTAR,OTH,Jagrook Janta Party,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/gandey/
+32,LS-2019,AHMAD ANSARI,OTH,Bhartiya Lokmat Rashtrwadi Party,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2019/jharkhand/giridih/
+32,LS-2019,AMIT JANI,OTH,Uttar Pradesh Navnirman Sena,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2019/jharkhand/giridih/
+32,LS-2019,CHANDRA DEO PRASAD,OTH,Aihra National Party,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2019/jharkhand/giridih/
+32,LS-2019,CHANDRA PRAKASH CHOUDHARY,AJSU,,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2019/jharkhand/giridih/
+32,LS-2019,DWARAKA PRASAD LALA,OTH,Republican Party of India (A),IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2019/jharkhand/giridih/
+32,LS-2019,JAGARNATH MAHTO,JMM,,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2019/jharkhand/giridih/
+32,LS-2019,JOGESHWAR THAKUR,OTH,Vishva Shakti Party,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2019/jharkhand/giridih/
+32,LS-2019,MADHU SUDAN,OTH,Jharkhand Party (Secular),IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2019/jharkhand/giridih/
+32,LS-2019,RAJENDRA DASAUNDHI,IND,,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2019/jharkhand/giridih/
+32,LS-2019,RASUL BAKSH,BSP,,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2019/jharkhand/giridih/
+32,LS-2019,SANJEEV KUMAR MAHATO,IND,,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2019/jharkhand/giridih/
+32,LS-2019,SHIBU SINGH,OTH,Bhartiya Manavadhikaar Federal Party,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2019/jharkhand/giridih/
+32,LS-2019,SIMMI SUMAN,IND,,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2019/jharkhand/giridih/
+32,LS-2019,SOHRAB SHAH,OTH,Bahujan Mukti Party,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2019/jharkhand/giridih/
+32,LS-2019,SUNITA TUDU,IND,,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2019/jharkhand/giridih/
+32,LS-2024,CHANDRA PRAKASH CHOUDHARY,AJSU,,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/giridih/
+32,LS-2024,DWARAKA PRASAD LALA,IND,,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/giridih/
+32,LS-2024,GYANESHWAR PRASAD,OTH,Lokhit Adhikar Party,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/giridih/
+32,LS-2024,JAIRAM KUMAR MAHATO,IND,,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/giridih/
+32,LS-2024,KALAWATI DEVI,IND,,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/giridih/
+32,LS-2024,KAMAL PRASAD,BSP,,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/giridih/
+32,LS-2024,MATHURA PRASAD MAHATO,JMM,,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/giridih/
+32,LS-2024,MD AINUL ANSARI,OTH,Bahujan Mukti Party,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/giridih/
+32,LS-2024,PAPPU KUMAR NISHAD,OTH,Bhartiya Lokmat Rashtrwadi Party,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/giridih/
+32,LS-2024,PRAMOD RAM,OTH,Peoples Party of India (Democratic),IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/giridih/
+32,LS-2024,RAMESHWAR DUSADH,IND,,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/giridih/
+32,LS-2024,SHIVJI PRASAD,OTH,Right to Recall Party,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/giridih/
+32,LS-2024,SUBHASH KUMAR THAKUR,OTH,Sarv Samaj Party,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/giridih/
+32,LS-2024,SUBODH KUMAR YADAV,IND,,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/giridih/
+32,LS-2024,SUNITA TUDU,IND,,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/giridih/
+32,LS-2024,USHA SINGH,IND,,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/giridih/
+32,VS-2019,BUDHAN HEMABRAM,IND,,IndiaVotes / MyNeta: https://indiavotes.com/vidhan-sabha/jharkhand/2020/giridih/
+32,VS-2019,CHUNNU KANT,JVM,,IndiaVotes / MyNeta: https://indiavotes.com/vidhan-sabha/jharkhand/2020/giridih/ ; https://myneta.info/jharkhand2019/candidate.php?candidate_id=12067
+32,VS-2019,MD SALMAN SAHAB,OTH,Marxist Co-ordination,IndiaVotes / MyNeta: https://indiavotes.com/vidhan-sabha/jharkhand/2020/giridih/
+32,VS-2019,MOHAMMAD LALLU,IND,,IndiaVotes / MyNeta: https://indiavotes.com/vidhan-sabha/jharkhand/2020/giridih/
+32,VS-2019,NIRBHAY KUMAR SHAHABADI,BJP,,IndiaVotes / MyNeta: https://indiavotes.com/vidhan-sabha/jharkhand/2020/giridih/ ; https://myneta.info/jharkhand2019/candidate.php?candidate_id=12161
+32,VS-2019,RAJESH KU SINHA,CPIML,,IndiaVotes / MyNeta: https://indiavotes.com/vidhan-sabha/jharkhand/2020/giridih/
+32,VS-2019,SHWETA KUMARI,OTH,AAP,IndiaVotes / MyNeta: https://indiavotes.com/vidhan-sabha/jharkhand/2020/giridih/
+32,VS-2019,SHYAM PRASAD BARNWAL,IND,,IndiaVotes / MyNeta: https://indiavotes.com/vidhan-sabha/jharkhand/2020/giridih/
+32,VS-2019,SIKANDAR ALI,BSP,,IndiaVotes / MyNeta: https://indiavotes.com/vidhan-sabha/jharkhand/2020/giridih/
+32,VS-2019,SIMA KUMARI,OTH,AITC,IndiaVotes / MyNeta: https://indiavotes.com/vidhan-sabha/jharkhand/2020/giridih/
+32,VS-2019,SUDIVYA KUMAR,JMM,,IndiaVotes / MyNeta: https://indiavotes.com/vidhan-sabha/jharkhand/2020/giridih/ ; https://myneta.info/jharkhand2019/candidate.php?candidate_id=12066
+32,VS-2019,UPENDRA KUMAR SHARMA,OTH,LJP,IndiaVotes / MyNeta: https://indiavotes.com/vidhan-sabha/jharkhand/2020/giridih/
+32,VS-2024,AJEET RAY,OTH,All India Forward Bloc,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/giridih/
+32,VS-2024,ANISHA SINHA,OTH,Jagrook Janta Party,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/giridih/
+32,VS-2024,ARTI DEVI,IND,,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/giridih/
+32,VS-2024,ARUNDHATI MISHRA,BSP,,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/giridih/
+32,VS-2024,ASHWINI AMBEDKAR,OTH,Aapki Vikas Party,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/giridih/
+32,VS-2024,DR. BARNABAS HEMBROM,IND,,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/giridih/
+32,VS-2024,KRANTI KUMAR MURMU,OTH,Jharkhand Mukti Morcha (Ulgulan),IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/giridih/
+32,VS-2024,NAVIN ANAND,JLKM,,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/giridih/
+32,VS-2024,NIRBHAY KUMAR SHAHABADI,BJP,,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/giridih/
+32,VS-2024,OM PRAKASH MAHTO,IND,,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/giridih/
+32,VS-2024,QAISAR JAMAL ANSARI,IND,,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/giridih/
+32,VS-2024,RAMESHWAR DUSADH,IND,,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/giridih/
+32,VS-2024,SUDIVYA KUMAR,JMM,,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/giridih/
+32,VS-2024,SUNAINA PATHAK,IND,,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/giridih/
+33,LS-2024,CHANDRA PRAKASH CHOUDHARY,AJSU,,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/giridih/
+33,LS-2024,DWARAKA PRASAD LALA,IND,,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/giridih/
+33,LS-2024,GYANESHWAR PRASAD,OTH,Lokhit Adhikar Party,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/giridih/
+33,LS-2024,JAIRAM KUMAR MAHATO,IND,,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/giridih/
+33,LS-2024,KALAWATI DEVI,IND,,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/giridih/
+33,LS-2024,KAMAL PRASAD,BSP,,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/giridih/
+33,LS-2024,MATHURA PRASAD MAHATO,JMM,,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/giridih/
+33,LS-2024,MD AINUL ANSARI,OTH,Bahujan Mukti Party,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/giridih/
+33,LS-2024,PAPPU KUMAR NISHAD,OTH,Bhartiya Lokmat Rashtrwadi Party,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/giridih/
+33,LS-2024,PRAMOD RAM,OTH,Peoples Party of India (Democratic),IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/giridih/
+33,LS-2024,RAMESHWAR DUSADH,IND,,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/giridih/
+33,LS-2024,SHIVJI PRASAD,OTH,Right to Recall Party,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/giridih/
+33,LS-2024,SUBHASH KUMAR THAKUR,OTH,Sarv Samaj Party,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/giridih/
+33,LS-2024,SUBODH KUMAR YADAV,IND,,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/giridih/
+33,LS-2024,SUNITA TUDU,IND,,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/giridih/
+33,LS-2024,USHA SINGH,IND,,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/giridih/
+33,VS-2024,ABDUL MOBIN RIZVI,OTH,Rashtriya Jankranti Morcha,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/dumri/
+33,VS-2024,BAIJNATH MAHTO,IND,,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/dumri/
+33,VS-2024,BEBI DEVI,JMM,,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/dumri/
+33,VS-2024,BIJAY KUMAR MAHTO,OTH,Rashtriya Jansangharsh Swaraj Party,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/dumri/
+33,VS-2024,HARI PRASAD MAHTO,OTH,Swabhiman Party,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/dumri/
+33,VS-2024,JAIRAM KUMAR MAHATO,JLKM,,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/dumri/
+33,VS-2024,MANSUR ANSARI,IND,,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/dumri/
+33,VS-2024,MOHAN LAL SAW,OTH,Lokhit Adhikar Party,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/dumri/
+33,VS-2024,RAKIB ALAM,OTH,Aapki Vikas Party,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/dumri/
+33,VS-2024,ROSHAN LAL TURI,IND,,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/dumri/
+33,VS-2024,SHIVSHANKAR MAHTO,IND,,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/dumri/
+33,VS-2024,YASHODA DEVI,AJSU,,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/dumri/
+42,LS-2024,CHANDRA PRAKASH CHOUDHARY,AJSU,,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/giridih/
+42,LS-2024,DWARAKA PRASAD LALA,IND,,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/giridih/
+42,LS-2024,GYANESHWAR PRASAD,OTH,Lokhit Adhikar Party,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/giridih/
+42,LS-2024,JAIRAM KUMAR MAHATO,IND,,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/giridih/
+42,LS-2024,KALAWATI DEVI,IND,,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/giridih/
+42,LS-2024,KAMAL PRASAD,BSP,,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/giridih/
+42,LS-2024,MATHURA PRASAD MAHATO,JMM,,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/giridih/
+42,LS-2024,MD AINUL ANSARI,OTH,Bahujan Mukti Party,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/giridih/
+42,LS-2024,PAPPU KUMAR NISHAD,OTH,Bhartiya Lokmat Rashtrwadi Party,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/giridih/
+42,LS-2024,PRAMOD RAM,OTH,Peoples Party of India (Democratic),IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/giridih/
+42,LS-2024,RAMESHWAR DUSADH,IND,,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/giridih/
+42,LS-2024,SHIVJI PRASAD,OTH,Right to Recall Party,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/giridih/
+42,LS-2024,SUBHASH KUMAR THAKUR,OTH,Sarv Samaj Party,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/giridih/
+42,LS-2024,SUBODH KUMAR YADAV,IND,,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/giridih/
+42,LS-2024,SUNITA TUDU,IND,,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/giridih/
+42,LS-2024,USHA SINGH,IND,,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/giridih/
+42,VS-2024,AJMUL ANSARI,OTH,Samajwadi Party,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/tundi-tundo/
+42,VS-2024,ARUN SOREN,IND,,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/tundi-tundo/
+42,VS-2024,BANI DEVI,OTH,All India Forward Bloc,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/tundi-tundo/
+42,VS-2024,DEVILAL KISKU,OTH,Jharkhand Mukti Morcha (Ulgulan),IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/tundi-tundo/
+42,VS-2024,DIPNARAYAN SINGH,IND,,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/tundi-tundo/
+42,VS-2024,GANESH MANDAL,IND,,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/tundi-tundo/
+42,VS-2024,GAURI SHANKAR MAHTO,IND,,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/tundi-tundo/
+42,VS-2024,GAUTAM MANDAL,IND,,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/tundi-tundo/
+42,VS-2024,KALAWATI DEVI,OTH,Rashtriya Jankranti Morcha,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/tundi-tundo/
+42,VS-2024,KAMAL PRASAD,IND,,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/tundi-tundo/
+42,VS-2024,KANCHAN DEVI,OTH,Purvanchal Mahapanchayat,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/tundi-tundo/
+42,VS-2024,KHIRODHAR MANDAL,IND,,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/tundi-tundo/
+42,VS-2024,MAHESH CHANDRA DAS,OTH,Peoples Party of India (Democratic),IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/tundi-tundo/
+42,VS-2024,MATHURA PRASAD MAHATO,JMM,,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/tundi-tundo/
+42,VS-2024,MOTI LAL KISKU,BSP,,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/tundi-tundo/
+42,VS-2024,MOTILAL MAHTO,JLKM,,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/tundi-tundo/
+42,VS-2024,PAPPU KUMAR NISHAD,IND,,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/tundi-tundo/
+42,VS-2024,PRIYATOSH KUMAR PATHAK,IND,,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/tundi-tundo/
+42,VS-2024,RAJESH KUMAR PANDEY,IND,,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/tundi-tundo/
+42,VS-2024,VIKASH KUMAR MAHATO,BJP,,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/tundi-tundo/
+61,LS-2024,AINUL ANSARI,IND,,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/ranchi/
+61,LS-2024,ANJANI PANDEY,IND,,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/ranchi/
+61,LS-2024,ARSHAD AYUB,IND,,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/ranchi/
+61,LS-2024,BINOD ORAON,OTH,Bahujan Mukti Party,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/ranchi/
+61,LS-2024,BIRENDRA NATH MANJHI,OTH,Abua Jharkhand Party,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/ranchi/
+61,LS-2024,DEVENDRA NATH MAHTO,IND,,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/ranchi/
+61,LS-2024,"DHANANJAY BHAGAT ""GANDHI""",OTH,Mera Adhikaar Rashtriya Dal,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/ranchi/
+61,LS-2024,DHARMENDRA TIWARY,OTH,Bhartiya Jantantra Morcha,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/ranchi/
+61,LS-2024,HARINATH SAHU,OTH,Lokhit Adhikar Party,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/ranchi/
+61,LS-2024,HEMNTI DEVI,OTH,Samata Party,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/ranchi/
+61,LS-2024,KAMESHWAR PRASAD SAW,IND,,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/ranchi/
+61,LS-2024,KOLESHWAR MAHTO,IND,,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/ranchi/
+61,LS-2024,MANOJ KUMAR,BSP,,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/ranchi/
+61,LS-2024,MANORANJAN BHATTACHARYA,IND,,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/ranchi/
+61,LS-2024,MINTU PASWAN,OTH,Socialist Unity Centre Of India (Communist),IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/ranchi/
+61,LS-2024,NIPU SINGH,OTH,Rashtriya Jansangharsh Swaraj Party,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/ranchi/
+61,LS-2024,PANKAJ KUMAR RAVI,OTH,Peoples Party of India (Democratic),IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/ranchi/
+61,LS-2024,PRABEEN CHANDRA MAHATO,IND,,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/ranchi/
+61,LS-2024,PRAWEEN KACHHAP,OTH,Sampoorna Bharat Kranti Party,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/ranchi/
+61,LS-2024,RAMHARI GOPE,OTH,Ambedkarite Party of India,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/ranchi/
+61,LS-2024,RANJANA GIRI,OTH,Republican Party of India (A),IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/ranchi/
+61,LS-2024,SANJAY SETH,BJP,,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/ranchi/
+61,LS-2024,SANTOSH KUMAR JAISWAL,IND,,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/ranchi/
+61,LS-2024,SARWESHWARI SAHU,OTH,Ekam Sanatan Bharat Dal,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/ranchi/
+61,LS-2024,SHYAM BIHARI PRAJAPATI,OTH,Bhagidari Party(P),IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/ranchi/
+61,LS-2024,SOMA SINGH,OTH,Jai Maha Bharath Party,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/ranchi/
+61,LS-2024,YASHASWINI SAHAY,INC,,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/ranchi/
+61,VS-2024,AJIT KUMAR,BSP,,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/silli/
+61,VS-2024,AMIT KUMAR,JMM,,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/silli/
+61,VS-2024,ANIL KUMAR MAHTO,OTH,Peoples Party of India (Democratic),IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/silli/
+61,VS-2024,ANIL SINGH MUNDA,OTH,Bharat Adivasi Party,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/silli/
+61,VS-2024,DEVENDRA NATH MAHTO,JLKM,,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/silli/
+61,VS-2024,DHANPATI MAHTO,IND,,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/silli/
+61,VS-2024,DR. AMIT KUMAR,IND,,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/silli/
+61,VS-2024,HEMANTI DEVI,IND,,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/silli/
+61,VS-2024,MANORANJAN BHATTACHARYA,IND,,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/silli/
+61,VS-2024,PANKAJ MAHTO,IND,,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/silli/
+61,VS-2024,RABINDRA LAL YADAV,OTH,Jharkhand Party,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/silli/
+61,VS-2024,RAJESHWAR MAHTO,IND,,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/silli/
+61,VS-2024,RAMESHWAR MAHTO,OTH,Jharkhand Mukti Morcha (Ulgulan),IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/silli/
+61,VS-2024,SUDESH KUMAR MAHTO,AJSU,,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/silli/
+61,VS-2024,VIKAS SINGH MUNDA,IND,,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/silli/
+65,LS-2024,AINUL ANSARI,IND,,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/ranchi/
+65,LS-2024,ANJANI PANDEY,IND,,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/ranchi/
+65,LS-2024,ARSHAD AYUB,IND,,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/ranchi/
+65,LS-2024,BINOD ORAON,OTH,Bahujan Mukti Party,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/ranchi/
+65,LS-2024,BIRENDRA NATH MANJHI,OTH,Abua Jharkhand Party,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/ranchi/
+65,LS-2024,DEVENDRA NATH MAHTO,IND,,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/ranchi/
+65,LS-2024,"DHANANJAY BHAGAT ""GANDHI""",OTH,Mera Adhikaar Rashtriya Dal,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/ranchi/
+65,LS-2024,DHARMENDRA TIWARY,OTH,Bhartiya Jantantra Morcha,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/ranchi/
+65,LS-2024,HARINATH SAHU,OTH,Lokhit Adhikar Party,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/ranchi/
+65,LS-2024,HEMNTI DEVI,OTH,Samata Party,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/ranchi/
+65,LS-2024,KAMESHWAR PRASAD SAW,IND,,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/ranchi/
+65,LS-2024,KOLESHWAR MAHTO,IND,,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/ranchi/
+65,LS-2024,MANOJ KUMAR,BSP,,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/ranchi/
+65,LS-2024,MANORANJAN BHATTACHARYA,IND,,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/ranchi/
+65,LS-2024,MINTU PASWAN,OTH,Socialist Unity Centre Of India (Communist),IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/ranchi/
+65,LS-2024,NIPU SINGH,OTH,Rashtriya Jansangharsh Swaraj Party,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/ranchi/
+65,LS-2024,PANKAJ KUMAR RAVI,OTH,Peoples Party of India (Democratic),IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/ranchi/
+65,LS-2024,PRABEEN CHANDRA MAHATO,IND,,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/ranchi/
+65,LS-2024,PRAWEEN KACHHAP,OTH,Sampoorna Bharat Kranti Party,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/ranchi/
+65,LS-2024,RAMHARI GOPE,OTH,Ambedkarite Party of India,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/ranchi/
+65,LS-2024,RANJANA GIRI,OTH,Republican Party of India (A),IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/ranchi/
+65,LS-2024,SANJAY SETH,BJP,,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/ranchi/
+65,LS-2024,SANTOSH KUMAR JAISWAL,IND,,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/ranchi/
+65,LS-2024,SARWESHWARI SAHU,OTH,Ekam Sanatan Bharat Dal,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/ranchi/
+65,LS-2024,SHYAM BIHARI PRAJAPATI,OTH,Bhagidari Party(P),IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/ranchi/
+65,LS-2024,SOMA SINGH,OTH,Jai Maha Bharath Party,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/ranchi/
+65,LS-2024,YASHASWINI SAHAY,INC,,IndiaVotes (from ECI): https://indiavotes.com/lok-sabha/2024/jharkhand/ranchi/
+65,VS-2024,AJIT KU RAVI,OTH,Right to Recall Party,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/kanke/
+65,VS-2024,ANIL KUMAR PASWAN,OTH,Jharkhand Party,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/kanke/
+65,VS-2024,ASHOK KUMAR NAG,IND,,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/kanke/
+65,VS-2024,DEEPSHIKHA KUMARI,IND,,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/kanke/
+65,VS-2024,DR. JITU CHARAN RAM,BJP,,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/kanke/
+65,VS-2024,MADHUSUDAN KUMAR,OTH,Aazad Samaj Party (Kanshi Ram),IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/kanke/
+65,VS-2024,MUKUL NAYAK,OTH,Lokhit Adhikar Party,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/kanke/
+65,VS-2024,PHULESHWAR BAITHA,JLKM,,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/kanke/
+65,VS-2024,RAJAN NAYAK,OTH,Peoples Party of India (Democratic),IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/kanke/
+65,VS-2024,SANTOSH KUMAR RAJAK,OTH,Communist Party Of India,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/kanke/
+65,VS-2024,SEEMA RAY,IND,,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/kanke/
+65,VS-2024,SURENDRA MIRDHA ALIAS SUREN KUMAR KALINDI,OTH,Samajwadi Party,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/kanke/
+65,VS-2024,SURESH KUMAR BAITHA,INC,,IndiaVotes (from ECI): https://indiavotes.com/vidhan-sabha/jharkhand/2024/kanke/
