@@ -19,7 +19,9 @@ COPY chatbot ./chatbot
 COPY analytics ./analytics
 # The first admin is created from the API image (it has bcrypt and jose):
 #   docker compose run --rm api python -m scripts.create_admin ...
-COPY scripts/__init__.py scripts/create_admin.py ./scripts/
+# api.main bootstraps the single login (APP_USERNAME / APP_PASSWORD) at startup.
+COPY scripts ./scripts
+COPY ingest ./ingest
 # /boundaries serves source warnings and unseeded blocks from the built file.
 COPY db/seed/geo ./db/seed/geo
 
@@ -27,4 +29,5 @@ RUN useradd --create-home --uid 10001 appuser && chown -R appuser /app
 USER appuser
 
 EXPOSE 8000
-CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
+# PORT is set by hosts such as Railway; 8000 otherwise.
+CMD ["sh", "-c", "uvicorn api.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 2"]
