@@ -23,6 +23,8 @@ COPY backend/analytics ./analytics
 # api.main bootstraps the single login (APP_USERNAME / APP_PASSWORD) at startup.
 COPY backend/scripts ./scripts
 COPY backend/ingest ./ingest
+# /news and /news/summary use news.crawl_rss (place terms) and news.embed.
+COPY backend/news ./news
 # /boundaries serves source warnings and unseeded blocks from the built file.
 COPY backend/db/seed/geo ./db/seed/geo
 

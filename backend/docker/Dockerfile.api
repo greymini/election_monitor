@@ -22,6 +22,8 @@ COPY analytics ./analytics
 # api.main bootstraps the single login (APP_USERNAME / APP_PASSWORD) at startup.
 COPY scripts ./scripts
 COPY ingest ./ingest
+# /news and /news/summary use news.crawl_rss (place terms) and news.embed.
+COPY news ./news
 # /boundaries serves source warnings and unseeded blocks from the built file.
 COPY db/seed/geo ./db/seed/geo
 

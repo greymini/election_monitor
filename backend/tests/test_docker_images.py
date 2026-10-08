@@ -16,12 +16,12 @@ import pytest
 from tests.paths import BACKEND
 
 # Imports an image deliberately goes without, each inside a try/except that
-# degrades rather than fails. The API ranks news by date when news.embed (and
-# its sentence-transformers model, worker-only) is absent; chatbot.tools'
-# news search does the same.
+# degrades rather than fails. The API image needs `news` (/news and
+# /news/summary import news.crawl_rss; leaving it out was a 500 on Railway);
+# news.embed's model is still worker-only and the API ranks by date without it.
 # The worker uses chatbot.llm and chatbot.budget for news labelling; only the
 # chat tools (never run by the worker) import api.booth_card, lazily.
-OPTIONAL = {("Dockerfile.api", "news"), ("Dockerfile.worker", "api")}
+OPTIONAL = {("Dockerfile.worker", "api")}
 
 LOCAL = {p.name for p in BACKEND.iterdir() if p.is_dir() and (p / "__init__.py").exists()}
 
