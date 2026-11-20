@@ -1,0 +1,32 @@
+{
+  "_note": "LLD §5.4. Recipients: principal, coordinators, reporter_parent, next_level_up, finance_all, self. Nobody is ever sent a report they could not see; restricted reports therefore reach only the principal and coordinators. The weekly digest goes to the principal on Monday 09:00; its need-versus-spend part only to finance scope all.",
+  "rules": [
+    {"code": "restricted_filed", "trigger": "report_filed", "condition": {"restricted": true}, "priority": 10,
+     "recipients": ["principal", "coordinators"], "include_media": false,
+     "description": "Restricted category: principal and coordinators only, text only"},
+    {"code": "urgent_filed", "trigger": "report_filed", "condition": {"urgency": "urgent"}, "priority": 20,
+     "recipients": ["principal", "coordinators", "reporter_parent"], "include_media": true,
+     "description": "Urgent report filed: at once, with the first photo"},
+    {"code": "normal_filed", "trigger": "report_filed", "condition": {"urgency": "normal"}, "priority": 30,
+     "recipients": ["reporter_parent"], "include_media": true,
+     "description": "Normal report: one message to the reporter's parent, no escalation"},
+    {"code": "unsorted_autofiled", "trigger": "report_unsorted", "condition": {}, "priority": 40,
+     "recipients": ["coordinators"], "fallback": ["principal"], "include_media": true,
+     "description": "Auto-filed with no category: coordinators sort it"},
+    {"code": "urgent_escalate_30", "trigger": "report_unacked", "condition": {"urgency": "urgent"}, "priority": 50,
+     "recipients": ["principal", "coordinators", "reporter_parent", "next_level_up"], "after_minutes": 30,
+     "include_media": true, "description": "Urgent and not acknowledged after 30 minutes"},
+    {"code": "urgent_escalate_60", "trigger": "report_unacked", "condition": {"urgency": "urgent"}, "priority": 60,
+     "recipients": ["principal", "coordinators", "reporter_parent", "next_level_up"], "after_minutes": 60,
+     "include_media": true, "description": "Urgent and not acknowledged after 60 minutes; then marked escalated"},
+    {"code": "digest_daily", "trigger": "daily_digest", "condition": {}, "priority": 70,
+     "recipients": ["principal", "coordinators", "finance_all"], "at_local_time": "20:00", "include_media": false,
+     "description": "Daily digest; the finance part only to finance scope all"},
+    {"code": "digest_weekly", "trigger": "weekly_digest", "condition": {"weekday": "mon"}, "priority": 75,
+     "recipients": ["principal"], "at_local_time": "09:00", "include_media": false,
+     "description": "Weekly digest, Monday 09:00; top five need-versus-spend areas only to finance scope all"},
+    {"code": "balance_nudge", "trigger": "balance_idle", "condition": {}, "priority": 80,
+     "recipients": ["self"], "after_minutes": 7200, "at_local_time": "10:00", "include_media": false,
+     "description": "Positive balance and no expense for 5 days; at most once per 5 days"}
+  ]
+}

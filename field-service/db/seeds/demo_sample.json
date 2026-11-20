@@ -1,0 +1,785 @@
+{
+  "_note": "Sample data for the browser demo (python -m scripts.demo). Invented entries only. Loaded by pulse/demo/sample.py through the real services. days_ago counts back from the moment the demo starts; hour is the IST hour of the day.",
+  "asr_default_text": "गाँव के टोले में चापाकल खराब है, लोग दूर से पानी ला रहे हैं",
+  "extra_members": [
+    {
+      "user_id": "usr-coordinator",
+      "display_name": "डेमो समन्वयक",
+      "parent": "principal",
+      "is_coordinator": true,
+      "finance_scope": "team",
+      "can_give_advance": false,
+      "scopes": [
+        {
+          "block_id": "blk-a"
+        },
+        {
+          "block_id": "blk-b"
+        },
+        {
+          "block_id": "blk-c"
+        }
+      ]
+    },
+    {
+      "user_id": "usr-treasurer",
+      "display_name": "डेमो कोषाध्यक्ष",
+      "parent": "principal",
+      "is_coordinator": false,
+      "finance_scope": "all",
+      "can_give_advance": false,
+      "scopes": []
+    }
+  ],
+  "inflows": [
+    {
+      "to": "principal",
+      "amount": "300000",
+      "fund_source": "own",
+      "days_ago": 21,
+      "remark": "चुनाव खर्च के लिए अपनी राशि"
+    },
+    {
+      "to": "principal",
+      "amount": "150000",
+      "fund_source": "party",
+      "days_ago": 18,
+      "remark": "पार्टी से प्राप्त"
+    }
+  ],
+  "advances": [
+    {
+      "key": "pa",
+      "from": "principal",
+      "to": "incharge-a",
+      "amount": "75000",
+      "days_ago": 20,
+      "then": "ack"
+    },
+    {
+      "key": "pb",
+      "from": "principal",
+      "to": "incharge-b",
+      "amount": "70000",
+      "days_ago": 20,
+      "then": "ack"
+    },
+    {
+      "key": "a1",
+      "from": "incharge-a",
+      "to": "worker-a1",
+      "amount": "15000",
+      "days_ago": 17,
+      "then": "ack"
+    },
+    {
+      "key": "a2",
+      "from": "incharge-a",
+      "to": "worker-a2",
+      "amount": "12000",
+      "days_ago": 16,
+      "then": "ack"
+    },
+    {
+      "key": "a2x",
+      "from": "incharge-a",
+      "to": "worker-a2",
+      "amount": "5000",
+      "days_ago": 6,
+      "then": "dispute",
+      "reason": "amount_differs",
+      "note": "चार हजार ही मिले"
+    },
+    {
+      "key": "b1",
+      "from": "incharge-b",
+      "to": "worker-b1",
+      "amount": "18000",
+      "days_ago": 15,
+      "then": "ack"
+    },
+    {
+      "key": "b1x",
+      "from": "incharge-b",
+      "to": "worker-b1",
+      "amount": "4000",
+      "days_ago": 3,
+      "then": "pending"
+    },
+    {
+      "key": "pb2",
+      "from": "principal",
+      "to": "incharge-b",
+      "amount": "20000",
+      "days_ago": 0,
+      "hours_ago": 2,
+      "then": "pending"
+    }
+  ],
+  "returns": [
+    {
+      "from": "worker-a1",
+      "to": "incharge-a",
+      "amount": "1500",
+      "days_ago": 8,
+      "then": "ack",
+      "remark": "बचा हुआ पैसा"
+    },
+    {
+      "from": "worker-a2",
+      "to": "incharge-a",
+      "amount": "1000",
+      "days_ago": 1,
+      "then": "pending",
+      "remark": "बची राशि वापस"
+    }
+  ],
+  "expenses": [
+    [
+      "worker-a1",
+      "FOOD.TEA",
+      "350",
+      "area-a1",
+      16,
+      "बैठक में चाय-नाश्ता",
+      "cash"
+    ],
+    [
+      "worker-a1",
+      "TRAVEL.FUEL",
+      "800",
+      "area-a1",
+      15,
+      "बाइक का पेट्रोल",
+      "cash"
+    ],
+    [
+      "worker-a1",
+      "PUBLICITY.BANNER",
+      "2400",
+      "area-a1",
+      13,
+      "चौक पर फ्लेक्स",
+      "upi"
+    ],
+    [
+      "worker-a1",
+      "EVENT.TENT",
+      "4500",
+      "area-a1",
+      11,
+      "नुक्कड़ सभा का टेंट",
+      "cash"
+    ],
+    [
+      "worker-a1",
+      "TEAM.RECHARGE",
+      "299",
+      "area-a1",
+      9,
+      "फोन रिचार्ज",
+      "upi"
+    ],
+    [
+      "worker-a1",
+      "FOOD.MEALS",
+      "1200",
+      "area-a1",
+      6,
+      "कार्यकर्ता भोजन",
+      "cash"
+    ],
+    [
+      "worker-a1",
+      "TRAVEL.FUEL",
+      "650",
+      "area-a1",
+      3,
+      "पेट्रोल",
+      "cash"
+    ],
+    [
+      "worker-a2",
+      "FOOD.TEA",
+      "280",
+      "area-a2",
+      14,
+      "चाय",
+      "cash"
+    ],
+    [
+      "worker-a2",
+      "PUBLICITY.WALL",
+      "3200",
+      "area-a2",
+      12,
+      "दीवार लेखन",
+      "cash"
+    ],
+    [
+      "worker-a2",
+      "EVENT.SOUND",
+      "2800",
+      "area-a3",
+      10,
+      "साउंड बॉक्स",
+      "cash"
+    ],
+    [
+      "worker-a2",
+      "TRAVEL.HIRE",
+      "1800",
+      "area-a3",
+      7,
+      "गाड़ी भाड़ा",
+      "cash"
+    ],
+    [
+      "worker-a2",
+      "TEAM.ALLOWANCE",
+      "1500",
+      "area-a2",
+      4,
+      "दो दिन का भत्ता",
+      "cash"
+    ],
+    [
+      "worker-a2",
+      "FOOD.TEA",
+      "180",
+      "area-a3",
+      1,
+      "चाय",
+      "cash"
+    ],
+    [
+      "incharge-a",
+      "EVENT.VENUE",
+      "6000",
+      "area-a2",
+      14,
+      "कुर्सियाँ और दरी",
+      "bank_transfer"
+    ],
+    [
+      "incharge-a",
+      "PUBLICITY.PRINT",
+      "7500",
+      "area-a1",
+      12,
+      "पर्चे की छपाई",
+      "upi"
+    ],
+    [
+      "incharge-a",
+      "OFFICE.RENT",
+      "8000",
+      "area-a1",
+      19,
+      "प्रखंड कार्यालय किराया",
+      "bank_transfer"
+    ],
+    [
+      "incharge-a",
+      "TRAVEL.HIRE",
+      "3500",
+      "area-a3",
+      5,
+      "बोलेरो भाड़ा",
+      "cash"
+    ],
+    [
+      "incharge-a",
+      "SOCIAL.FESTIVAL",
+      "2100",
+      "area-a2",
+      2,
+      "पूजा समिति",
+      "cash"
+    ],
+    [
+      "worker-b1",
+      "FOOD.TEA",
+      "420",
+      "area-b1",
+      14,
+      "चाय-बिस्कुट",
+      "cash"
+    ],
+    [
+      "worker-b1",
+      "TRAVEL.FUEL",
+      "900",
+      "area-b1",
+      12,
+      "पेट्रोल",
+      "cash"
+    ],
+    [
+      "worker-b1",
+      "PUBLICITY.BANNER",
+      "1600",
+      "area-b1",
+      9,
+      "बैनर",
+      "cash"
+    ],
+    [
+      "worker-b1",
+      "EVENT.FOOD",
+      "3800",
+      "area-b1",
+      6,
+      "सभा का भोजन",
+      "cash"
+    ],
+    [
+      "worker-b1",
+      "TEAM.BOOTH",
+      "2500",
+      "area-b1",
+      4,
+      "बूथ टीम खर्च",
+      "cash"
+    ],
+    [
+      "worker-b1",
+      "ASSIST.MEDICAL",
+      "3000",
+      "area-b1",
+      2,
+      "इलाज में मदद",
+      "cash"
+    ],
+    [
+      "incharge-b",
+      "PUBLICITY.SOCIALMEDIA",
+      "5000",
+      "area-b2",
+      15,
+      "फेसबुक प्रचार",
+      "upi"
+    ],
+    [
+      "incharge-b",
+      "EVENT.TENT",
+      "9500",
+      "area-c1",
+      13,
+      "जनसभा मंच",
+      "bank_transfer"
+    ],
+    [
+      "incharge-b",
+      "TRAVEL.OUTSTATION",
+      "4200",
+      "area-c2",
+      11,
+      "जिला मुख्यालय यात्रा",
+      "cash"
+    ],
+    [
+      "incharge-b",
+      "FOOD.GUESTS",
+      "2600",
+      "area-b3",
+      9,
+      "अतिथि भोजन",
+      "cash"
+    ],
+    [
+      "incharge-b",
+      "DONATE.SPORTS",
+      "5100",
+      "area-b2",
+      7,
+      "फुटबॉल प्रतियोगिता",
+      "cash"
+    ],
+    [
+      "incharge-b",
+      "WORKS.LIGHT",
+      "6800",
+      "area-c1",
+      5,
+      "स्ट्रीट लाइट मरम्मत",
+      "cash"
+    ],
+    [
+      "incharge-b",
+      "PUBLICITY.WALL",
+      "2900",
+      "area-c2",
+      3,
+      "दीवार लेखन",
+      "cash"
+    ],
+    [
+      "incharge-b",
+      "TEAM.LODGING",
+      "1800",
+      "area-b3",
+      1,
+      "ठहरने का खर्च",
+      "cash"
+    ],
+    [
+      "principal",
+      "PUBLICITY.NEWS",
+      "28000",
+      "area-c1",
+      17,
+      "लोकल चैनल विज्ञापन",
+      "bank_transfer"
+    ],
+    [
+      "principal",
+      "EVENT.SOUND",
+      "12000",
+      "area-b2",
+      10,
+      "बड़ी सभा की साउंड",
+      "bank_transfer"
+    ],
+    [
+      "principal",
+      "PARTY.PROGRAMME",
+      "7000",
+      "area-a1",
+      8,
+      "पार्टी कार्यक्रम",
+      "upi"
+    ],
+    [
+      "principal",
+      "OFFICE.STAFF",
+      "15000",
+      "area-b1",
+      6,
+      "कार्यालय स्टाफ",
+      "bank_transfer"
+    ],
+    [
+      "principal",
+      "ASSIST.RELIEF",
+      "10000",
+      "area-c2",
+      4,
+      "आग पीड़ित परिवार को राहत",
+      "cash"
+    ],
+    [
+      "principal",
+      "TRAVEL.HIRE",
+      "6500",
+      "area-b3",
+      2,
+      "प्रचार गाड़ी",
+      "cash"
+    ]
+  ],
+  "linked_expenses": [
+    {
+      "member": "worker-a1",
+      "bucket": "WORKS.WATER",
+      "amount": "2200",
+      "area": "area-a1",
+      "days_ago": 18,
+      "remark": "चापाकल की मरम्मत",
+      "report": "water1",
+      "issue": "water",
+      "followup": {
+        "asked_days_ago": 4,
+        "answer": "done",
+        "answered_days_ago": 3
+      }
+    },
+    {
+      "member": "worker-b1",
+      "bucket": "WORKS.ROAD",
+      "amount": "4500",
+      "area": "area-b1",
+      "days_ago": 5,
+      "remark": "नाली की सफाई",
+      "report": "drain",
+      "issue": "drain"
+    }
+  ],
+  "reports": [
+    {
+      "key": "water1",
+      "reporter": "worker-a1",
+      "area": "area-a1",
+      "category": "SERVICES",
+      "urgency": "normal",
+      "days_ago": 19,
+      "note": "टोले का चापाकल दो हफ्ते से खराब",
+      "photos": [
+        [
+          40,
+          110,
+          170
+        ]
+      ],
+      "voice": "पश्चिम टोला का चापाकल खराब है, पानी के लिए दूर जाना पड़ता है",
+      "status": "resolved",
+      "assign": "incharge-a",
+      "close_note": "मिस्त्री से मरम्मत कराई गई",
+      "issue": "water",
+      "loc": [
+        24.2051,
+        86.3012
+      ]
+    },
+    {
+      "key": "water2",
+      "reporter": "worker-a1",
+      "area": "area-a1",
+      "category": "SERVICES",
+      "urgency": "normal",
+      "days_ago": 2,
+      "note": "स्कूल के पास वाला चापाकल भी बंद",
+      "photos": [
+        [
+          60,
+          120,
+          190
+        ],
+        [
+          30,
+          90,
+          150
+        ]
+      ],
+      "voice": null,
+      "status": "acknowledged",
+      "issue": "water",
+      "loc": [
+        24.2093,
+        86.2968
+      ]
+    },
+    {
+      "key": "accident",
+      "reporter": "worker-a2",
+      "area": "area-a3",
+      "category": "ACCIDENT",
+      "urgency": "urgent",
+      "days_ago": 6,
+      "note": "मोड़ पर ट्रैक्टर पलटा, दो लोग घायल",
+      "photos": [
+        [
+          190,
+          60,
+          50
+        ]
+      ],
+      "voice": "मोड़ के पास ट्रैक्टर पलट गया है, दो लोगों को चोट आई है",
+      "status": "resolved",
+      "assign": "incharge-a",
+      "close_note": "घायलों को अस्पताल पहुँचाया",
+      "loc": [
+        24.1702,
+        86.2551
+      ]
+    },
+    {
+      "key": "health",
+      "reporter": "worker-b1",
+      "area": "area-b1",
+      "category": "HEALTH",
+      "urgency": "normal",
+      "days_ago": 4,
+      "note": "उप स्वास्थ्य केंद्र में डॉक्टर नहीं आते",
+      "photos": [
+        [
+          90,
+          160,
+          90
+        ]
+      ],
+      "voice": null,
+      "status": "assigned",
+      "assign": "incharge-b",
+      "loc": [
+        24.2405,
+        86.3374
+      ]
+    },
+    {
+      "key": "drain",
+      "reporter": "worker-b1",
+      "area": "area-b1",
+      "category": "SERVICES",
+      "urgency": "normal",
+      "days_ago": 7,
+      "note": "बाजार की नाली जाम, पानी सड़क पर",
+      "photos": [
+        [
+          120,
+          100,
+          70
+        ]
+      ],
+      "voice": "बाजार वाली नाली पूरी जाम है, बारिश में पानी सड़क पर आ जाता है",
+      "status": "in_progress",
+      "assign": "worker-b1",
+      "issue": "drain",
+      "loc": [
+        24.2431,
+        86.3302
+      ]
+    },
+    {
+      "key": "scheme",
+      "reporter": "worker-a2",
+      "area": "area-a2",
+      "category": "SCHEME",
+      "urgency": "normal",
+      "days_ago": 3,
+      "note": "कई परिवारों का राशन कार्ड नहीं बना",
+      "photos": [],
+      "voice": "राशन कार्ड के लिए लोग तीन बार प्रखंड गए पर काम नहीं हुआ",
+      "status": "new"
+    },
+    {
+      "key": "law",
+      "reporter": "incharge-b",
+      "area": "area-c1",
+      "category": "LAW",
+      "urgency": "urgent",
+      "days_ago": 1,
+      "note": "रात में सभा स्थल पर झगड़ा हुआ",
+      "photos": [
+        [
+          150,
+          40,
+          120
+        ]
+      ],
+      "voice": null,
+      "status": "acknowledged",
+      "loc": [
+        24.1877,
+        86.3911
+      ]
+    },
+    {
+      "key": "school",
+      "reporter": "worker-a1",
+      "area": "area-a1",
+      "category": "EDU",
+      "urgency": "normal",
+      "days_ago": 9,
+      "note": "स्कूल की छत टपक रही है",
+      "photos": [
+        [
+          200,
+          170,
+          60
+        ]
+      ],
+      "voice": null,
+      "status": "closed_no_action",
+      "close_note": "विभाग पहले से काम कर रहा है"
+    },
+    {
+      "key": "farm",
+      "reporter": "worker-b1",
+      "area": "area-b1",
+      "category": "FARM",
+      "urgency": "normal",
+      "days_ago": 5,
+      "note": "खाद की दुकान पर लंबी लाइन",
+      "photos": [
+        [
+          110,
+          150,
+          60
+        ],
+        [
+          100,
+          140,
+          50
+        ]
+      ],
+      "voice": null,
+      "status": "assigned",
+      "assign": "incharge-b",
+      "loc": [
+        24.2489,
+        86.3456
+      ]
+    },
+    {
+      "key": "unsorted",
+      "reporter": "worker-a2",
+      "area": "area-a3",
+      "category": null,
+      "urgency": "normal",
+      "days_ago": 0,
+      "hours_ago": 3,
+      "note": null,
+      "photos": [
+        [
+          80,
+          80,
+          80
+        ]
+      ],
+      "voice": "पुलिया के पास कुछ लोग इकट्ठा हैं, देखिए",
+      "status": "new"
+    }
+  ],
+  "issues": [
+    {
+      "key": "water",
+      "from_report": "water1",
+      "title": "पश्चिम टोला पेयजल",
+      "days_ago": 18
+    },
+    {
+      "key": "drain",
+      "from_report": "drain",
+      "title": "बाजार नाली जाम",
+      "days_ago": 6
+    }
+  ],
+  "election_window": {
+    "starts_days_ago": 10,
+    "ends_in_days": 30,
+    "ceiling_amount": "4000000",
+    "cash_limit": "10000",
+    "_note": "created before the entries, so those dated inside it are marked in_election_window"
+  },
+  "statutory_heads": {
+    "_note": "demo only: the presets ship unmapped; FOOD, OFFICE and others stay unmapped to show 'not mapped'",
+    "EVENT": "Public meetings and rallies",
+    "PUBLICITY": "Campaign material and media",
+    "TRAVEL": "Vehicles and fuel",
+    "TEAM": "Workers and agents"
+  },
+  "other_labels": [
+    {
+      "member": "worker-a1",
+      "label": "छाता",
+      "amount": "450",
+      "area": "area-a1",
+      "days_ago": 12
+    },
+    {
+      "member": "worker-a2",
+      "label": "छाता",
+      "amount": "380",
+      "area": "area-a2",
+      "days_ago": 8
+    },
+    {
+      "member": "worker-b1",
+      "label": "छाता",
+      "amount": "520",
+      "area": "area-b1",
+      "days_ago": 3
+    }
+  ]
+}

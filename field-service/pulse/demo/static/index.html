@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Project Pulse · local demo</title>
+<link rel="stylesheet" href="/demo/assets/demo.css">
+</head>
+<body>
+<header>
+  <div class="brand">Project Pulse <span class="tag">local demo · dummy data · nothing is sent</span></div>
+  <div class="clock">
+    <span>Simulated time (IST): <b id="now">…</b></span>
+    <span id="offset" class="muted"></span>
+    <span class="skip">Skip <span id="skips"></span></span>
+    <span id="skipnote" class="muted"></span>
+  </div>
+</header>
+
+<main>
+  <section class="phones">
+    <div class="phone" data-default="principal"></div>
+    <div class="phone" data-default="worker-a1"></div>
+  </section>
+
+  <section class="panels">
+    <nav id="tabs">
+      <button data-tab="ledger" class="on">Ledger</button>
+      <button data-tab="balances">Balances</button>
+      <button data-tab="spend">Spend</button>
+      <button data-tab="reports">Reports</button>
+      <span class="muted right" id="viewer"></span>
+    </nav>
+    <div id="panel-ledger" class="panel on"></div>
+    <div id="panel-balances" class="panel"></div>
+    <div id="panel-spend" class="panel"></div>
+    <div id="panel-reports" class="panel"></div>
+  </section>
+</main>
+
+<template id="phone-tpl">
+  <div class="phone-head">
+    <select class="who"></select>
+    <span class="bot">@pulse_demo_bot</span>
+  </div>
+  <div class="screen"></div>
+  <div class="toast" hidden></div>
+  <form class="compose">
+    <label class="attach" title="Attach a photo, voice note or PDF">📎<input type="file" accept="image/*,audio/*,application/pdf" hidden></label>
+    <input class="text" type="text" placeholder="Message (also used as the caption of an attachment)" autocomplete="off">
+    <button type="submit">Send</button>
+  </form>
+</template>
+
+<script src="/demo/assets/demo.js"></script>
+</body>
+</html>

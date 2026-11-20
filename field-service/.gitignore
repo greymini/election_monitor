@@ -1,0 +1,33 @@
+# secrets
+.env
+
+# local embedded PostgreSQL data
+.pgdata/
+.demo-pgdata/
+.demo-media/
+
+# media stored locally (later slices)
+media/
+
+# python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+build/
+dist/
+
+# design references from the core app (real names and news): kept local, not committed
+design-ref/*.png
+
+# web build and dependencies
+web/node_modules/
+web/dist/
+web/test-results/
+web/playwright-report/
+web/*.tsbuildinfo
+
+# handoff: clean-copy rehearsal and the final archive (git archive output)
+.rehearsal/
+.handoff/

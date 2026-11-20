@@ -1,0 +1,20 @@
+{
+  "_note": "LLD §4.2. default_urgency urgent = U; restricted = R (principal, coordinator and reporter only).",
+  "categories": [
+    {"code": "ACCIDENT", "name_en": "Accident, fire, disaster", "name_hi": "दुर्घटना / आपदा", "default_urgency": "urgent", "restricted": false},
+    {"code": "HEALTH", "name_en": "Health", "name_hi": "स्वास्थ्य", "default_urgency": "urgent", "restricted": false},
+    {"code": "LAW", "name_en": "Law and order", "name_hi": "कानून-व्यवस्था", "default_urgency": "urgent", "restricted": true},
+    {"code": "DEATH", "name_en": "Death and bereavement", "name_hi": "मृत्यु / शोक", "default_urgency": "urgent", "restricted": false},
+    {"code": "SERVICES", "name_en": "Electricity, water, roads", "name_hi": "बिजली-पानी-सड़क", "default_urgency": "normal", "restricted": false},
+    {"code": "SCHEME", "name_en": "Government schemes", "name_hi": "सरकारी योजना", "default_urgency": "normal", "restricted": false},
+    {"code": "CORRUPT", "name_en": "Corruption and misconduct", "name_hi": "भ्रष्टाचार", "default_urgency": "normal", "restricted": true},
+    {"code": "LAND", "name_en": "Land, mining, displacement", "name_hi": "जमीन / खनन / विस्थापन", "default_urgency": "normal", "restricted": false},
+    {"code": "EDU", "name_en": "Education", "name_hi": "शिक्षा", "default_urgency": "normal", "restricted": false},
+    {"code": "WORK", "name_en": "Employment and migration", "name_hi": "रोजगार / पलायन", "default_urgency": "normal", "restricted": false},
+    {"code": "FARM", "name_en": "Farming and forest", "name_hi": "खेती / सिंचाई / वन", "default_urgency": "normal", "restricted": false},
+    {"code": "SOCIALEV", "name_en": "Social event or invitation", "name_hi": "सामाजिक कार्यक्रम", "default_urgency": "normal", "restricted": false},
+    {"code": "POLITICAL", "name_en": "Political activity", "name_hi": "राजनीतिक गतिविधि", "default_urgency": "normal", "restricted": true},
+    {"code": "HELPREQ", "name_en": "Request for help", "name_hi": "सहायता अनुरोध", "default_urgency": "normal", "restricted": false},
+    {"code": "OTHER", "name_en": "Other", "name_hi": "अन्य", "default_urgency": "normal", "restricted": false}
+  ]
+}

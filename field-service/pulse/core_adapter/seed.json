@@ -1,0 +1,33 @@
+{
+  "_note": "Dummy data for the stub core adapter. All names are invented. Ids are opaque on purpose.",
+  "acs": [
+    {"ac_id": "ac-32", "ac_number": 32, "name_en": "Demo AC 32", "name_hi": "डेमो विधानसभा 32"}
+  ],
+  "blocks": [
+    {"block_id": "blk-a", "ac_id": "ac-32", "name_en": "Demo Block A", "name_hi": "डेमो प्रखंड क"},
+    {"block_id": "blk-b", "ac_id": "ac-32", "name_en": "Demo Block B", "name_hi": "डेमो प्रखंड ख"},
+    {"block_id": "blk-c", "ac_id": "ac-32", "name_en": "Demo Block C", "name_hi": "डेमो प्रखंड ग"}
+  ],
+  "areas": [
+    {"area_id": "area-a1", "ac_id": "ac-32", "block_id": "blk-a", "kind": "panchayat", "name_en": "Demo Panchayat A1", "name_hi": "डेमो पंचायत क1", "electors": 4210},
+    {"area_id": "area-a2", "ac_id": "ac-32", "block_id": "blk-a", "kind": "panchayat", "name_en": "Demo Panchayat A2", "name_hi": "डेमो पंचायत क2", "electors": 3875},
+    {"area_id": "area-a3", "ac_id": "ac-32", "block_id": "blk-a", "kind": "panchayat", "name_en": "Demo Panchayat A3", "name_hi": "डेमो पंचायत क3", "electors": null},
+    {"area_id": "area-b1", "ac_id": "ac-32", "block_id": "blk-b", "kind": "panchayat", "name_en": "Demo Panchayat B1", "name_hi": "डेमो पंचायत ख1", "electors": 5120},
+    {"area_id": "area-b2", "ac_id": "ac-32", "block_id": "blk-b", "kind": "panchayat", "name_en": "Demo Panchayat B2", "name_hi": "डेमो पंचायत ख2", "electors": 2980},
+    {"area_id": "area-b3", "ac_id": "ac-32", "block_id": "blk-b", "kind": "panchayat", "name_en": "Demo Panchayat B3", "name_hi": "डेमो पंचायत ख3", "electors": 3340},
+    {"area_id": "area-c1", "ac_id": "ac-32", "block_id": "blk-c", "kind": "ward", "name_en": "Demo Ward C1", "name_hi": "डेमो वार्ड ग1", "electors": 6015},
+    {"area_id": "area-c2", "ac_id": "ac-32", "block_id": "blk-c", "kind": "ward", "name_en": "Demo Ward C2", "name_hi": "डेमो वार्ड ग2", "electors": 5490}
+  ],
+  "users": [
+    {"user_id": "usr-principal", "display_name": "Demo Candidate", "role": "admin", "ac_ids": ["ac-32"]},
+    {"user_id": "usr-incharge-a", "display_name": "Demo In-charge A", "role": "rep", "ac_ids": ["ac-32"]},
+    {"user_id": "usr-incharge-b", "display_name": "Demo In-charge B", "role": "rep", "ac_ids": ["ac-32"]},
+    {"user_id": "usr-worker-a1", "display_name": "Demo Worker A1", "role": "rep", "ac_ids": ["ac-32"]},
+    {"user_id": "usr-worker-a2", "display_name": "Demo Worker A2", "role": "rep", "ac_ids": ["ac-32"]},
+    {"user_id": "usr-worker-b1", "display_name": "Demo Worker B1", "role": "rep", "ac_ids": ["ac-32"]},
+    {"user_id": "usr-coordinator", "display_name": "Demo Coordinator", "role": "rep", "ac_ids": ["ac-32"]},
+    {"user_id": "usr-treasurer", "display_name": "Demo Treasurer", "role": "rep", "ac_ids": ["ac-32"]},
+    {"user_id": "usr-worker-c1", "display_name": "Demo Worker C1", "role": "rep", "ac_ids": ["ac-32"]},
+    {"user_id": "usr-worker-c2", "display_name": "Demo Worker C2", "role": "rep", "ac_ids": ["ac-32"]}
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "_note": "Development team tree for the stub core users. Invented names only.",
+  "ac_id": "ac-32",
+  "members": [
+    {"key": "principal", "user_id": "usr-principal", "display_name": "डेमो प्रत्याशी", "parent": null, "is_principal": true,
+     "finance_scope": "all", "can_give_advance": true, "scopes": [{"block_id": "blk-a"}, {"block_id": "blk-b"}, {"block_id": "blk-c"}]},
+    {"key": "incharge-a", "user_id": "usr-incharge-a", "display_name": "डेमो प्रभारी क", "parent": "principal",
+     "finance_scope": "team", "can_give_advance": true, "scopes": [{"block_id": "blk-a"}]},
+    {"key": "incharge-b", "user_id": "usr-incharge-b", "display_name": "डेमो प्रभारी ख", "parent": "principal",
+     "finance_scope": "team", "can_give_advance": true, "scopes": [{"block_id": "blk-b"}, {"block_id": "blk-c"}]},
+    {"key": "worker-a1", "user_id": "usr-worker-a1", "display_name": "डेमो कार्यकर्ता क1", "parent": "incharge-a",
+     "finance_scope": "own", "can_give_advance": false, "scopes": [{"block_id": "blk-a", "area_id": "area-a1"}]},
+    {"key": "worker-a2", "user_id": "usr-worker-a2", "display_name": "डेमो कार्यकर्ता क2", "parent": "incharge-a",
+     "finance_scope": "own", "can_give_advance": false, "scopes": [{"block_id": "blk-a", "area_id": "area-a2"}, {"block_id": "blk-a", "area_id": "area-a3"}]},
+    {"key": "worker-b1", "user_id": "usr-worker-b1", "display_name": "डेमो कार्यकर्ता ख1", "parent": "incharge-b",
+     "finance_scope": "own", "can_give_advance": false, "scopes": [{"block_id": "blk-b", "area_id": "area-b1"}]}
+  ]
+}

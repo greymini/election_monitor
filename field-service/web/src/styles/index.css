@@ -1,0 +1,49 @@
+@import "./tokens.css";
+@import "leaflet/dist/leaflet.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body,
+  #root {
+    min-height: 100%;
+  }
+  body {
+    background: var(--em-page);
+    color: var(--em-text);
+    font-family: var(--em-font);
+    font-size: var(--em-size-body);
+    -webkit-font-smoothing: antialiased;
+  }
+  /* numbers line up in columns (tabular figures), as in the core's tables */
+  .num {
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    white-space: nowrap;
+  }
+  :focus-visible {
+    outline: 2px solid var(--em-accent);
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  .em-card {
+    @apply rounded-card border border-line bg-surface;
+  }
+  .em-btn {
+    @apply inline-flex items-center gap-1.5 rounded-ctl border border-line bg-surface px-3 py-1.5 text-note font-medium text-ink hover:bg-raised disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .em-btn-primary {
+    @apply inline-flex items-center gap-1.5 rounded-ctl border border-transparent bg-accent px-3 py-1.5 text-note font-medium text-accent-ink hover:brightness-110 disabled:opacity-50;
+  }
+  .em-input {
+    @apply rounded-ctl border border-line bg-surface px-2.5 py-1.5 text-note text-ink placeholder:text-muted;
+  }
+  .em-link {
+    @apply text-ink-2 underline decoration-1 underline-offset-2 hover:text-ink;
+  }
+}

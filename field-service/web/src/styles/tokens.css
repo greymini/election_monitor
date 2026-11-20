@@ -1,0 +1,118 @@
+/* Election Monitor tokens: the one place for colour, type and spacing.
+ *
+ * Dark is the default (as in design-ref/ screenshots). Light is selected by data-theme="light" on
+ * <html>; it is derived, not sampled (no light screenshot exists): see design-ref/NOTES.md.
+ * At merge, map these names onto the core's tokens (docs/MERGE.md, frontend section).
+ */
+:root,
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  /* surfaces (sampled) */
+  --em-page: #0d0d0d;
+  --em-surface: #1a1a19;
+  --em-raised: #232322;
+  --em-border: #2c2c2a;
+  --em-divider: #232322;
+  --em-grid: #2a2a28;
+  --em-baseline: #383835;
+
+  /* ink (sampled) */
+  --em-text: #ffffff;
+  --em-text-2: #c3c2b7;
+  --em-muted: #898781;
+
+  /* accent and status */
+  --em-accent: #3987e5;
+  --em-accent-ink: #ffffff;
+  --em-ok: #0ca30c;
+  --em-warn: #fab219;
+  --em-serious: #ec835a;
+  --em-bad: #d03b3b;
+
+  /* bucket palette: 12 slots + grey for Other, fixed order by entity (src/lib/palette.ts).
+     Blues, cyans and magenta-to-red only: the party hues (orange, green, violet, yellow) are kept
+     out. Separated by lightness; worst adjacent CVD (protan/deutan) delta E 13.6, worst adjacent
+     normal-vision delta E 16.1 (dataviz validate_palette.js). Charts always carry labels or a
+     legend with values: colour is never the only signal. */
+  --em-cat-1: #9d60a2;
+  --em-cat-2: #51b7eb;
+  --em-cat-3: #2765a5;
+  --em-cat-4: #faa5da;
+  --em-cat-5: #b0416b;
+  --em-cat-6: #407dbf;
+  --em-cat-7: #55d7f6;
+  --em-cat-8: #ca6bb5;
+  --em-cat-9: #8d364e;
+  --em-cat-10: #ce5978;
+  --em-cat-11: #7f3386;
+  --em-cat-12: #e28bb8;
+  --em-cat-other: #8a8984;
+
+  /* one-hue scale for magnitude (blue) */
+  --em-seq-1: #184f95;
+  --em-seq-2: #256abf;
+  --em-seq-3: #3987e5;
+  --em-seq-4: #6da7ec;
+  --em-seq-5: #9ec5f4;
+
+  /* type (family unconfirmed from pixels; see NOTES.md) */
+  --em-font: Inter, "Segoe UI", system-ui, -apple-system, "Nirmala UI", "Noto Sans Devanagari", sans-serif;
+  --em-font-mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --em-size-kpi: 36px;
+  --em-size-title: 23px;
+  --em-size-panel: 18px;
+  --em-size-body: 18px;
+  --em-size-note: 14px;
+  --em-size-label: 14px;
+
+  /* shape and spacing (measured) */
+  --em-radius-card: 12px;
+  --em-radius-ctl: 8px;
+  --em-radius-chip: 6px;
+  --em-space-page: 20px;
+  --em-space-card: 20px;
+  --em-space-gap: 10px;
+  --em-header-h: 64px;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --em-page: #f6f6f4;
+  --em-surface: #ffffff;
+  --em-raised: #efeeea;
+  --em-border: #dddbd5;
+  --em-divider: #e8e7e2;
+  --em-grid: #e1e0d9;
+  --em-baseline: #c3c2b7;
+  --em-text: #151514;
+  --em-text-2: #4a4945;
+  --em-muted: #6e6c66;
+  --em-accent: #2f78d6;
+  --em-accent-ink: #ffffff;
+  --em-ok: #0a7d0a;
+  --em-warn: #b37800;
+  --em-serious: #c4562b;
+  --em-bad: #c22f2f;
+
+  /* same hues, stepped for the light surface (worst adjacent CVD delta E 13.7, normal 16.2) */
+  --em-cat-1: #723877;
+  --em-cat-2: #178bbc;
+  --em-cat-3: #0b4378;
+  --em-cat-4: #ca79ad;
+  --em-cat-5: #811044;
+  --em-cat-6: #125492;
+  --em-cat-7: #06aac7;
+  --em-cat-8: #9b4089;
+  --em-cat-9: #600829;
+  --em-cat-10: #9e2d51;
+  --em-cat-11: #54005c;
+  --em-cat-12: #b3608d;
+  --em-cat-other: #8f8e88;
+
+  --em-seq-1: #9ec5f4;
+  --em-seq-2: #6da7ec;
+  --em-seq-3: #3987e5;
+  --em-seq-4: #256abf;
+  --em-seq-5: #184f95;
+}

@@ -1,0 +1,79 @@
+{
+  "_note": "LLD §4.1 presets. statutory_head is left null on purpose: the election agent sets the mapping. Sub-heads inherit nothing; flags are read from the top-level bucket.",
+  "buckets": [
+    {"code": "EVENT", "name_en": "Meetings and events", "name_hi": "सभा और कार्यक्रम", "sensitive": false, "ask_reach": true,
+     "subheads": [
+       ["TENT", "Tent and stage", "टेंट और मंच"],
+       ["SOUND", "Sound and lights", "साउंड और लाइट"],
+       ["VENUE", "Chairs and venue", "कुर्सी और स्थान"],
+       ["FOOD", "Event food", "कार्यक्रम का भोजन"],
+       ["PERMIT", "Permissions and fees", "अनुमति और शुल्क"]]},
+    {"code": "TRAVEL", "name_en": "Travel and vehicles", "name_hi": "यात्रा और वाहन", "sensitive": false, "ask_reach": false,
+     "subheads": [
+       ["FUEL", "Fuel", "ईंधन"],
+       ["HIRE", "Vehicle hire", "गाड़ी भाड़ा"],
+       ["DRIVER", "Driver", "ड्राइवर"],
+       ["REPAIR", "Repair", "मरम्मत"],
+       ["OUTSTATION", "Outstation travel and stay", "बाहर की यात्रा और ठहराव"]]},
+    {"code": "FOOD", "name_en": "Food and hospitality", "name_hi": "भोजन और नाश्ता", "sensitive": false, "ask_reach": false,
+     "subheads": [
+       ["TEA", "Tea and snacks", "चाय-नाश्ता"],
+       ["MEALS", "Worker meals", "कार्यकर्ता भोजन"],
+       ["GUESTS", "Guests and visiting leaders", "अतिथि और आगंतुक नेता"]]},
+    {"code": "TEAM", "name_en": "Workers and team", "name_hi": "कार्यकर्ता खर्च", "sensitive": false, "ask_reach": false,
+     "subheads": [
+       ["ALLOWANCE", "Daily allowance", "दैनिक भत्ता"],
+       ["RECHARGE", "Phone recharge", "फोन रिचार्ज"],
+       ["LODGING", "Lodging", "ठहरने का खर्च"],
+       ["BOOTH", "Booth-level team", "बूथ स्तर टीम"]]},
+    {"code": "PUBLICITY", "name_en": "Publicity and media", "name_hi": "प्रचार और मीडिया", "sensitive": false, "ask_reach": false,
+     "subheads": [
+       ["BANNER", "Banners and flex", "बैनर और फ्लेक्स"],
+       ["PRINT", "Printing", "छपाई"],
+       ["WALL", "Wall writing", "दीवार लेखन"],
+       ["SOCIALMEDIA", "Social media and ads", "सोशल मीडिया और विज्ञापन"],
+       ["PHOTO", "Photo and video", "फोटो और वीडियो"],
+       ["NEWS", "Newspaper and local channels", "अखबार और लोकल चैनल"]]},
+    {"code": "OFFICE", "name_en": "Office and operations", "name_hi": "कार्यालय खर्च", "sensitive": false, "ask_reach": false,
+     "subheads": [
+       ["RENT", "Rent", "किराया"],
+       ["UTILITIES", "Electricity and internet", "बिजली और इंटरनेट"],
+       ["STATIONERY", "Stationery", "स्टेशनरी"],
+       ["EQUIPMENT", "Equipment", "उपकरण"],
+       ["STAFF", "Staff", "स्टाफ"]]},
+    {"code": "SOCIAL", "name_en": "Social occasions", "name_hi": "सामाजिक अवसर", "sensitive": true, "ask_reach": true,
+     "subheads": [
+       ["WEDDING", "Wedding", "शादी"],
+       ["BEREAVEMENT", "Bereavement and shraddh", "शोक और श्राद्ध"],
+       ["FESTIVAL", "Festival and puja committee", "पर्व और पूजा समिति"],
+       ["FEAST", "Community feast", "सामूहिक भोज"]]},
+    {"code": "ASSIST", "name_en": "Public assistance", "name_hi": "जन सहायता", "sensitive": true, "ask_reach": true,
+     "subheads": [
+       ["MEDICAL", "Medical", "इलाज"],
+       ["EDUCATION", "Education", "शिक्षा"],
+       ["FUNERAL", "Funeral", "अंतिम संस्कार"],
+       ["RELIEF", "Accident and disaster relief", "दुर्घटना और आपदा राहत"],
+       ["LIVELIHOOD", "Livelihood", "रोजी-रोटी"],
+       ["INDIVIDUAL", "Other individual help", "अन्य व्यक्तिगत सहायता"]]},
+    {"code": "DONATE", "name_en": "Donations to institutions", "name_hi": "संस्थागत दान", "sensitive": true, "ask_reach": true,
+     "subheads": [
+       ["RELIGIOUS", "Religious place", "धार्मिक स्थल"],
+       ["CLUB", "Club and youth group", "क्लब और युवा समूह"],
+       ["SCHOOL", "School", "स्कूल"],
+       ["SPORTS", "Sports tournament", "खेल प्रतियोगिता"],
+       ["CULTURAL", "Cultural programme", "सांस्कृतिक कार्यक्रम"]]},
+    {"code": "WORKS", "name_en": "Small local works", "name_hi": "छोटे विकास कार्य", "sensitive": true, "ask_reach": true,
+     "subheads": [
+       ["WATER", "Handpump and water", "चापाकल और पानी"],
+       ["LIGHT", "Street light", "स्ट्रीट लाइट"],
+       ["ROAD", "Road and drain patch", "सड़क और नाली मरम्मत"],
+       ["BUILDING", "Community building repair", "सामुदायिक भवन मरम्मत"]]},
+    {"code": "PARTY", "name_en": "Party and organisation", "name_hi": "संगठन खर्च", "sensitive": false, "ask_reach": false,
+     "subheads": [
+       ["PROGRAMME", "Party programme", "पार्टी कार्यक्रम"],
+       ["MEMBERSHIP", "Membership drive", "सदस्यता अभियान"],
+       ["COMMITTEE", "Committee meetings", "कमेटी बैठक"],
+       ["CONTRIBUTION", "Contribution to party", "पार्टी को अंशदान"]]},
+    {"code": "OTHER", "name_en": "Other", "name_hi": "अन्य", "sensitive": false, "ask_reach": false, "subheads": []}
+  ]
+}
