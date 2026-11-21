@@ -155,6 +155,8 @@ class Settings:
     jwt_secret: str
     core_adapter: str = "stub"
     core_seed_path: Path = DEFAULT_CORE_SEED
+    core_database_url: str = ""                  # CORE_DATABASE_URL, used only when CORE_ADAPTER=core
+    core_jwt_secret: str = ""                    # CORE_JWT_SECRET: the core's token secret, not JWT_SECRET
     link_token_ttl_hours: int = LINK_TOKEN_TTL_HOURS
     ledger: LedgerLimits = field(default_factory=LedgerLimits)
     reports: ReportLimits = field(default_factory=ReportLimits)
@@ -196,8 +198,15 @@ def check_settings(s: Settings) -> None:
         problems.append("WEBHOOK_URL must be an https:// URL when BOT_MODE is webhook")
     if not re.fullmatch(r"[a-z][a-z0-9_]*", s.asr_engine):
         problems.append("ASR_ENGINE must be the name of a module in pulse/asr (none, fake, ...)")
-    if s.core_adapter != "stub":
-        problems.append("CORE_ADAPTER must be 'stub' (the only adapter in this repo)")
+    if s.core_adapter not in ("stub", "core"):
+        problems.append("CORE_ADAPTER must be 'stub' or 'core'")
+    if s.core_adapter == "core":
+        if _is_placeholder(s.core_database_url) or not s.core_database_url.startswith(("postgresql://", "postgres://")):
+            problems.append("CORE_DATABASE_URL must be a real postgresql:// URL when CORE_ADAPTER is core")
+        if _is_placeholder(s.core_jwt_secret) or len(s.core_jwt_secret) < MIN_JWT_SECRET_LEN:
+            problems.append(f"CORE_JWT_SECRET must be at least {MIN_JWT_SECRET_LEN} characters and not a placeholder")
+        elif s.core_jwt_secret == s.jwt_secret:
+            problems.append("CORE_JWT_SECRET must differ from JWT_SECRET")
     if not s.map_tile_url.startswith(("https://", "http://")) or "{z}" not in s.map_tile_url:
         problems.append("MAP_TILE_URL must be an http(s) tile URL with {z}, {x} and {y}")
     if s.demo_mode and s.bot_mode != "polling":
@@ -224,6 +233,8 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         telegram_webhook_secret=e.get("TELEGRAM_WEBHOOK_SECRET", ""),
         jwt_secret=e.get("JWT_SECRET", ""),
         core_adapter=e.get("CORE_ADAPTER", "stub"),
+        core_database_url=e.get("CORE_DATABASE_URL", "").strip(),
+        core_jwt_secret=e.get("CORE_JWT_SECRET", "").strip(),
         ledger=load_ledger_limits(e),
         reports=load_report_limits(e),
         media_dir=Path(e.get("MEDIA_DIR") or DEFAULT_MEDIA_DIR),

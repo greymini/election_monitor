@@ -38,6 +38,9 @@ class AppState:
 def make_core_adapter(settings: Settings) -> CoreAdapter:
     if settings.core_adapter == "stub":
         return StubCoreAdapter(settings.core_seed_path, jwt_secret=settings.jwt_secret)
+    if settings.core_adapter == "core":
+        from pulse.core_adapter.core import CoreDbAdapter
+        return CoreDbAdapter(settings.core_database_url, settings.core_jwt_secret)
     raise ValueError(f"unknown core adapter {settings.core_adapter!r}")
 
 
